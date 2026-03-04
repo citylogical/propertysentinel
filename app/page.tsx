@@ -43,19 +43,26 @@ export default function Home() {
 
         {/* Search Bar */}
         <div className="max-w-2xl mx-auto">
-          <div className="flex gap-3 bg-white rounded-xl shadow-lg p-3">
+          <form
+            action="/search"
+            method="GET"
+            className="flex gap-3 bg-white rounded-xl shadow-lg p-3"
+          >
             <input
               type="text"
+              name="address"
+              required
               placeholder="Enter a Chicago property address..."
               className="flex-1 px-4 py-3 text-base outline-none rounded-lg"
               style={{ fontFamily: 'sans-serif' }}
             />
             <button
+              type="submit"
               className="px-8 py-3 rounded-lg text-white font-semibold text-base transition-colors"
               style={{ backgroundColor: '#003366', fontFamily: 'sans-serif' }}>
               Search
             </button>
-          </div>
+          </form>
           <p className="text-sm text-slate-400 mt-3">
             Free to search any Chicago address. No account required.
           </p>
