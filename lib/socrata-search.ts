@@ -58,12 +58,6 @@ function withSocrataToken(params: URLSearchParams): void {
   if (token) params.set('$$app_token', token)
 }
 
-const FETCH_TIMEOUT_MS = 15000
-
-function resolveAfterTimeout<T>(ms: number, value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
-
 const BASE_311 = 'https://data.cityofchicago.org/resource/v6vf-nfxy.json'
 const BASE_VIOLATIONS = 'https://data.cityofchicago.org/resource/22u3-xenr.json'
 
@@ -128,35 +122,17 @@ export async function fetchMostRecentViolation(normalizedAddress: string): Promi
   return json?.[0] ?? null
 }
 
-const TIMEOUT_311 = {
-  count: null as number | null,
-  recent: null as ServiceRequestRow | null,
-  error: 'Some data temporarily unavailable',
-}
-
-const TIMEOUT_VIOLATIONS = {
-  violationsOpenCount: 0,
-  recentViolation: null as ViolationRow | null,
-  error: 'Some data temporarily unavailable',
-}
-
 export async function fetch311WithTimeout(normalizedAddress: string): Promise<{
   count: number | null
   recent: ServiceRequestRow | null
   error: string | null
 }> {
   try {
-    const result = await Promise.race([
-      (async () => {
-        const [count, recent] = await Promise.all([
-          fetch311Count(normalizedAddress),
-          fetchMostRecent311(normalizedAddress),
-        ])
-        return { count, recent, error: null as string | null }
-      })(),
-      resolveAfterTimeout(FETCH_TIMEOUT_MS, TIMEOUT_311),
+    const [count, recent] = await Promise.all([
+      fetch311Count(normalizedAddress),
+      fetchMostRecent311(normalizedAddress),
     ])
-    return result
+    return { count, recent, error: null }
   } catch (e) {
     return {
       count: null,
@@ -172,17 +148,11 @@ export async function fetchViolationsWithTimeout(normalizedAddress: string): Pro
   error: string | null
 }> {
   try {
-    const result = await Promise.race([
-      (async () => {
-        const [violationsOpenCount, recentViolation] = await Promise.all([
-          fetchViolationsOpenCount(normalizedAddress),
-          fetchMostRecentViolation(normalizedAddress),
-        ])
-        return { violationsOpenCount, recentViolation, error: null as string | null }
-      })(),
-      resolveAfterTimeout(FETCH_TIMEOUT_MS, TIMEOUT_VIOLATIONS),
+    const [violationsOpenCount, recentViolation] = await Promise.all([
+      fetchViolationsOpenCount(normalizedAddress),
+      fetchMostRecentViolation(normalizedAddress),
     ])
-    return result
+    return { violationsOpenCount, recentViolation, error: null }
   } catch (e) {
     return {
       violationsOpenCount: 0,
