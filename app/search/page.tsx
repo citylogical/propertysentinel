@@ -1,70 +1,9 @@
+'use client'
+
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
-
-export const dynamic = 'force-dynamic'
-
-type SearchParams = {
-  address?: string | string[]
-}
-
-type SocrataCountRow = {
-  count?: string
-}
-
-type ServiceRequestRow = {
-  sr_number?: string
-  sr_type?: string
-  created_date?: string
-  status?: string
-  origin?: string
-  street_address?: string
-}
-
-type ViolationRow = {
-  address?: string
-  violation_status?: string
-  violation_date?: string
-  violation_code?: string
-  violation_description?: string
-  violation_ordinance?: string
-  violation_inspector_comments?: string
-}
-
-function pickFirst(value: string | string[] | undefined): string | undefined {
-  if (!value) return undefined
-  return Array.isArray(value) ? value[0] : value
-}
-
-function normalizeAddressFor311(raw: string): string {
-  let s = raw.trim()
-  if (!s) return s
-
-  // Keep just the street portion; user often includes "Chicago, IL ..."
-  s = s.split(',')[0] ?? s
-
-  // Strip common unit markers to improve matching.
-  s = s.replace(/\s+(apt|apartment|unit|#)\s*.*$/i, '')
-
-  // Collapse whitespace.
-  s = s.replace(/\s+/g, ' ').trim()
-
-  return s.toUpperCase()
-}
-
-function soqlEscapeLiteral(value: string): string {
-  return value.replace(/'/g, "''")
-}
-
-function withSocrataToken(params: URLSearchParams): URLSearchParams {
-  const token = process.env.SOCRATA_APP_TOKEN
-  if (token) params.set('$$app_token', token)
-  return params
-}
-
-const FETCH_TIMEOUT_MS = 15000
-
-function resolveAfterTimeout<T>(ms: number, value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
+import { useSearchParams } from 'next/navigation'
+import type { ServiceRequestRow, ViolationRow } from '@/lib/socrata-search'
 
 function formatDate(isoLike: string | undefined): string {
   if (!isoLike) return 'Unknown date'
@@ -73,108 +12,18 @@ function formatDate(isoLike: string | undefined): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-async function fetch311Count(normalizedAddress: string): Promise<number> {
-  const baseUrl = 'https://data.cityofchicago.org/resource/v6vf-nfxy.json'
-
-  const addrUpper = soqlEscapeLiteral(normalizedAddress)
-  const where = `street_address is not null AND upper(street_address) like '%${addrUpper}%'`
-
-  const params = new URLSearchParams()
-  params.set('$select', 'count(1) as count')
-  params.set('$where', where)
-  withSocrataToken(params)
-
-  const res = await fetch(`${baseUrl}?${params.toString()}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`311 count request failed (${res.status})`)
-
-  const json = (await res.json()) as SocrataCountRow[]
-  const count = Number(json?.[0]?.count ?? 0)
-  return Number.isFinite(count) ? count : 0
-}
-
-async function fetchMostRecent311(normalizedAddress: string): Promise<ServiceRequestRow | null> {
-  const baseUrl = 'https://data.cityofchicago.org/resource/v6vf-nfxy.json'
-
-  const addrUpper = soqlEscapeLiteral(normalizedAddress)
-  const where = `street_address is not null AND upper(street_address) like '%${addrUpper}%'`
-
-  const params = new URLSearchParams()
-  params.set('$select', 'sr_number,sr_type,created_date,status,origin,street_address')
-  params.set('$where', where)
-  params.set('$order', 'created_date DESC')
-  params.set('$limit', '1')
-  withSocrataToken(params)
-
-  const res = await fetch(`${baseUrl}?${params.toString()}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`311 recent request failed (${res.status})`)
-
-  const json = (await res.json()) as ServiceRequestRow[]
-  return json?.[0] ?? null
-}
-
-const VIOLATIONS_BASE = 'https://data.cityofchicago.org/resource/22u3-xenr.json'
-
-async function fetchViolationsOpenCount(normalizedAddress: string): Promise<number> {
-  const addrUpper = soqlEscapeLiteral(normalizedAddress)
-  const where = `address is not null AND upper(address) like '%${addrUpper}%' AND violation_status = 'OPEN'`
-
-  const params = new URLSearchParams()
-  params.set('$select', 'count(1) as count')
-  params.set('$where', where)
-  withSocrataToken(params)
-
-  const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Violations count request failed (${res.status})`)
-
-  const json = (await res.json()) as SocrataCountRow[]
-  const count = Number(json?.[0]?.count ?? 0)
-  return Number.isFinite(count) ? count : 0
-}
-
-async function fetchMostRecentViolation(normalizedAddress: string): Promise<ViolationRow | null> {
-  const addrUpper = soqlEscapeLiteral(normalizedAddress)
-  const where = `address is not null AND upper(address) like '%${addrUpper}%'`
-
-  const params = new URLSearchParams()
-  params.set('$select', 'address,violation_status,violation_date,violation_code,violation_description,violation_ordinance,violation_inspector_comments')
-  params.set('$where', where)
-  params.set('$order', 'violation_date DESC')
-  params.set('$limit', '1')
-  withSocrataToken(params)
-
-  const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Violations request failed (${res.status})`)
-
-  const json = (await res.json()) as ViolationRow[]
-  return json?.[0] ?? null
-}
-
 function LockedDescriptionCard({ text }: { text: string }) {
   return (
     <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
       <div className="text-sm font-semibold text-slate-800 mb-2">Full complaint description</div>
       <div className="text-slate-400 blur-sm select-none leading-relaxed">{text}</div>
-
       <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
         <div className="text-center px-6">
           <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
-          <div className="text-slate-600 text-sm mt-1">
-            See the full complaint narrative and get instant alerts.
-          </div>
+          <div className="text-slate-600 text-sm mt-1">See the full complaint narrative and get instant alerts.</div>
           <div className="mt-4 flex items-center justify-center gap-3">
-            <Link
-              href="/signup"
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-              style={{ backgroundColor: '#C8102E' }}
-            >
-              Get Started
-            </Link>
-            <Link
-              href="/"
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-            >
-              Search another
-            </Link>
+            <Link href="/signup" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>Get Started</Link>
+            <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">Search another</Link>
           </div>
         </div>
       </div>
@@ -187,27 +36,13 @@ function LockedViolationCard({ text }: { text: string }) {
     <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
       <div className="text-sm font-semibold text-slate-800 mb-2">Violation description &amp; code</div>
       <div className="text-slate-400 blur-sm select-none leading-relaxed">{text}</div>
-
       <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
         <div className="text-center px-6">
           <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
-          <div className="text-slate-600 text-sm mt-1">
-            See full violation details and get instant alerts.
-          </div>
+          <div className="text-slate-600 text-sm mt-1">See full violation details and get instant alerts.</div>
           <div className="mt-4 flex items-center justify-center gap-3">
-            <Link
-              href="/signup"
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-              style={{ backgroundColor: '#C8102E' }}
-            >
-              Get Started
-            </Link>
-            <Link
-              href="/"
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-            >
-              Search another
-            </Link>
+            <Link href="/signup" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>Get Started</Link>
+            <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">Search another</Link>
           </div>
         </div>
       </div>
@@ -215,9 +50,103 @@ function LockedViolationCard({ text }: { text: string }) {
   )
 }
 
-export default async function SearchPage({ searchParams }: { searchParams: Promise<SearchParams> | SearchParams }) {
-  const sp = (await searchParams) as SearchParams
-  const addressRaw = pickFirst(sp.address)?.trim()
+function SearchSkeleton() {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-white border border-slate-200 p-5">
+              <div className="h-3 w-24 bg-slate-200 rounded animate-pulse mb-3" />
+              <div className="h-9 w-16 bg-slate-200 rounded animate-pulse mt-2" />
+              <div className="h-3 w-32 bg-slate-200 rounded animate-pulse mt-2" />
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
+              <div className="h-3 w-36 bg-slate-200 rounded animate-pulse mb-3" />
+              <div className="h-6 w-full max-w-xs bg-slate-200 rounded animate-pulse mt-2" />
+              <div className="h-4 w-24 bg-slate-200 rounded animate-pulse mt-2" />
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-6">
+            <div className="h-4 w-40 bg-slate-200 rounded animate-pulse mb-3" />
+            <div className="space-y-2">
+              <div className="h-4 w-full bg-slate-200 rounded animate-pulse" />
+              <div className="h-4 w-[85%] bg-slate-200 rounded animate-pulse" />
+              <div className="h-4 w-3/4 max-w-md bg-slate-200 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <div className="h-3 w-32 bg-slate-200 rounded animate-pulse mb-4" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="h-4 w-28 bg-slate-200 rounded animate-pulse" />
+              <div className="sm:col-span-2 space-y-2">
+                <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
+                <div className="h-4 w-24 bg-slate-200 rounded animate-pulse" />
+              </div>
+            </div>
+            <div className="mt-4 rounded bg-slate-100 p-4">
+              <div className="h-4 w-full bg-slate-200 rounded animate-pulse" />
+              <div className="h-4 w-5/6 bg-slate-200 rounded animate-pulse mt-2" />
+            </div>
+          </div>
+        </div>
+        <aside className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-6">
+            <div className="h-4 w-24 bg-slate-200 rounded animate-pulse" />
+            <div className="h-4 w-full bg-slate-200 rounded animate-pulse mt-3" />
+            <div className="h-4 w-full max-w-sm bg-slate-200 rounded animate-pulse mt-2" />
+            <div className="h-10 w-24 bg-slate-200 rounded-lg animate-pulse mt-4" />
+          </div>
+        </aside>
+    </div>
+  )
+}
+
+type State311 = { count: number | null; recent: ServiceRequestRow | null; error: string | null }
+type StateViolations = { violationsOpenCount: number; recentViolation: ViolationRow | null; error: string | null }
+
+function SearchPageContent() {
+  const searchParams = useSearchParams()
+  const addressRaw = searchParams.get('address')?.trim() ?? ''
+
+  const [loading, setLoading] = useState(!!addressRaw)
+  const [data311, setData311] = useState<State311 | null>(null)
+  const [dataViolations, setDataViolations] = useState<StateViolations | null>(null)
+
+  const fetchData = useCallback(async (address: string) => {
+    setLoading(true)
+    setData311(null)
+    setDataViolations(null)
+    const encoded = encodeURIComponent(address)
+    try {
+      const [res311, resViolations] = await Promise.all([
+        fetch(`/api/search/311?address=${encoded}`),
+        fetch(`/api/search/violations?address=${encoded}`),
+      ])
+      const json311: State311 = res311.ok
+        ? await res311.json()
+        : { count: null, recent: null, error: ((await res311.json().catch(() => ({}))) as { error?: string })?.error ?? res311.statusText }
+      const jsonViolations: StateViolations = resViolations.ok
+        ? await resViolations.json()
+        : { violationsOpenCount: 0, recentViolation: null, error: ((await resViolations.json().catch(() => ({}))) as { error?: string })?.error ?? resViolations.statusText }
+      setData311(json311)
+      setDataViolations(jsonViolations)
+    } catch (e) {
+      setData311({ count: null, recent: null, error: e instanceof Error ? e.message : 'Unknown error' })
+      setDataViolations({ violationsOpenCount: 0, recentViolation: null, error: 'Unable to load violations' })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!addressRaw) {
+      setLoading(false)
+      setData311(null)
+      setDataViolations(null)
+      return
+    }
+    fetchData(addressRaw)
+  }, [addressRaw, fetchData])
 
   if (!addressRaw) {
     return (
@@ -226,14 +155,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <h1 className="text-3xl font-bold mb-3" style={{ color: '#003366', fontFamily: 'Georgia, serif' }}>
             Search Chicago 311 complaints
           </h1>
-          <p className="text-slate-600 mb-6">
-            Enter an address on the homepage to view complaint activity.
-          </p>
-          <Link
-            href="/"
-            className="inline-flex px-4 py-2 rounded-lg text-sm font-semibold text-white"
-            style={{ backgroundColor: '#003366' }}
-          >
+          <p className="text-slate-600 mb-6">Enter an address on the homepage to view complaint activity.</p>
+          <Link href="/" className="inline-flex px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#003366' }}>
             Back to search
           </Link>
         </div>
@@ -241,97 +164,36 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     )
   }
 
-  const normalized = normalizeAddressFor311(addressRaw)
-
-  const timeout311 = resolveAfterTimeout(FETCH_TIMEOUT_MS, {
-    count: null as number | null,
-    recent: null as ServiceRequestRow | null,
-    error: 'Some data temporarily unavailable',
-    timedOut: true as const,
-  })
-  const timeoutViolations = resolveAfterTimeout(FETCH_TIMEOUT_MS, {
-    violationsOpenCount: 0,
-    recentViolation: null as ViolationRow | null,
-    error: 'Some data temporarily unavailable',
-    timedOut: true as const,
-  })
-
-  const [result311, resultViolations] = await Promise.all([
-    Promise.race([
-      (async () => {
-        try {
-          const [count, recent] = await Promise.all([
-            fetch311Count(normalized),
-            fetchMostRecent311(normalized),
-          ])
-          return { count, recent, error: null as string | null, timedOut: false as const }
-        } catch (e) {
-          return {
-            count: null as number | null,
-            recent: null as ServiceRequestRow | null,
-            error: e instanceof Error ? e.message : 'Unknown error',
-            timedOut: false as const,
-          }
-        }
-      })(),
-      timeout311,
-    ]),
-    Promise.race([
-      (async () => {
-        try {
-          const [violationsOpenCount, recentViolation] = await Promise.all([
-            fetchViolationsOpenCount(normalized),
-            fetchMostRecentViolation(normalized),
-          ])
-          return { violationsOpenCount, recentViolation, error: null as string | null, timedOut: false as const }
-        } catch (e) {
-          return {
-            violationsOpenCount: 0,
-            recentViolation: null as ViolationRow | null,
-            error: e instanceof Error ? e.message : 'Unable to load violations',
-            timedOut: false as const,
-          }
-        }
-      })(),
-      timeoutViolations,
-    ]),
-  ])
-
-  const count = result311.count
-  const recent = result311.recent
-  const error = result311.error
-  const violationsOpenCount = resultViolations.violationsOpenCount
-  const recentViolation = resultViolations.recentViolation
-  const violationsError = resultViolations.error
+  const normalized = addressRaw.split(',')[0]?.trim().toUpperCase() ?? addressRaw.toUpperCase()
+  const count = data311?.count ?? null
+  const recent = data311?.recent ?? null
+  const error = data311?.error ?? null
+  const violationsOpenCount = dataViolations?.violationsOpenCount ?? 0
+  const recentViolation = dataViolations?.recentViolation ?? null
+  const violationsError = dataViolations?.error ?? null
 
   const mostRecentType = recent?.sr_type ?? 'No matching complaints found'
   const mostRecentDate = recent?.created_date ? formatDate(recent.created_date) : '—'
-
-  const lockedText =
-    recent
-      ? [
-          `Request #${recent.sr_number ?? '—'}`,
-          `Type: ${recent.sr_type ?? '—'}`,
-          `Created: ${recent.created_date ?? '—'}`,
-          `Status: ${recent.status ?? '—'}`,
-          `Origin: ${recent.origin ?? '—'}`,
-          `Address on file: ${recent.street_address ?? '—'}`,
-        ].join(' • ')
-      : 'No complaint description available.'
-
-  const violationLockedText =
-    recentViolation
-      ? [
-          `Code: ${recentViolation.violation_code ?? '—'}`,
-          `Description: ${recentViolation.violation_description ?? '—'}`,
-          `Ordinance: ${recentViolation.violation_ordinance ?? '—'}`,
-          recentViolation.violation_inspector_comments
-            ? `Inspector: ${recentViolation.violation_inspector_comments}`
-            : '',
-        ]
-          .filter(Boolean)
-          .join(' • ')
-      : 'No violation details available.'
+  const lockedText = recent
+    ? [
+        `Request #${recent.sr_number ?? '—'}`,
+        `Type: ${recent.sr_type ?? '—'}`,
+        `Created: ${recent.created_date ?? '—'}`,
+        `Status: ${recent.status ?? '—'}`,
+        `Origin: ${recent.origin ?? '—'}`,
+        `Address on file: ${recent.street_address ?? '—'}`,
+      ].join(' • ')
+    : 'No complaint description available.'
+  const violationLockedText = recentViolation
+    ? [
+        `Code: ${recentViolation.violation_code ?? '—'}`,
+        `Description: ${recentViolation.violation_description ?? '—'}`,
+        `Ordinance: ${recentViolation.violation_ordinance ?? '—'}`,
+        recentViolation.violation_inspector_comments ? `Inspector: ${recentViolation.violation_inspector_comments}` : '',
+      ]
+        .filter(Boolean)
+        .join(' • ')
+    : 'No violation details available.'
 
   return (
     <main className="min-h-screen px-6 py-12" style={{ backgroundColor: '#F5F5F5' }}>
@@ -344,95 +206,106 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <p className="text-slate-600 mt-2">
               Address: <span className="font-semibold text-slate-800">{addressRaw}</span>
             </p>
-            <p className="text-xs text-slate-400 mt-2">
-              Data source: City of Chicago 311 Service Requests (live).
-            </p>
+            <p className="text-xs text-slate-400 mt-2">Data source: City of Chicago 311 Service Requests (live).</p>
           </div>
-          <Link
-            href="/"
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-            style={{ backgroundColor: '#003366' }}
-          >
+          <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#003366' }}>
             New search
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {error ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-                <div className="font-semibold">311 complaints</div>
-                <div className="text-sm mt-1">{error}</div>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="rounded-xl bg-white border border-slate-200 p-5">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Complaint count</div>
-                    <div className="text-3xl font-bold text-slate-900 mt-2">{count ?? '—'}</div>
-                    <div className="text-xs text-slate-400 mt-1">Matches “{normalized}…”</div>
+        {loading ? (
+          <SearchSkeleton />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                {error ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+                    <div className="font-semibold">311 complaints</div>
+                    <div className="text-sm mt-1">{error}</div>
                   </div>
-                  <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Most recent complaint</div>
-                    <div className="text-lg font-semibold text-slate-900 mt-2">{mostRecentType}</div>
-                    <div className="text-sm text-slate-600 mt-1">{mostRecentDate}</div>
-                  </div>
-                </div>
-
-                <LockedDescriptionCard text={lockedText} />
-              </>
-            )}
-
-            {/* Building violations */}
-            <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
-              {violationsError ? (
-                <p className="text-sm text-amber-600">{violationsError}</p>
-              ) : violationsOpenCount === 0 && !recentViolation ? (
-                  <>
-                    <p className="text-slate-700 font-medium">No open violations on record.</p>
-                    <p className="text-sm text-slate-500 mt-1">No violations found for this address.</p>
-                  </>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Open violations</div>
-                        <div className="text-2xl font-bold text-slate-900 mt-1">{violationsOpenCount}</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="rounded-xl bg-white border border-slate-200 p-5">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Complaint count</div>
+                        <div className="text-3xl font-bold text-slate-900 mt-2">{count ?? '—'}</div>
+                        <div className="text-xs text-slate-400 mt-1">Matches &quot;{normalized}&quot;…</div>
                       </div>
-                      <div className="sm:col-span-2">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Most recent violation</div>
-                        <div className="text-lg font-semibold text-slate-900 mt-1">
-                          {recentViolation?.violation_description ?? '—'}
-                        </div>
-                        <div className="text-sm text-slate-600 mt-0.5">
-                          {recentViolation?.violation_date ? formatDate(recentViolation.violation_date) : '—'}
-                        </div>
+                      <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Most recent complaint</div>
+                        <div className="text-lg font-semibold text-slate-900 mt-2">{mostRecentType}</div>
+                        <div className="text-sm text-slate-600 mt-1">{mostRecentDate}</div>
                       </div>
                     </div>
-                    <LockedViolationCard text={violationLockedText} />
+                    <LockedDescriptionCard text={lockedText} />
                   </>
                 )}
-            </div>
-          </div>
 
-          <aside className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-6">
-                <div className="text-sm font-semibold text-slate-900">Want alerts?</div>
-                <p className="text-sm text-slate-600 mt-2">
-                  Get notified the moment a new 311 complaint is filed for this property.
-                </p>
-                <Link
-                  href="/signup"
-                  className="inline-flex mt-4 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                  style={{ backgroundColor: '#C8102E' }}
-                >
-                  Subscribe
-                </Link>
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
+                  {violationsError ? (
+                    <p className="text-sm text-amber-600">{violationsError}</p>
+                  ) : violationsOpenCount === 0 && !recentViolation ? (
+                    <>
+                      <p className="text-slate-700 font-medium">No open violations on record.</p>
+                      <p className="text-sm text-slate-500 mt-1">No violations found for this address.</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-slate-500">Open violations</div>
+                          <div className="text-2xl font-bold text-slate-900 mt-1">{violationsOpenCount}</div>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <div className="text-xs uppercase tracking-wide text-slate-500">Most recent violation</div>
+                          <div className="text-lg font-semibold text-slate-900 mt-1">{recentViolation?.violation_description ?? '—'}</div>
+                          <div className="text-sm text-slate-600 mt-0.5">
+                            {recentViolation?.violation_date ? formatDate(recentViolation.violation_date) : '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <LockedViolationCard text={violationLockedText} />
+                    </>
+                  )}
+                </div>
               </div>
-          </aside>
-        </div>
+
+              <aside className="space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-6">
+                  <div className="text-sm font-semibold text-slate-900">Want alerts?</div>
+                  <p className="text-sm text-slate-600 mt-2">Get notified the moment a new 311 complaint is filed for this property.</p>
+                  <Link href="/signup" className="inline-flex mt-4 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>
+                    Subscribe
+                  </Link>
+                </div>
+              </aside>
+            </div>
+          </>
+        )}
       </div>
     </main>
+  )
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen px-6 py-12" style={{ backgroundColor: '#F5F5F5' }}>
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-start justify-between gap-6 mb-8">
+            <div className="space-y-2">
+              <div className="h-9 w-64 bg-slate-200 rounded animate-pulse" />
+              <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
+            </div>
+            <div className="h-10 w-28 bg-slate-200 rounded-lg animate-pulse" />
+          </div>
+          <SearchSkeleton />
+        </div>
+      </main>
+    }>
+      <SearchPageContent />
+    </Suspense>
   )
 }

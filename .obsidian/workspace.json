@@ -178,6 +178,12 @@
   },
   "active": "00c4f50c845aba6f",
   "lastOpenFiles": [
+    "app/api/search/violations/route.ts",
+    "app/api/search/violations",
+    "app/api/search/311/route.ts",
+    "app/api/search/311",
+    "app/api/search",
+    "lib/socrata-search.ts",
     "app/search/loading.tsx",
     "app/components/HomeSearch.tsx",
     "app/components"
