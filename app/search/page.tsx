@@ -19,6 +19,16 @@ type ServiceRequestRow = {
   street_address?: string
 }
 
+type ViolationRow = {
+  address?: string
+  violation_status?: string
+  violation_date?: string
+  violation_code?: string
+  violation_description?: string
+  violation_ordinance?: string
+  violation_inspector_comments?: string
+}
+
 function pickFirst(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined
   return Array.isArray(value) ? value[0] : value
@@ -88,6 +98,41 @@ async function fetchMostRecent311(normalizedAddress: string): Promise<ServiceReq
   return json?.[0] ?? null
 }
 
+const VIOLATIONS_BASE = 'https://data.cityofchicago.org/resource/22u3-xenr.json'
+
+async function fetchViolationsOpenCount(normalizedAddress: string): Promise<number> {
+  const addrUpper = soqlEscapeLiteral(normalizedAddress)
+  const where = `address is not null AND upper(address) like '%${addrUpper}%' AND violation_status = 'OPEN'`
+
+  const params = new URLSearchParams()
+  params.set('$select', 'count(1) as count')
+  params.set('$where', where)
+
+  const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Violations count request failed (${res.status})`)
+
+  const json = (await res.json()) as SocrataCountRow[]
+  const count = Number(json?.[0]?.count ?? 0)
+  return Number.isFinite(count) ? count : 0
+}
+
+async function fetchMostRecentViolation(normalizedAddress: string): Promise<ViolationRow | null> {
+  const addrUpper = soqlEscapeLiteral(normalizedAddress)
+  const where = `address is not null AND upper(address) like '%${addrUpper}%'`
+
+  const params = new URLSearchParams()
+  params.set('$select', 'address,violation_status,violation_date,violation_code,violation_description,violation_ordinance,violation_inspector_comments')
+  params.set('$where', where)
+  params.set('$order', 'violation_date DESC')
+  params.set('$limit', '1')
+
+  const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Violations request failed (${res.status})`)
+
+  const json = (await res.json()) as ViolationRow[]
+  return json?.[0] ?? null
+}
+
 function LockedDescriptionCard({ text }: { text: string }) {
   return (
     <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
@@ -99,6 +144,39 @@ function LockedDescriptionCard({ text }: { text: string }) {
           <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
           <div className="text-slate-600 text-sm mt-1">
             See the full complaint narrative and get instant alerts.
+          </div>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <Link
+              href="/signup"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              style={{ backgroundColor: '#C8102E' }}
+            >
+              Get Started
+            </Link>
+            <Link
+              href="/"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+            >
+              Search another
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LockedViolationCard({ text }: { text: string }) {
+  return (
+    <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
+      <div className="text-sm font-semibold text-slate-800 mb-2">Violation description &amp; code</div>
+      <div className="text-slate-400 blur-sm select-none leading-relaxed">{text}</div>
+
+      <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+        <div className="text-center px-6">
+          <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
+          <div className="text-slate-600 text-sm mt-1">
+            See full violation details and get instant alerts.
           </div>
           <div className="mt-4 flex items-center justify-center gap-3">
             <Link
@@ -152,11 +230,23 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   let count: number | null = null
   let recent: ServiceRequestRow | null = null
   let error: string | null = null
+  let violationsOpenCount: number = 0
+  let recentViolation: ViolationRow | null = null
+  let violationsError: string | null = null
 
   try {
     ;[count, recent] = await Promise.all([fetch311Count(normalized), fetchMostRecent311(normalized)])
   } catch (e) {
     error = e instanceof Error ? e.message : 'Unknown error'
+  }
+
+  try {
+    ;[violationsOpenCount, recentViolation] = await Promise.all([
+      fetchViolationsOpenCount(normalized),
+      fetchMostRecentViolation(normalized),
+    ])
+  } catch (e) {
+    violationsError = e instanceof Error ? e.message : 'Unable to load violations'
   }
 
   const mostRecentType = recent?.sr_type ?? 'No matching complaints found'
@@ -173,6 +263,20 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           `Address on file: ${recent.street_address ?? '—'}`,
         ].join(' • ')
       : 'No complaint description available.'
+
+  const violationLockedText =
+    recentViolation
+      ? [
+          `Code: ${recentViolation.violation_code ?? '—'}`,
+          `Description: ${recentViolation.violation_description ?? '—'}`,
+          `Ordinance: ${recentViolation.violation_ordinance ?? '—'}`,
+          recentViolation.violation_inspector_comments
+            ? `Inspector: ${recentViolation.violation_inspector_comments}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' • ')
+      : 'No violation details available.'
 
   return (
     <main className="min-h-screen px-6 py-12" style={{ backgroundColor: '#F5F5F5' }}>
@@ -220,6 +324,38 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               </div>
 
               <LockedDescriptionCard text={lockedText} />
+
+              {/* Building violations */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
+                <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
+                {violationsError ? (
+                  <p className="text-sm text-amber-600">{violationsError}</p>
+                ) : violationsOpenCount === 0 && !recentViolation ? (
+                  <>
+                    <p className="text-slate-700 font-medium">No open violations on record.</p>
+                    <p className="text-sm text-slate-500 mt-1">No violations found for this address.</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Open violations</div>
+                        <div className="text-2xl font-bold text-slate-900 mt-1">{violationsOpenCount}</div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">Most recent violation</div>
+                        <div className="text-lg font-semibold text-slate-900 mt-1">
+                          {recentViolation?.violation_description ?? '—'}
+                        </div>
+                        <div className="text-sm text-slate-600 mt-0.5">
+                          {recentViolation?.violation_date ? formatDate(recentViolation.violation_date) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <LockedViolationCard text={violationLockedText} />
+                  </>
+                )}
+              </div>
             </div>
 
             <aside className="space-y-4">

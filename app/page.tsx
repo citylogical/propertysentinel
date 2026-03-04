@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import HomeSearch from './components/HomeSearch'
 
 export default function Home() {
   return (
@@ -6,14 +7,16 @@ export default function Home() {
       {/* Header */}
       <header style={{ backgroundColor: '#003366' }} className="px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-white font-bold text-2xl tracking-tight"
-              style={{ fontFamily: 'Georgia, serif' }}>
-              SC<sup style={{ color: '#C8102E' }}>2</sup>
-            </span>
-            <span className="text-white font-semibold text-lg"
+          <div className="flex flex-col gap-0.5">
+            <span className="text-white font-semibold text-xl"
               style={{ fontFamily: 'Georgia, serif' }}>
               Property Sentinel
+            </span>
+            <span
+              className="self-end inline-block px-3 py-1 rounded text-sm font-semibold text-white"
+              style={{ backgroundColor: '#C8102E', fontFamily: 'Georgia, serif' }}
+            >
+              by City Logical
             </span>
           </div>
           <nav className="flex items-center gap-6">
@@ -42,31 +45,7 @@ export default function Home() {
         </p>
 
         {/* Search Bar */}
-        <div className="max-w-2xl mx-auto">
-          <form
-            action="/search"
-            method="GET"
-            className="flex gap-3 bg-white rounded-xl shadow-lg p-3"
-          >
-            <input
-              type="text"
-              name="address"
-              required
-              placeholder="Enter a Chicago property address..."
-              className="flex-1 px-4 py-3 text-base outline-none rounded-lg"
-              style={{ fontFamily: 'sans-serif' }}
-            />
-            <button
-              type="submit"
-              className="px-8 py-3 rounded-lg text-white font-semibold text-base transition-colors"
-              style={{ backgroundColor: '#003366', fontFamily: 'sans-serif' }}>
-              Search
-            </button>
-          </form>
-          <p className="text-sm text-slate-400 mt-3">
-            Free to search any Chicago address. No account required.
-          </p>
-        </div>
+        <HomeSearch apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
       </section>
 
       {/* Three value props */}
@@ -112,7 +91,7 @@ export default function Home() {
       <footer style={{ backgroundColor: '#003366' }} className="px-6 py-8">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <span className="text-slate-400 text-sm">
-            © 2026 Second City Co. All rights reserved.
+            © 2026 City Logical
           </span>
           <span className="text-slate-400 text-sm">
             Chicago, IL
