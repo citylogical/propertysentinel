@@ -178,6 +178,7 @@
   },
   "active": "00c4f50c845aba6f",
   "lastOpenFiles": [
+    "app/search/loading.tsx",
     "app/components/HomeSearch.tsx",
     "app/components"
   ]

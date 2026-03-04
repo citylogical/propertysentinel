@@ -54,6 +54,18 @@ function soqlEscapeLiteral(value: string): string {
   return value.replace(/'/g, "''")
 }
 
+function withSocrataToken(params: URLSearchParams): URLSearchParams {
+  const token = process.env.SOCRATA_APP_TOKEN
+  if (token) params.set('$$app_token', token)
+  return params
+}
+
+const FETCH_TIMEOUT_MS = 15000
+
+function resolveAfterTimeout<T>(ms: number, value: T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
+}
+
 function formatDate(isoLike: string | undefined): string {
   if (!isoLike) return 'Unknown date'
   const d = new Date(isoLike)
@@ -70,6 +82,7 @@ async function fetch311Count(normalizedAddress: string): Promise<number> {
   const params = new URLSearchParams()
   params.set('$select', 'count(1) as count')
   params.set('$where', where)
+  withSocrataToken(params)
 
   const res = await fetch(`${baseUrl}?${params.toString()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`311 count request failed (${res.status})`)
@@ -90,6 +103,7 @@ async function fetchMostRecent311(normalizedAddress: string): Promise<ServiceReq
   params.set('$where', where)
   params.set('$order', 'created_date DESC')
   params.set('$limit', '1')
+  withSocrataToken(params)
 
   const res = await fetch(`${baseUrl}?${params.toString()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`311 recent request failed (${res.status})`)
@@ -107,6 +121,7 @@ async function fetchViolationsOpenCount(normalizedAddress: string): Promise<numb
   const params = new URLSearchParams()
   params.set('$select', 'count(1) as count')
   params.set('$where', where)
+  withSocrataToken(params)
 
   const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Violations count request failed (${res.status})`)
@@ -125,6 +140,7 @@ async function fetchMostRecentViolation(normalizedAddress: string): Promise<Viol
   params.set('$where', where)
   params.set('$order', 'violation_date DESC')
   params.set('$limit', '1')
+  withSocrataToken(params)
 
   const res = await fetch(`${VIOLATIONS_BASE}?${params.toString()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Violations request failed (${res.status})`)
@@ -227,37 +243,58 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   const normalized = normalizeAddressFor311(addressRaw)
 
+  const timeout311 = resolveAfterTimeout(FETCH_TIMEOUT_MS, {
+    count: null as number | null,
+    recent: null as ServiceRequestRow | null,
+    error: 'Some data temporarily unavailable',
+    timedOut: true as const,
+  })
+  const timeoutViolations = resolveAfterTimeout(FETCH_TIMEOUT_MS, {
+    violationsOpenCount: 0,
+    recentViolation: null as ViolationRow | null,
+    error: 'Some data temporarily unavailable',
+    timedOut: true as const,
+  })
+
   const [result311, resultViolations] = await Promise.all([
-    (async () => {
-      try {
-        const [count, recent] = await Promise.all([
-          fetch311Count(normalized),
-          fetchMostRecent311(normalized),
-        ])
-        return { count, recent, error: null as string | null }
-      } catch (e) {
-        return {
-          count: null as number | null,
-          recent: null as ServiceRequestRow | null,
-          error: e instanceof Error ? e.message : 'Unknown error',
+    Promise.race([
+      (async () => {
+        try {
+          const [count, recent] = await Promise.all([
+            fetch311Count(normalized),
+            fetchMostRecent311(normalized),
+          ])
+          return { count, recent, error: null as string | null, timedOut: false as const }
+        } catch (e) {
+          return {
+            count: null as number | null,
+            recent: null as ServiceRequestRow | null,
+            error: e instanceof Error ? e.message : 'Unknown error',
+            timedOut: false as const,
+          }
         }
-      }
-    })(),
-    (async () => {
-      try {
-        const [violationsOpenCount, recentViolation] = await Promise.all([
-          fetchViolationsOpenCount(normalized),
-          fetchMostRecentViolation(normalized),
-        ])
-        return { violationsOpenCount, recentViolation, error: null as string | null }
-      } catch (e) {
-        return {
-          violationsOpenCount: 0,
-          recentViolation: null as ViolationRow | null,
-          error: e instanceof Error ? e.message : 'Unable to load violations',
+      })(),
+      timeout311,
+    ]),
+    Promise.race([
+      (async () => {
+        try {
+          const [violationsOpenCount, recentViolation] = await Promise.all([
+            fetchViolationsOpenCount(normalized),
+            fetchMostRecentViolation(normalized),
+          ])
+          return { violationsOpenCount, recentViolation, error: null as string | null, timedOut: false as const }
+        } catch (e) {
+          return {
+            violationsOpenCount: 0,
+            recentViolation: null as ViolationRow | null,
+            error: e instanceof Error ? e.message : 'Unable to load violations',
+            timedOut: false as const,
+          }
         }
-      }
-    })(),
+      })(),
+      timeoutViolations,
+    ]),
   ])
 
   const count = result311.count
@@ -320,35 +357,38 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           </Link>
         </div>
 
-        {error ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-            <div className="font-semibold">Couldn’t load 311 results</div>
-            <div className="text-sm mt-1">{error}</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="rounded-xl bg-white border border-slate-200 p-5">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Complaint count</div>
-                  <div className="text-3xl font-bold text-slate-900 mt-2">{count ?? '—'}</div>
-                  <div className="text-xs text-slate-400 mt-1">Matches “{normalized}…”</div>
-                </div>
-                <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Most recent complaint</div>
-                  <div className="text-lg font-semibold text-slate-900 mt-2">{mostRecentType}</div>
-                  <div className="text-sm text-slate-600 mt-1">{mostRecentDate}</div>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            {error ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+                <div className="font-semibold">311 complaints</div>
+                <div className="text-sm mt-1">{error}</div>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="rounded-xl bg-white border border-slate-200 p-5">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Complaint count</div>
+                    <div className="text-3xl font-bold text-slate-900 mt-2">{count ?? '—'}</div>
+                    <div className="text-xs text-slate-400 mt-1">Matches “{normalized}…”</div>
+                  </div>
+                  <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Most recent complaint</div>
+                    <div className="text-lg font-semibold text-slate-900 mt-2">{mostRecentType}</div>
+                    <div className="text-sm text-slate-600 mt-1">{mostRecentDate}</div>
+                  </div>
+                </div>
 
-              <LockedDescriptionCard text={lockedText} />
+                <LockedDescriptionCard text={lockedText} />
+              </>
+            )}
 
-              {/* Building violations */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
-                {violationsError ? (
-                  <p className="text-sm text-amber-600">{violationsError}</p>
-                ) : violationsOpenCount === 0 && !recentViolation ? (
+            {/* Building violations */}
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
+              {violationsError ? (
+                <p className="text-sm text-amber-600">{violationsError}</p>
+              ) : violationsOpenCount === 0 && !recentViolation ? (
                   <>
                     <p className="text-slate-700 font-medium">No open violations on record.</p>
                     <p className="text-sm text-slate-500 mt-1">No violations found for this address.</p>
@@ -373,10 +413,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     <LockedViolationCard text={violationLockedText} />
                   </>
                 )}
-              </div>
             </div>
+          </div>
 
-            <aside className="space-y-4">
+          <aside className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-6">
                 <div className="text-sm font-semibold text-slate-900">Want alerts?</div>
                 <p className="text-sm text-slate-600 mt-2">
@@ -390,9 +430,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                   Subscribe
                 </Link>
               </div>
-            </aside>
-          </div>
-        )}
+          </aside>
+        </div>
       </div>
     </main>
   )
