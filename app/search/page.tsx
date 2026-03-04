@@ -227,27 +227,45 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   const normalized = normalizeAddressFor311(addressRaw)
 
-  let count: number | null = null
-  let recent: ServiceRequestRow | null = null
-  let error: string | null = null
-  let violationsOpenCount: number = 0
-  let recentViolation: ViolationRow | null = null
-  let violationsError: string | null = null
+  const [result311, resultViolations] = await Promise.all([
+    (async () => {
+      try {
+        const [count, recent] = await Promise.all([
+          fetch311Count(normalized),
+          fetchMostRecent311(normalized),
+        ])
+        return { count, recent, error: null as string | null }
+      } catch (e) {
+        return {
+          count: null as number | null,
+          recent: null as ServiceRequestRow | null,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        }
+      }
+    })(),
+    (async () => {
+      try {
+        const [violationsOpenCount, recentViolation] = await Promise.all([
+          fetchViolationsOpenCount(normalized),
+          fetchMostRecentViolation(normalized),
+        ])
+        return { violationsOpenCount, recentViolation, error: null as string | null }
+      } catch (e) {
+        return {
+          violationsOpenCount: 0,
+          recentViolation: null as ViolationRow | null,
+          error: e instanceof Error ? e.message : 'Unable to load violations',
+        }
+      }
+    })(),
+  ])
 
-  try {
-    ;[count, recent] = await Promise.all([fetch311Count(normalized), fetchMostRecent311(normalized)])
-  } catch (e) {
-    error = e instanceof Error ? e.message : 'Unknown error'
-  }
-
-  try {
-    ;[violationsOpenCount, recentViolation] = await Promise.all([
-      fetchViolationsOpenCount(normalized),
-      fetchMostRecentViolation(normalized),
-    ])
-  } catch (e) {
-    violationsError = e instanceof Error ? e.message : 'Unable to load violations'
-  }
+  const count = result311.count
+  const recent = result311.recent
+  const error = result311.error
+  const violationsOpenCount = resultViolations.violationsOpenCount
+  const recentViolation = resultViolations.recentViolation
+  const violationsError = resultViolations.error
 
   const mostRecentType = recent?.sr_type ?? 'No matching complaints found'
   const mostRecentDate = recent?.created_date ? formatDate(recent.created_date) : '—'
