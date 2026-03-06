@@ -178,6 +178,7 @@
   },
   "active": "00c4f50c845aba6f",
   "lastOpenFiles": [
+    "app/components/HowItWorks.tsx",
     "app/api/search/violations/route.ts",
     "app/api/search/violations",
     "app/api/search/311/route.ts",

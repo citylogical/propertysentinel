@@ -103,34 +103,26 @@ export default function HomeSearch({ apiKey }: HomeSearchProps) {
           strategy="afterInteractive"
         />
       )}
-      <div className="max-w-2xl mx-auto">
-        <form
-          id={FORM_ID}
-          action="/search"
-          method="GET"
-          className="flex gap-3 bg-white rounded-xl shadow-lg p-3"
-        >
+      <div className="search-wrap">
+        <form id={FORM_ID} action="/search" method="GET" className="search-bar">
+          <div className="search-icon" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+              <circle cx="12" cy="9" r="2.5" />
+            </svg>
+          </div>
           <input
             id={INPUT_ID}
             type="text"
             name="address"
             required
-            placeholder="Enter a Chicago property address..."
-            className="flex-1 px-4 py-3 text-base outline-none rounded-lg"
-            style={{ fontFamily: 'sans-serif' }}
+            placeholder="Enter a Chicago address…"
             autoComplete="off"
           />
-          <button
-            type="submit"
-            className="px-8 py-3 rounded-lg text-white font-semibold text-base transition-colors"
-            style={{ backgroundColor: '#003366', fontFamily: 'sans-serif' }}
-          >
+          <button type="submit" className="search-btn">
             Search
           </button>
         </form>
-        <p className="text-sm text-slate-400 mt-3">
-          Free to search any Chicago address. No account required.
-        </p>
       </div>
     </>
   )

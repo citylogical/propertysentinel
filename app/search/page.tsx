@@ -5,49 +5,16 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import type { ServiceRequestRow, ViolationRow } from '@/lib/socrata-search'
 
+const NAVY_DEEP = '#001f3f'
+const NAVY = '#003366'
+const RED = '#C8102E'
+const GREY_HERO = '#f0f0ed'
+
 function formatDate(isoLike: string | undefined): string {
   if (!isoLike) return 'Unknown date'
   const d = new Date(isoLike)
   if (Number.isNaN(d.getTime())) return 'Unknown date'
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-function LockedDescriptionCard({ text }: { text: string }) {
-  return (
-    <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
-      <div className="text-sm font-semibold text-slate-800 mb-2">Full complaint description</div>
-      <div className="text-slate-400 blur-sm select-none leading-relaxed">{text}</div>
-      <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
-        <div className="text-center px-6">
-          <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
-          <div className="text-slate-600 text-sm mt-1">See the full complaint narrative and get instant alerts.</div>
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <Link href="/signup" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>Get Started</Link>
-            <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">Search another</Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function LockedViolationCard({ text }: { text: string }) {
-  return (
-    <div className="relative rounded-xl border border-slate-200 bg-white p-6 overflow-hidden">
-      <div className="text-sm font-semibold text-slate-800 mb-2">Violation description &amp; code</div>
-      <div className="text-slate-400 blur-sm select-none leading-relaxed">{text}</div>
-      <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
-        <div className="text-center px-6">
-          <div className="text-slate-900 font-semibold text-base">Subscribe to unlock</div>
-          <div className="text-slate-600 text-sm mt-1">See full violation details and get instant alerts.</div>
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <Link href="/signup" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>Get Started</Link>
-            <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">Search another</Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function LoadingSpinner() {
@@ -111,17 +78,30 @@ function SearchPageContent() {
 
   if (!addressRaw) {
     return (
-      <main className="min-h-screen px-6 py-16" style={{ backgroundColor: '#F5F5F5' }}>
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-3xl font-bold mb-3" style={{ color: '#003366', fontFamily: 'Georgia, serif' }}>
-            Search Chicago 311 complaints
-          </h1>
-          <p className="text-slate-600 mb-6">Enter an address on the homepage to view complaint activity.</p>
-          <Link href="/" className="inline-flex px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#003366' }}>
-            Back to search
+      <>
+        <header
+          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between h-14 px-6 border-b border-white/10"
+          style={{ backgroundColor: NAVY_DEEP }}
+        >
+          <Link href="/" className="text-white font-bold text-lg no-underline" style={{ fontFamily: 'Merriweather, Georgia, serif' }}>
+            Property Sentinel
           </Link>
-        </div>
-      </main>
+          <Link href="/" className="text-white text-sm font-medium px-4 py-2 rounded hover:opacity-90" style={{ backgroundColor: NAVY }}>
+            New search
+          </Link>
+        </header>
+        <main className="min-h-screen pt-14 px-6 py-12 flex flex-col items-center justify-center" style={{ backgroundColor: GREY_HERO }}>
+          <div className="max-w-xl w-full rounded-lg border border-[#d4cfc4] bg-white p-8 shadow-sm">
+            <h1 className="text-2xl font-bold mb-3" style={{ color: NAVY_DEEP, fontFamily: 'Merriweather, Georgia, serif' }}>
+              Search Chicago 311 complaints
+            </h1>
+            <p className="text-[#3d3d3d] mb-6 text-sm">Enter an address on the homepage to view complaint activity.</p>
+            <Link href="/" className="inline-flex px-4 py-2 rounded text-sm font-semibold text-white" style={{ backgroundColor: NAVY }}>
+              Back to search
+            </Link>
+          </div>
+        </main>
+      </>
     )
   }
 
@@ -157,107 +137,136 @@ function SearchPageContent() {
     : 'No violation details available.'
 
   return (
-    <main className="min-h-screen px-6 py-12" style={{ backgroundColor: '#F5F5F5' }}>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-start justify-between gap-6 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold" style={{ color: '#003366', fontFamily: 'Georgia, serif' }}>
-              Search results
-            </h1>
-            <p className="text-slate-600 mt-2">
-              Address: <span className="font-semibold text-slate-800">{addressRaw}</span>
-            </p>
-            <p className="text-xs text-slate-400 mt-2">Data source: City of Chicago 311 Service Requests (live).</p>
-          </div>
-          <Link href="/" className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#003366' }}>
-            New search
-          </Link>
-        </div>
+    <>
+      <header
+        className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between h-14 px-6 border-b border-white/10"
+        style={{ backgroundColor: NAVY_DEEP }}
+      >
+        <Link href="/" className="text-white font-bold text-lg no-underline" style={{ fontFamily: 'Merriweather, Georgia, serif' }}>
+          Property Sentinel
+        </Link>
+        <Link href="/" className="text-white text-sm font-medium px-4 py-2 rounded hover:opacity-90" style={{ backgroundColor: NAVY }}>
+          New search
+        </Link>
+      </header>
 
-        {loading ? (
-          <LoadingSpinner />
-        ) : (
-          <>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                {error ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-                    <div className="font-semibold">311 complaints</div>
-                    <div className="text-sm mt-1">{error}</div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className="rounded-xl bg-white border border-slate-200 p-5">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Complaint count</div>
-                        <div className="text-3xl font-bold text-slate-900 mt-2">{count ?? '—'}</div>
-                        <div className="text-xs text-slate-400 mt-1">Matches &quot;{normalized}&quot;…</div>
-                      </div>
-                      <div className="rounded-xl bg-white border border-slate-200 p-5 sm:col-span-2">
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Most recent complaint</div>
-                        <div className="text-lg font-semibold text-slate-900 mt-2">{mostRecentType}</div>
-                        <div className="text-sm text-slate-600 mt-1">{mostRecentDate}</div>
-                      </div>
-                    </div>
-                    <LockedDescriptionCard text={lockedText} />
-                  </>
-                )}
-
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">Building violations</div>
-                  {violationsError ? (
-                    <p className="text-sm text-amber-600">{violationsError}</p>
-                  ) : violationsOpenCount === 0 && !recentViolation ? (
-                    <>
-                      <p className="text-slate-700 font-medium">No open violations on record.</p>
-                      <p className="text-sm text-slate-500 mt-1">No violations found for this address.</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                        <div>
-                          <div className="text-xs uppercase tracking-wide text-slate-500">Open violations</div>
-                          <div className="text-2xl font-bold text-slate-900 mt-1">{violationsOpenCount}</div>
-                        </div>
-                        <div className="sm:col-span-2">
-                          <div className="text-xs uppercase tracking-wide text-slate-500">Most recent violation</div>
-                          <div className="text-lg font-semibold text-slate-900 mt-1">{recentViolation?.violation_description ?? '—'}</div>
-                          <div className="text-sm text-slate-600 mt-0.5">
-                            {recentViolation?.violation_date ? formatDate(recentViolation.violation_date) : '—'}
-                          </div>
-                        </div>
-                      </div>
-                      <LockedViolationCard text={violationLockedText} />
-                    </>
-                  )}
-                </div>
+      <main className="min-h-screen pt-14 px-6 py-8" style={{ backgroundColor: GREY_HERO }}>
+        <div className="max-w-5xl mx-auto">
+          {loading ? (
+            <LoadingSpinner />
+          ) : (
+            <>
+              <div className="mb-8">
+                <h1 className="text-2xl font-bold mb-1" style={{ color: NAVY_DEEP, fontFamily: 'Merriweather, Georgia, serif' }}>
+                  Search results
+                </h1>
+                <p className="text-[#3d3d3d] text-sm">
+                  Address: <span className="font-semibold text-[#1a1a1a]">{addressRaw}</span>
+                </p>
+                <p className="text-[#6b6b6b] text-xs mt-1">City of Chicago 311 &amp; building violations (live)</p>
               </div>
 
-              <aside className="space-y-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-6">
-                  <div className="text-sm font-semibold text-slate-900">Want alerts?</div>
-                  <p className="text-sm text-slate-600 mt-2">Get notified the moment a new 311 complaint is filed for this property.</p>
-                  <Link href="/signup" className="inline-flex mt-4 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#C8102E' }}>
-                    Subscribe
-                  </Link>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 flex flex-col gap-6">
+                  {error ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-900">
+                      <div className="font-semibold">311 complaints</div>
+                      <div className="text-sm mt-1">{error}</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="rounded-lg border border-[#d4cfc4] bg-white p-5">
+                          <div className="text-xs uppercase tracking-wider text-[#6b6b6b]">Complaint count</div>
+                          <div className="text-2xl font-bold text-[#1a1a1a] mt-2">{count ?? '—'}</div>
+                          <div className="text-xs text-[#6b6b6b] mt-1">Matches &quot;{normalized}&quot;…</div>
+                        </div>
+                        <div className="rounded-lg border border-[#d4cfc4] bg-white p-5 sm:col-span-2">
+                          <div className="text-xs uppercase tracking-wider text-[#6b6b6b]">Most recent complaint</div>
+                          <div className="text-base font-semibold text-[#1a1a1a] mt-2">{mostRecentType}</div>
+                          <div className="text-sm text-[#3d3d3d] mt-1">{mostRecentDate}</div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-[#d4cfc4] bg-white p-5">
+                        <div className="text-sm font-semibold text-[#1a1a1a] mb-2">Complaint details</div>
+                        <p className="text-sm text-[#3d3d3d] leading-relaxed">{lockedText}</p>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="rounded-lg border border-[#d4cfc4] bg-white p-5">
+                    <div className="text-xs uppercase tracking-wider text-[#6b6b6b] mb-3">Building violations</div>
+                    {violationsError ? (
+                      <p className="text-sm text-amber-600">{violationsError}</p>
+                    ) : violationsOpenCount === 0 && !recentViolation ? (
+                      <>
+                        <p className="text-[#1a1a1a] font-medium">No open violations on record.</p>
+                        <p className="text-sm text-[#6b6b6b] mt-1">No violations found for this address.</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                          <div>
+                            <div className="text-xs uppercase tracking-wider text-[#6b6b6b]">Open violations</div>
+                            <div className="text-xl font-bold text-[#1a1a1a] mt-1">{violationsOpenCount}</div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <div className="text-xs uppercase tracking-wider text-[#6b6b6b]">Most recent</div>
+                            <div className="text-base font-semibold text-[#1a1a1a] mt-1">{recentViolation?.violation_description ?? '—'}</div>
+                            <div className="text-sm text-[#3d3d3d] mt-0.5">
+                              {recentViolation?.violation_date ? formatDate(recentViolation.violation_date) : '—'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-3 border-t border-[#d4cfc4]">
+                          <div className="text-sm font-semibold text-[#1a1a1a] mb-2">Violation details</div>
+                          <p className="text-sm text-[#3d3d3d] leading-relaxed">{violationLockedText}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </aside>
-            </div>
-          </>
-        )}
-      </div>
-    </main>
+
+                <aside>
+                  <div className="rounded-lg border border-[#d4cfc4] bg-white p-6 sticky top-20">
+                    <div className="text-sm font-semibold text-[#1a1a1a]">Want alerts?</div>
+                    <p className="text-sm text-[#3d3d3d] mt-2">Get notified the moment a new 311 complaint is filed for this property.</p>
+                    <Link href="/signup" className="inline-flex mt-4 px-4 py-2 rounded text-sm font-semibold text-white hover:opacity-90" style={{ backgroundColor: RED }}>
+                      Subscribe
+                    </Link>
+                  </div>
+                </aside>
+              </div>
+            </>
+          )}
+        </div>
+      </main>
+    </>
   )
 }
 
 export default function SearchPage() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen px-6 py-12" style={{ backgroundColor: '#F5F5F5' }}>
-        <div className="max-w-5xl mx-auto">
-          <LoadingSpinner />
-        </div>
-      </main>
+      <>
+        <header
+          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between h-14 px-6 border-b border-white/10"
+          style={{ backgroundColor: NAVY_DEEP }}
+        >
+          <Link href="/" className="text-white font-bold text-lg no-underline" style={{ fontFamily: 'Merriweather, Georgia, serif' }}>
+            Property Sentinel
+          </Link>
+          <Link href="/" className="text-white text-sm font-medium px-4 py-2 rounded hover:opacity-90" style={{ backgroundColor: NAVY }}>
+            New search
+          </Link>
+        </header>
+        <main className="min-h-screen pt-14 px-6 py-12" style={{ backgroundColor: GREY_HERO }}>
+          <div className="max-w-5xl mx-auto">
+            <LoadingSpinner />
+          </div>
+        </main>
+      </>
     }>
       <SearchPageContent />
     </Suspense>
