@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import HomeSearch from './components/HomeSearch'
 import HowItWorks from './components/HowItWorks'
+import LiveTimestamp from './components/LiveTimestamp'
 
 export default function Home() {
   return (
@@ -25,8 +26,8 @@ export default function Home() {
           </h1>
 
           <p className="hero-sub">
-            Public records, permit history, and live 311 data…finally combined into real-time alerts and
-            analytics for every Chicago property.
+            Public property records and live 311 data (<LiveTimestamp />)…finally combined into
+            real-time alerts and analytics for every Chicago property.
           </p>
 
           <HomeSearch apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
