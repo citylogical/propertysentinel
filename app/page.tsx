@@ -25,10 +25,9 @@ export default function Home() {
             knows. <em>First.</em>
           </h1>
 
-          <div className="text-center">
-            <p className="hero-sub mb-0">Public property records and <LiveTimestamp /></p>
-            <p className="hero-sub">…finally combined into real-time alerts and analytics for every Chicago property.</p>
-          </div>
+          <p className="hero-sub text-center leading-tight">
+            Public property records and <LiveTimestamp /> …finally combined into real-time alerts and analytics for every Chicago property.
+          </p>
 
           <HomeSearch apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
         </div>

@@ -23,6 +23,7 @@ function formatDateTime(isoLike: string): string {
 export default function LiveTimestamp() {
   const [timestamp, setTimestamp] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState(false)
   const wrapRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
@@ -43,10 +44,15 @@ export default function LiveTimestamp() {
     return () => document.removeEventListener('click', close)
   }, [open])
 
-  const showInline = open
+  const showInline = open || hover
 
   return (
-    <span ref={wrapRef} className="group relative inline">
+    <span
+      ref={wrapRef}
+      className="group relative inline"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -56,22 +62,27 @@ export default function LiveTimestamp() {
       >
         live 311 data
       </button>
-      <span
-        className={`inline transition-opacity duration-150 ${
-          showInline ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`}
-        aria-hidden={!showInline}
-      >
-        <span className="text-[#6b6b6b]"> (last updated </span>
-        {timestamp ? (
-          <span className="text-green-600 font-mono text-[0.925em] font-medium tracking-tight">
-            {timestamp}
+      {showInline && (
+        <>
+          <br />
+          <span
+            className="block text-center"
+            style={{ animation: 'fadeIn 0.15s ease-out' }}
+            aria-hidden={false}
+          >
+            <span className="text-[#6b6b6b]">(last updated </span>
+            {timestamp ? (
+              <span className="text-green-600 font-mono text-[0.925em] font-medium tracking-tight">
+                {timestamp}
+              </span>
+            ) : (
+              <span className="text-[#6b6b6b]">—</span>
+            )}
+            <span className="text-[#6b6b6b]"> CT)</span>
           </span>
-        ) : (
-          <span className="text-[#6b6b6b]">—</span>
-        )}
-        <span className="text-[#6b6b6b]"> CT)</span>
-      </span>
+        </>
+      )}
+      <br />
     </span>
   )
 }
