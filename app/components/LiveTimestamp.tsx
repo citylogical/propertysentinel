@@ -3,22 +3,22 @@
 import { useEffect, useState } from 'react'
 
 function formatDateTime(isoLike: string): string {
-    // Ensure the string is parsed as UTC, not local time
-    const utc = isoLike.endsWith('Z') || isoLike.includes('+') ? isoLike : isoLike + 'Z'
-    const d = new Date(utc)
-    if (Number.isNaN(d.getTime())) return ''
-  
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      year: '2-digit',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    })
-  
-    return fmt.format(d).replace(' AM', 'am').replace(' PM', 'pm') + ' CT'
+  // Socrata stores Chicago local time — strip any timezone offset before parsing
+  const clean = isoLike.slice(0, 19) // "2026-03-07T11:16:58"
+  const d = new Date(clean)
+  if (Number.isNaN(d.getTime())) return ''
+
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: '2-digit',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  return fmt.format(d).replace(' AM', 'am').replace(' PM', 'pm') + ' CT'
 }
 
 export default function LiveTimestamp() {
@@ -46,7 +46,7 @@ export default function LiveTimestamp() {
           animation: pulse-green 6s ease-in-out infinite;
           color: #22c55e;
           font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-          font-size: 1em;
+          font-size: .925em;
           font-weight: 500;
           letter-spacing: 0.01em;
           white-space: nowrap;
