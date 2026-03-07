@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { normalizeAddress, fetch311WithTimeout } from '@/lib/socrata-search'
+import { normalizeAddress, fetchComplaints } from '@/lib/supabase-search'
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get('address')?.trim()
@@ -7,6 +7,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing address' }, { status: 400 })
   }
   const normalized = normalizeAddress(address)
-  const result = await fetch311WithTimeout(normalized)
+  const result = await fetchComplaints(normalized)
   return NextResponse.json(result)
 }
