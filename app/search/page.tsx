@@ -10,27 +10,15 @@ const NAVY = '#003366'
 const RED = '#C8102E'
 const GREY_HERO = '#f0f0ed'
 
-// Format a date string to e.g. "Mar 3, 2026"
-function formatDate(isoLike: string | null | undefined): string {
+// Format a full ISO timestamp to e.g. "Mar 3, 2026 7am"
+function formatDateTime(isoLike: string | null | undefined): string {
   if (!isoLike) return '—'
   const d = new Date(isoLike)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-// Format hour from 24h integer to e.g. "7am", "1pm"
-function formatHour(hour: number | null | undefined): string {
-  if (hour === null || hour === undefined) return ''
-  if (hour === 0) return '12am'
-  if (hour === 12) return '12pm'
-  return hour < 12 ? `${hour}am` : `${hour - 12}pm`
-}
-
-// Format created_date + created_hour together: "Mar 3, 2026 7am"
-function formatFiled(created_date: string | null, created_hour: number | null): string {
-  const date = formatDate(created_date)
-  const hour = formatHour(created_hour)
-  return hour ? `${date} ${hour}` : date
+  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  const hour = d.getHours()
+  const formattedHour = hour === 0 ? '12am' : hour === 12 ? '12pm' : hour < 12 ? `${hour}am` : `${hour - 12}pm`
+  return `${date} ${formattedHour}`
 }
 
 function statusBadge(status: string | null) {
@@ -51,9 +39,8 @@ function statusBadge(status: string | null) {
 
 function ComplaintCard({ complaint }: { complaint: ComplaintRow }) {
   const isClosed = complaint.status?.toUpperCase() === 'CLOSED' || complaint.status?.toUpperCase() === 'COMPLETED'
-  const filedStr = formatFiled(complaint.created_date, complaint.created_hour)
 
-  // Only show last_modified if it differs from created_date (compare date portion only)
+  // Only show last_modified if open and it differs from created_date (compare date portion only)
   const createdDay = complaint.created_date?.slice(0, 10)
   const modifiedDay = complaint.last_modified_date?.slice(0, 10)
   const showModified = !isClosed && complaint.last_modified_date && modifiedDay !== createdDay
@@ -76,20 +63,20 @@ function ComplaintCard({ complaint }: { complaint: ComplaintRow }) {
       <div className="flex flex-col gap-1 text-xs text-[#3d3d3d]">
         <div>
           <span className="text-[#6b6b6b]">Filed: </span>
-          {filedStr}
+          {formatDateTime(complaint.created_date)}
         </div>
 
         {isClosed && complaint.closed_date && (
           <div>
             <span className="text-[#6b6b6b]">Closed: </span>
-            {formatDate(complaint.closed_date)}
+            {formatDateTime(complaint.closed_date)}
           </div>
         )}
 
         {showModified && (
           <div>
             <span className="text-[#6b6b6b]">Last updated: </span>
-            {formatDate(complaint.last_modified_date)}
+            {formatDateTime(complaint.last_modified_date)}
           </div>
         )}
       </div>

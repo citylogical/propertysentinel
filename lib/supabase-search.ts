@@ -7,7 +7,6 @@ export type ComplaintRow = {
   owner_department: string | null
   origin: string | null
   created_date: string | null
-  created_hour: number | null
   closed_date: string | null
   last_modified_date: string | null
 }
@@ -49,7 +48,7 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, created_hour, closed_date, last_modified_date')
+      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date')
       .eq('address_normalized', normalizedAddress)
       .order('created_date', { ascending: false })
 
