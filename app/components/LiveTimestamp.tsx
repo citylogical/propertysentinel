@@ -56,7 +56,6 @@ export default function LiveTimestamp() {
       >
         live 311 data
       </button>
-      <br />
       <span
         className={`inline transition-opacity duration-150 ${
           showInline ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
