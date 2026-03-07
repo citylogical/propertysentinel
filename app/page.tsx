@@ -26,7 +26,7 @@ export default function Home() {
           </h1>
 
           <p className="hero-sub">
-            Public property records and live 311 data (<LiveTimestamp />)…finally combined into
+            Public property records and <LiveTimestamp /> …finally combined into
             real-time alerts and analytics for every Chicago property.
           </p>
 
