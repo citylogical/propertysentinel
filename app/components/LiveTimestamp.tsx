@@ -3,20 +3,22 @@
 import { useEffect, useState } from 'react'
 
 function formatDateTime(isoLike: string): string {
-  const d = new Date(isoLike)
-  if (Number.isNaN(d.getTime())) return ''
-
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: '2-digit',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-
-  return fmt.format(d).replace(' AM', 'am').replace(' PM', 'pm') + ' CT'
+    // Ensure the string is parsed as UTC, not local time
+    const utc = isoLike.endsWith('Z') || isoLike.includes('+') ? isoLike : isoLike + 'Z'
+    const d = new Date(utc)
+    if (Number.isNaN(d.getTime())) return ''
+  
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      year: '2-digit',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  
+    return fmt.format(d).replace(' AM', 'am').replace(' PM', 'pm') + ' CT'
 }
 
 export default function LiveTimestamp() {
@@ -44,13 +46,13 @@ export default function LiveTimestamp() {
           animation: pulse-green 6s ease-in-out infinite;
           color: #22c55e;
           font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-          font-size: 0.85em;
+          font-size: 1em;
           font-weight: 500;
           letter-spacing: 0.01em;
           white-space: nowrap;
         }
       `}</style>
-      <span className="live-timestamp">as of {timestamp}</span>
+      <span style={{ whiteSpace: 'nowrap' }}>as of <span className="live-timestamp">{timestamp}</span></span>
     </>
   )
 }
