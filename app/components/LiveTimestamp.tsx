@@ -5,13 +5,18 @@ import { useEffect, useState } from 'react'
 function formatDateTime(isoLike: string): string {
   const d = new Date(isoLike)
   if (Number.isNaN(d.getTime())) return ''
-  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-  const hour = d.getHours()
-  const min = d.getMinutes()
-  const minStr = min === 0 ? '' : `:${String(min).padStart(2, '0')}`
-  const h12 = hour === 0 || hour === 12 ? 12 : hour % 12
-  const ampm = hour < 12 ? 'am' : 'pm'
-  return `${date} ${h12}${minStr}${ampm}`
+
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: '2-digit',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  return fmt.format(d).replace(' AM', 'am').replace(' PM', 'pm') + ' CT'
 }
 
 export default function LiveTimestamp() {
@@ -33,16 +38,19 @@ export default function LiveTimestamp() {
       <style>{`
         @keyframes pulse-green {
           0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
+          50% { opacity: 0.35; }
         }
         .live-timestamp {
-          animation: pulse-green 2.5s ease-in-out infinite;
+          animation: pulse-green 6s ease-in-out infinite;
           color: #22c55e;
-          font-weight: 600;
+          font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+          font-size: 0.85em;
+          font-weight: 500;
+          letter-spacing: 0.01em;
           white-space: nowrap;
         }
       `}</style>
-      <span className="live-timestamp">last updated {timestamp}</span>
+      <span className="live-timestamp">as of {timestamp}</span>
     </>
   )
 }
