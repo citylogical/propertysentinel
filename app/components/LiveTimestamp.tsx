@@ -43,35 +43,34 @@ export default function LiveTimestamp() {
     return () => document.removeEventListener('click', close)
   }, [open])
 
-  const showTooltip = open
+  const showInline = open
 
   return (
-    <span ref={wrapRef} className="group relative inline-block">
+    <span ref={wrapRef} className="group relative inline">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-[#3d3d3d] underline decoration-dotted decoration-from-font underline-offset-2 hover:text-[#1a1a1a] hover:decoration-solid focus:outline-none focus:ring-2 focus:ring-[#0a4080] focus:ring-offset-1 focus:ring-offset-[#f0f0ed] rounded"
+        className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-[#6b6b6b] underline decoration-dashed decoration-from-font underline-offset-2 hover:text-[#3d3d3d] focus:outline-none focus:ring-2 focus:ring-[#0a4080] focus:ring-offset-1 focus:ring-offset-[#f0f0ed] rounded"
         aria-expanded={open}
-        aria-haspopup="true"
         aria-label="Show when this data was last updated"
       >
         live 311 data
       </button>
-
       <span
-        className={`absolute left-1/2 bottom-full -translate-x-1/2 mb-2 px-3 py-2 w-[max(240px,100%)] max-w-[320px] text-left text-sm font-normal text-[#1a1a1a] bg-white border border-[#d4cfc4] rounded shadow-lg z-50 whitespace-normal pointer-events-none transition-[opacity,visibility] duration-150 ${
-          showTooltip ? 'opacity-100 visible' : 'opacity-0 invisible group-hover:opacity-100 group-hover:visible'
+        className={`inline transition-opacity duration-150 ${
+          showInline ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}
-        role="tooltip"
+        aria-hidden={!showInline}
       >
-        Data pulled from Chicago Open Data Portal — last updated{' '}
+        <span className="text-[#6b6b6b]"> (last updated </span>
         {timestamp ? (
-          <span className="text-green-600 font-mono text-[0.925em] font-medium tracking-tight whitespace-nowrap">
-            {timestamp} CT
+          <span className="text-green-600 font-mono text-[0.925em] font-medium tracking-tight">
+            {timestamp}
           </span>
         ) : (
           <span className="text-[#6b6b6b]">—</span>
         )}
+        <span className="text-[#6b6b6b]"> CT)</span>
       </span>
     </span>
   )
