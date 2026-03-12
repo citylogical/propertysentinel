@@ -11,6 +11,18 @@ export type ComplaintRow = {
   last_modified_date: string | null
 }
 
+export type PropertyRow = {
+  address_normalized: string | null
+  street_address: string | null
+  pin: string | null
+  community_area: string | null
+  ward: string | null
+  class_code: string | null
+  units: number | null
+  tax_year: string | null
+  zoning: string | null
+}
+
 const DIRECTIONAL_ABBREV: [RegExp, string][] = [
   [/\bWEST\b/g, 'W'],
   [/\bEAST\b/g, 'E'],
@@ -58,6 +70,28 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   } catch (e) {
     return {
       complaints: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
+export async function fetchProperty(normalizedAddress: string): Promise<{
+  property: PropertyRow | null
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('address_normalized, street_address, pin, community_area, ward, class_code, units, tax_year, zoning')
+      .eq('address_normalized', normalizedAddress)
+      .maybeSingle()
+
+    if (error) throw new Error(error.message)
+
+    return { property: (data as PropertyRow | null) ?? null, error: null }
+  } catch (e) {
+    return {
+      property: null,
       error: e instanceof Error ? e.message : 'Unknown error',
     }
   }
