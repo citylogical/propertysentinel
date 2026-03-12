@@ -18,6 +18,7 @@ export type PropertyRow = {
   address_normalized: string | null
   street_address: string | null
   pin: string | null
+  zip: string | null
   community_area: string | null
   ward: string | null
   class_code: string | null
@@ -85,7 +86,7 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('properties')
-      .select('address_normalized, street_address, pin, community_area, ward, class_code, units, tax_year, zoning')
+      .select('address_normalized, street_address, pin, zip, community_area, ward, class_code, units, tax_year, zoning')
       .eq('address_normalized', normalizedAddress)
       .maybeSingle()
 

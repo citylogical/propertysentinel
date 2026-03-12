@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { useRef, useState, useEffect } from 'react'
+import { supabaseBrowser } from '@/lib/supabase-browser'
+import type { Session } from '@supabase/supabase-js'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
 
@@ -63,8 +65,15 @@ type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
+
+  useEffect(() => {
+    supabaseBrowser.auth.getSession().then(({ data: { session: s } }) => setSession(s))
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    return () => subscription.unsubscribe()
+  }, [])
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -144,6 +153,15 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
+          {session ? (
+            <Link href="/profile" className="nav-auth-btn">
+              Profile
+            </Link>
+          ) : (
+            <Link href="/login" className="nav-auth-btn">
+              Login
+            </Link>
+          )}
           <div className="nav-dropdown-panel">
             <Link className="nav-dropdown-row" href="/" onClick={() => setDropdownOpen(false)}>
               <div className="nav-dropdown-icon">

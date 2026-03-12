@@ -24,10 +24,17 @@ export function slugToNormalizedAddress(slug: string): string {
 
 /**
  * Convert an address string to a URL slug (hyphen-separated).
- * e.g. "2847 N Kedzie Ave" → "2847-N-Kedzie-Ave"
+ * If zip is provided, appends "-Chicago-{zip}" for full slug format.
+ * e.g. addressToSlug("2847 N Kedzie Ave") → "2847-N-Kedzie-Ave"
+ * e.g. addressToSlug("2847 N Kedzie Ave", "60618") → "2847-N-Kedzie-Ave-Chicago-60618"
  */
-export function addressToSlug(address: string): string {
-  return address.trim().replace(/\s+/g, '-')
+export function addressToSlug(address: string, zip?: string | null): string {
+  const base = address.trim().replace(/\s+/g, '-')
+  const zipTrimmed = zip?.trim()
+  if (zipTrimmed && /^\d{5}$/.test(zipTrimmed)) {
+    return `${base}-Chicago-${zipTrimmed}`
+  }
+  return base
 }
 
 /**

@@ -63,11 +63,16 @@ export default async function AddressPage({ params }: PageProps) {
   // Community Area: name from first complaint's community_area number (1–77)
   const displayCommunityAreaName = getCommunityAreaName(firstComplaint?.community_area)
 
-  const zip = slugToZip(decodedSlug)
+  // ZIP: property table first, then parse from slug
+  const displayZip =
+    (property?.zip != null && String(property.zip).trim() !== '')
+      ? String(property.zip).trim()
+      : slugToZip(decodedSlug)
+
   const addressBarMeta = [
     displayCommunityAreaName ?? property?.community_area ?? null,
     displayWard != null ? `Ward ${displayWard}` : (property?.ward != null ? `Ward ${property.ward}` : null),
-    zip ? `Chicago, IL ${zip}` : 'Chicago, IL',
+    displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -152,7 +157,12 @@ export default async function AddressPage({ params }: PageProps) {
           </div>
         </div>
 
-        <PropertyFeed complaints={complaints} complaintsOpenCount={complaintsOpenCount} />
+        <PropertyFeed
+          complaints={complaints}
+          complaintsOpenCount={complaintsOpenCount}
+          propertyZip={displayZip}
+          currentSlug={slug}
+        />
 
         <div className="rail">
           <div className="rail-alert-card">

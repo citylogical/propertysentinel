@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react'
 import type { ComplaintRow } from '@/lib/supabase-search'
+import { supabaseBrowser } from '@/lib/supabase-browser'
+import type { Session } from '@supabase/supabase-js'
+
+const LOCK_DAYS = 60
+const PAGE_SIZE = 10
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -30,30 +35,74 @@ function isWithinDays(iso: string | null | undefined, days: number): boolean {
   return diff <= days
 }
 
+function isLocked(row: ComplaintRow): boolean {
+  return isOpen(row.status) && isWithinDays(row.created_date, LOCK_DAYS)
+}
+
 type PropertyFeedProps = {
   complaints: ComplaintRow[]
   complaintsOpenCount: number
+  propertyZip: string | null
+  currentSlug: string
 }
 
-export default function PropertyFeed({ complaints, complaintsOpenCount }: PropertyFeedProps) {
-  const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
-  const [unlocked311, setUnlocked311] = useState(false)
-  const [unlockedViolations, setUnlockedViolations] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+type UnlockStep = 'zip' | 'email' | 'sent' | null
 
-  const mostRecent = complaints[0]
-  const mostRecentOpenAndRecent = mostRecent && isOpen(mostRecent.status) && isWithinDays(mostRecent.created_date, 30)
-  const showLocked311 = mostRecentOpenAndRecent && !unlocked311
+export default function PropertyFeed({ complaints, complaintsOpenCount, propertyZip, currentSlug }: PropertyFeedProps) {
+  const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
+  const [session, setSession] = useState<Session | null>(null)
+  const [unlockStep311, setUnlockStep311] = useState<UnlockStep>('zip')
+  const [zipError, setZipError] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
+  const [visible311, setVisible311] = useState(PAGE_SIZE)
 
   useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        dropdownRef.current.classList.remove('open')
-      }
-    }
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
+    supabaseBrowser.auth.getSession().then(({ data: { session: s } }) => setSession(s))
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    return () => subscription.unsubscribe()
   }, [])
+
+  const locked311Indices = complaints
+    .map((c, i) => (isLocked(c) ? i : -1))
+    .filter((i) => i >= 0)
+  const firstLocked311Index = locked311Indices[0] ?? -1
+  const hasSession = !!session
+  const showUnlockOverlay311 = !hasSession && firstLocked311Index >= 0
+
+  const visibleComplaints = complaints.slice(0, visible311)
+  const hasMore311 = complaints.length > visible311
+
+  const handleZipSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const input = (e.currentTarget.querySelector('input[name="zip"]') as HTMLInputElement)?.value?.trim()
+    const expected = (propertyZip ?? '').replace(/\D/g, '')
+    const entered = (input ?? '').replace(/\D/g, '')
+    if (entered.length === 5 && expected && entered === expected) {
+      setZipError(false)
+      setUnlockStep311('email')
+    } else {
+      setZipError(true)
+    }
+  }
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const input = (e.currentTarget.querySelector('input[name="email"]') as HTMLInputElement)?.value?.trim()
+    if (!input || !input.includes('@')) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://propertysentinel.io'
+    const next = `/address/${currentSlug}`
+    const { error } = await supabaseBrowser.auth.signInWithOtp({
+      email: input,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
+    })
+    if (!error) {
+      setEmailSent(true)
+      setUnlockStep311('sent')
+    }
+  }
 
   return (
     <div className="feed">
@@ -81,7 +130,6 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
         </button>
       </div>
 
-      {/* 311 panel */}
       <div className={`tab-panel ${activeTab === '311' ? 'active' : ''}`} id="panel-311">
         <div className="feed-body">
           <div className="feed-meta-bar">
@@ -97,13 +145,15 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
             </div>
           ) : (
             <>
-              {complaints.map((c, i) => {
-                const isLocked = i === 0 && showLocked311
+              {visibleComplaints.map((c, i) => {
+                const locked = !hasSession && isLocked(c)
+                const showOverlay = locked && i === firstLocked311Index && showUnlockOverlay311
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
-                if (isLocked) {
+
+                if (locked) {
                   return (
                     <div key={c.sr_number} className="complaint locked" id="locked-311">
-                      <div className="complaint-inner">
+                      <div className="complaint-inner" style={{ filter: 'blur(4px)' }}>
                         <div>
                           <div className="complaint-type-name">{c.sr_type ?? '—'}</div>
                           <div className="complaint-dept">
@@ -116,35 +166,55 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
                         </div>
                         <div className={`status-badge ${statusClass}`}>Open</div>
                       </div>
-                      <div className="unlock-overlay">
-                        <div className="unlock-form">
-                          <input
-                            className="unlock-input"
-                            type="email"
-                            placeholder="Enter your email to unlock"
-                            id="emailInput311"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                const email = (e.target as HTMLInputElement).value.trim()
-                                if (email && email.includes('@')) setUnlocked311(true)
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="unlock-submit"
-                            onClick={() => {
-                              const input = document.getElementById('emailInput311') as HTMLInputElement
-                              if (input?.value?.trim()?.includes('@')) setUnlocked311(true)
-                            }}
-                          >
-                            Unlock
-                          </button>
+                      {i === firstLocked311Index && (
+                        <div className="unlock-overlay">
+                          {(unlockStep311 === 'zip' || unlockStep311 === null) && (
+                            <div className="unlock-form-wrapper">
+                              <form onSubmit={handleZipSubmit} className="unlock-form unlock-form-stack">
+                                <label htmlFor="unlock-zip-311" className="unlock-label">
+                                  Enter your ZIP code to unlock
+                                </label>
+                                <input
+                                  id="unlock-zip-311"
+                                  name="zip"
+                                  type="text"
+                                  inputMode="numeric"
+                                  maxLength={5}
+                                  placeholder="ZIP code"
+                                  className="unlock-input"
+                                  autoComplete="postal-code"
+                                />
+                                {zipError && (
+                                  <p className="unlock-error">ZIP code doesn&apos;t match this property.</p>
+                                )}
+                                <button type="submit" className="unlock-submit">Unlock</button>
+                              </form>
+                            </div>
+                          )}
+                          {unlockStep311 === 'email' && (
+                            <div className="unlock-form-wrapper">
+                              <form onSubmit={handleEmailSubmit} className="unlock-form unlock-form-stack">
+                                <p className="unlock-label">Almost there — enter your email to see the full details.</p>
+                                <input
+                                  name="email"
+                                  type="email"
+                                  placeholder="Email"
+                                  className="unlock-input"
+                                  required
+                                />
+                                <button type="submit" className="unlock-submit">Send verification link</button>
+                              </form>
+                            </div>
+                          )}
+                          {unlockStep311 === 'sent' && (
+                            <p className="unlock-sent">Check your inbox — click the link we sent to verify.</p>
+                          )}
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 }
+
                 return (
                   <div key={c.sr_number} className="complaint">
                     <div>
@@ -166,9 +236,20 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
                   </div>
                 )
               })}
+              {hasMore311 && (
+                <div className="feed-more-wrap">
+                  <button
+                    type="button"
+                    className="feed-more-btn"
+                    onClick={() => setVisible311((n) => n + PAGE_SIZE)}
+                  >
+                    Show 10 more
+                  </button>
+                </div>
+              )}
               <div className="feed-nudge" id="nudge-311">
-                {showLocked311 ? (
-                  <>Enter your email above to see the full detail on the <strong>most recent open complaint</strong>.</>
+                {!hasSession && firstLocked311Index >= 0 ? (
+                  <>Enter your ZIP above to unlock recent open complaints, then verify your email.</>
                 ) : (
                   'Subscribe to get alerted the moment a new complaint is filed at this address.'
                 )}
@@ -178,7 +259,6 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
         </div>
       </div>
 
-      {/* Violations panel */}
       <div className={`tab-panel ${activeTab === 'violations' ? 'active' : ''}`} id="panel-violations">
         <div className="feed-body">
           <div className="feed-meta-bar">
@@ -194,7 +274,6 @@ export default function PropertyFeed({ complaints, complaintsOpenCount }: Proper
         </div>
       </div>
 
-      {/* Permits panel */}
       <div className={`tab-panel ${activeTab === 'permits' ? 'active' : ''}`} id="panel-permits">
         <div className="feed-body">
           <div className="feed-meta-bar">

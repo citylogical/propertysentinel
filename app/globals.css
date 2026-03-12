@@ -499,6 +499,22 @@ body {
   transform: rotate(180deg);
 }
 
+.address-page .nav-auth-btn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f2744;
+  background: #7cb88a;
+  padding: 6px 14px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.address-page .nav-auth-btn:hover {
+  background: #6aa878;
+  color: #0f2744;
+}
+
 .address-page .nav-dropdown-panel {
   display: none;
   position: absolute;
@@ -995,6 +1011,69 @@ body {
 
 .address-page .unlock-submit:hover {
   background: var(--navy-light);
+}
+
+.address-page .unlock-form-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.address-page .unlock-form.unlock-form-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.address-page .unlock-form.unlock-form-stack .unlock-input {
+  border-radius: 4px;
+  border-right: 1px solid var(--border);
+}
+
+.address-page .unlock-label {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+  margin: 0;
+}
+
+.address-page .unlock-error {
+  font-size: 11px;
+  color: var(--red);
+  margin: 0;
+}
+
+.address-page .unlock-sent {
+  font-size: 12px;
+  color: var(--text-mid);
+  margin: 0;
+  text-align: center;
+}
+
+.address-page .feed-more-wrap {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.address-page .feed-more-btn {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.address-page .feed-more-btn:hover {
+  background: var(--cream);
+  border-color: var(--navy);
 }
 
 .address-page .feed-nudge {

@@ -42,7 +42,7 @@ const CHICAGO_BOUNDS = {
   west: -87.9401,
 }
 
-function getStreetAddressOnly(place: PlaceResult): string {
+function getStreetAndZip(place: PlaceResult): { street: string; zip: string | null } {
   const components = place.address_components ?? []
   const map: Record<string, string> = {}
   components.forEach((c) => {
@@ -52,13 +52,15 @@ function getStreetAddressOnly(place: PlaceResult): string {
   })
   const streetNumber = map.street_number ?? ''
   const route = map.route ?? ''
-  const street = [streetNumber, route].filter(Boolean).join(' ')
-  return street || (place.formatted_address ?? '')
+  const street = [streetNumber, route].filter(Boolean).join(' ') || (place.formatted_address ?? '')
+  const zip = map.postal_code && /^\d{5}$/.test(map.postal_code) ? map.postal_code : null
+  return { street, zip }
 }
 
 function initAutocomplete(): void {
   const input = document.getElementById(INPUT_ID) as HTMLInputElement | null
   const form = document.getElementById(FORM_ID) as HTMLFormElement | null
+  const zipInput = document.getElementById('home-search-zip') as HTMLInputElement | null
   if (!input || !form || !window.google?.maps?.places?.Autocomplete) return
 
   const autocomplete = new window.google.maps.places.Autocomplete(input, {
@@ -71,9 +73,10 @@ function initAutocomplete(): void {
   autocomplete.addListener('place_changed', () => {
     const place = autocomplete.getPlace() as PlaceResult
     if (!place.address_components && !place.formatted_address) return
-    const streetOnly = getStreetAddressOnly(place)
-    if (streetOnly) {
-      input.value = streetOnly
+    const { street, zip } = getStreetAndZip(place)
+    if (street) {
+      input.value = street
+      if (zipInput) zipInput.value = zip ?? ''
       form.submit()
     }
   })
@@ -105,6 +108,7 @@ export default function HomeSearch({ apiKey }: HomeSearchProps) {
       )}
       <div className="search-wrap">
         <form id={FORM_ID} action="/search" method="GET" className="search-bar">
+          <input type="hidden" id="home-search-zip" name="zip" value="" />
           <div className="search-icon" aria-hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />

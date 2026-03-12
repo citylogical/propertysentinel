@@ -2,15 +2,15 @@ import { redirect } from 'next/navigation'
 import { addressToSlug } from '@/lib/address-slug'
 import Link from 'next/link'
 
-type PageProps = { searchParams: Promise<{ address?: string }> }
+type PageProps = { searchParams: Promise<{ address?: string; zip?: string }> }
 
 export default async function SearchPage({ searchParams }: PageProps) {
-  const { address } = await searchParams
+  const { address, zip } = await searchParams
   const trimmed = address?.trim()
 
   if (trimmed) {
-    const slug = addressToSlug(trimmed)
-    redirect(`/address/${slug}`)
+    const slug = addressToSlug(trimmed, zip?.trim() || undefined)
+    redirect(`/address/${encodeURIComponent(slug)}`)
   }
 
   return (
