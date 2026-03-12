@@ -157,12 +157,12 @@ export default async function AddressPage({ params }: PageProps) {
             </div>
             <div className="stat">
               <div className="stat-label">Last Permit</div>
-              <span className="stat-val">{lastPermitDisplay}</span>
+              <span className="stat-val stat-val-muted">{lastPermitDisplay}</span>
             </div>
             <div className="stat">
               <div className="stat-label">Roof Age Est.</div>
               <div className="stat-val-wrap">
-                <span className="stat-val">{roofAgeDisplay}</span>
+                <span className="stat-val stat-val-muted">{roofAgeDisplay}</span>
                 {roofYearDisplay != null && (
                   <span className="stat-val-sub">{roofYearDisplay}</span>
                 )}

@@ -431,6 +431,10 @@ body {
   .address-page .prop-nav {
     flex-wrap: wrap;
     gap: 0;
+    height: auto;
+    min-height: 52px;
+    padding-bottom: 12px;
+    align-content: flex-start;
   }
 
   .address-page .nav-mobile-top {
@@ -785,6 +789,12 @@ body {
   font-size: 11px;
   color: var(--text-dim);
   font-weight: 400;
+}
+
+.address-page .stat-val-muted {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-mid);
 }
 
 .address-page .stat-fraction {

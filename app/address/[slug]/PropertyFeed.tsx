@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase/client'
 import type { Session } from '@supabase/supabase-js'
 import { setPendingZipCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
@@ -101,8 +101,9 @@ export default function PropertyFeed({
   const [zipForUnlockViolations, setZipForUnlockViolations] = useState<string | null>(null)
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data: { session: s } }) => setSession(s))
-    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
     return () => subscription.unsubscribe()
   }, [])
 
@@ -152,12 +153,12 @@ export default function PropertyFeed({
     if (!input || !input.includes('@')) return
     const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
     if (zip) setPendingZipCookie(zip)
-    const next = `/address/${currentSlug}`
-    const { error } = await supabaseBrowser.auth.signInWithOtp({
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOtp({
       email: input,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`,
       },
     })
     if (!error) {

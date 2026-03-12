@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -15,7 +15,8 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    const { error: err } = await supabaseBrowser.auth.signInWithOtp({
+    const supabase = createClient()
+    const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
         shouldCreateUser: true,

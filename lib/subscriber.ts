@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase/client'
 
 const PENDING_ZIP_COOKIE = 'ps_pending_zip'
 const COOKIE_MAX_AGE = 3600 // 1 hour
@@ -31,21 +31,22 @@ export async function upsertSubscriberOnSession(session: Session, zip: string): 
     const email = session.user.email ?? ''
     const now = new Date().toISOString()
 
-    const { data: existing } = await supabaseBrowser
+    const supabase = createClient()
+    const { data: existing } = await supabase
       .from('subscribers')
       .select('id, plan')
       .eq('id', id)
       .maybeSingle()
 
     if (existing?.plan === 'premium') {
-      const { error } = await supabaseBrowser
+      const { error } = await supabase
         .from('subscribers')
         .update({ zip, updated_at: now })
         .eq('id', id)
       return { error: error?.message ?? null }
     }
 
-    const { error } = await supabaseBrowser.from('subscribers').upsert(
+    const { error } = await supabase.from('subscribers').upsert(
       {
         id,
         email,

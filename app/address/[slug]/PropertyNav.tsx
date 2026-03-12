@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { useRef, useState, useEffect } from 'react'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase/client'
 import { addressToSlug } from '@/lib/address-slug'
 import type { Session } from '@supabase/supabase-js'
 
@@ -75,8 +75,9 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const registeredRef = useRef(false)
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data: { session: s } }) => setSession(s))
-    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
     return () => subscription.unsubscribe()
   }, [])
 

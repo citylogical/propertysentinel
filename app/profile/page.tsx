@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
 export default function ProfilePage() {
@@ -14,7 +14,8 @@ export default function ProfilePage() {
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session?.user) {
         router.replace('/')
         return
@@ -34,7 +35,8 @@ export default function ProfilePage() {
       setMessage({ type: 'error', text: 'Passwords do not match.' })
       return
     }
-    const { error } = await supabaseBrowser.auth.updateUser({ password })
+    const supabase = createClient()
+    const { error } = await supabase.auth.updateUser({ password })
     if (error) {
       setMessage({ type: 'error', text: error.message })
       return
@@ -45,7 +47,8 @@ export default function ProfilePage() {
   }
 
   const handleSignOut = async () => {
-    await supabaseBrowser.auth.signOut()
+    const supabase = createClient()
+    await supabase.auth.signOut()
     router.replace('/')
   }
 
