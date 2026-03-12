@@ -140,13 +140,12 @@ export default function PropertyFeed({
     if (!input || !input.includes('@')) return
     const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
     if (zip) setPendingZipCookie(zip)
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://propertysentinel.io'
     const next = `/address/${currentSlug}`
     const { error } = await supabaseBrowser.auth.signInWithOtp({
       email: input,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
     if (!error) {
@@ -245,7 +244,7 @@ export default function PropertyFeed({
                             <p className="unlock-label-block">Almost there — enter your email to see the full details.</p>
                             <div className="unlock-form">
                               <input name="email" type="email" placeholder="Email" className="unlock-input" required />
-                              <button type="submit" className="unlock-submit">Send verification link</button>
+                              <button type="submit" className="unlock-submit">Submit</button>
                             </div>
                           </form>
                         )}
@@ -380,7 +379,7 @@ export default function PropertyFeed({
                             <p className="unlock-label-block">Almost there — enter your email to see the full details.</p>
                             <div className="unlock-form">
                               <input name="email" type="email" placeholder="Email" className="unlock-input" required />
-                              <button type="submit" className="unlock-submit">Send verification link</button>
+                              <button type="submit" className="unlock-submit">Submit</button>
                             </div>
                           </form>
                         )}

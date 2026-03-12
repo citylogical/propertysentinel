@@ -15,12 +15,11 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://propertysentinel.io'
     const { error: err } = await supabaseBrowser.auth.signInWithOtp({
       email: email.trim(),
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
     if (err) {
@@ -58,7 +57,7 @@ function LoginForm() {
               type="submit"
               className="w-full py-2 bg-[#0f2744] text-white text-sm font-semibold rounded hover:bg-[#234872] transition-colors"
             >
-              Send verification link
+              Submit
             </button>
           </form>
         )}
