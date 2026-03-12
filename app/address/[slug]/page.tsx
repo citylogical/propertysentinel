@@ -20,6 +20,15 @@ function na(val: string | number | null | undefined): string {
   return String(val)
 }
 
+function detailVal(
+  val: string | number | null | undefined
+): { text: string; isNa: boolean } {
+  if (val === null || val === undefined) return { text: 'N/A', isNa: true }
+  const s = String(val).trim()
+  if (s === '') return { text: 'N/A', isNa: true }
+  return { text: s, isNa: false }
+}
+
 export default async function AddressPage({ params }: PageProps) {
   const { slug } = await params
   const decodedSlug = decodeURIComponent(slug)
@@ -46,7 +55,7 @@ export default async function AddressPage({ params }: PageProps) {
 
   return (
     <div className="address-page">
-      <PropertyNav />
+      <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       <div className="address-bar">
         <div>
@@ -69,15 +78,15 @@ export default async function AddressPage({ params }: PageProps) {
           <div className="stat-row">
             <div className="stat">
               <div className="stat-label">Complaints</div>
-              <div className={`stat-val ${complaintsOpenCount > 0 ? 'red' : ''}`}>{complaints.length}</div>
+              <div className={`stat-val ${complaintsOpenCount > 0 ? 'red' : ''}`}>{complaintsOpenCount}</div>
               <div className="stat-fraction">
-                open / <strong>{complaints.length}</strong> total (90d)
+                open / <strong>{complaints.length}</strong> total
               </div>
             </div>
             <div className="stat">
               <div className="stat-label">Violations</div>
               <div className="stat-val amber">0</div>
-              <div className="stat-fraction">open / <strong>0</strong> total (90d)</div>
+              <div className="stat-fraction">open / <strong>0</strong> total</div>
             </div>
             <div className="stat">
               <div className="stat-label">Last Permit</div>
@@ -94,15 +103,15 @@ export default async function AddressPage({ params }: PageProps) {
             <div className="detail-list">
               <div className="detail-row">
                 <span className="detail-key">PIN</span>
-                <span className={property?.pin ? 'detail-val' : 'detail-val na'}>{na(property?.pin)}</span>
+                <span className={detailVal(property?.pin).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.pin).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Community Area</span>
-                <span className={property?.community_area ? 'detail-val' : 'detail-val na'}>{na(property?.community_area)}</span>
+                <span className={detailVal(property?.community_area).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.community_area).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Ward</span>
-                <span className={property?.ward != null ? 'detail-val' : 'detail-val na'}>{na(property?.ward)}</span>
+                <span className={detailVal(property?.ward).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.ward).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Class</span>

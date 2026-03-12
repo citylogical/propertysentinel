@@ -1,11 +1,70 @@
 'use client'
 
 import Link from 'next/link'
+import Script from 'next/script'
 import { useRef, useState, useEffect } from 'react'
 
-export default function PropertyNav() {
+const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
+
+type PlaceResult = {
+  address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
+  formatted_address?: string
+}
+
+const CHICAGO_BOUNDS = {
+  north: 41.9742,
+  south: 41.6445,
+  east: -87.524,
+  west: -87.9401,
+}
+
+function getStreetAddressOnly(place: PlaceResult): string {
+  const components = place.address_components ?? []
+  const map: Record<string, string> = {}
+  components.forEach((c) => {
+    c.types.forEach((t) => {
+      map[t] = c.long_name
+    })
+  })
+  const streetNumber = map.street_number ?? ''
+  const route = map.route ?? ''
+  return [streetNumber, route].filter(Boolean).join(' ') || (place.formatted_address ?? '')
+}
+
+declare global {
+  interface Window {
+    initNavAutocomplete?: () => void
+  }
+}
+
+function initNavAutocomplete(): void {
+  const input = document.getElementById(NAV_SEARCH_INPUT_ID) as HTMLInputElement | null
+  if (!input || !window.google?.maps?.places?.Autocomplete) return
+
+  const autocomplete = new window.google.maps.places.Autocomplete(input, {
+    types: ['address'],
+    componentRestrictions: { country: 'us' },
+    bounds: CHICAGO_BOUNDS,
+    strictBounds: true,
+  })
+
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace() as PlaceResult
+    if (!place.address_components && !place.formatted_address) return
+    const streetOnly = getStreetAddressOnly(place)
+    if (streetOnly) {
+      const slug = streetOnly.trim().replace(/\s+/g, '-')
+      window.location.href = `/address/${slug}`
+    }
+  })
+}
+
+type PropertyNavProps = { apiKey?: string }
+
+export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const registeredRef = useRef(false)
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -17,17 +76,32 @@ export default function PropertyNav() {
     return () => document.removeEventListener('click', close)
   }, [])
 
+  useEffect(() => {
+    if (!apiKey || registeredRef.current) return
+    registeredRef.current = true
+    window.initNavAutocomplete = initNavAutocomplete
+    return () => {
+      delete window.initNavAutocomplete
+    }
+  }, [apiKey])
+
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const input = e.currentTarget.querySelector('input[name="address"]') as HTMLInputElement
     const address = input?.value?.trim()
     if (!address) return
     const slug = address.replace(/\s+/g, '-')
-    window.location.href = `/address/${encodeURIComponent(slug)}`
+    window.location.href = `/address/${slug}`
   }
 
   return (
     <nav className="prop-nav">
+      {apiKey && (
+        <Script
+          src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initNavAutocomplete`}
+          strategy="afterInteractive"
+        />
+      )}
       <Link className="nav-brand" href="/">
         Property Sentinel
       </Link>
@@ -47,10 +121,12 @@ export default function PropertyNav() {
           </svg>
           <form action="/search" method="GET" onSubmit={handleSearchSubmit}>
             <input
+              id={NAV_SEARCH_INPUT_ID}
               className="nav-search-input"
               type="text"
               name="address"
               placeholder="New Chicago search…"
+              autoComplete="off"
             />
           </form>
         </div>
