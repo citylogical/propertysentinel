@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { setAuthNextCookie } from '@/lib/subscriber'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -15,6 +16,7 @@ function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setAuthNextCookie(next)
     const supabase = createClient()
     const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
     console.log('[signInWithOtp] emailRedirectTo:', emailRedirectTo)

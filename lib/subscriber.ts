@@ -2,7 +2,9 @@ import type { Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 
 const PENDING_ZIP_COOKIE = 'ps_pending_zip'
+const AUTH_NEXT_COOKIE = 'ps_auth_next'
 const COOKIE_MAX_AGE = 3600 // 1 hour
+const AUTH_NEXT_MAX_AGE = 600 // 10 min
 
 export function setPendingZipCookie(zip: string): void {
   if (typeof document === 'undefined') return
@@ -18,6 +20,22 @@ export function getPendingZipFromCookie(): string | null {
 export function clearPendingZipCookie(): void {
   if (typeof document === 'undefined') return
   document.cookie = `${PENDING_ZIP_COOKIE}=; path=/; max-age=0; SameSite=Lax`
+}
+
+export function setAuthNextCookie(path: string): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(path)}; path=/; max-age=${AUTH_NEXT_MAX_AGE}; SameSite=Lax`
+}
+
+export function getAuthNextCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  const m = document.cookie.match(new RegExp(`${AUTH_NEXT_COOKIE}=([^;]+)`))
+  return m ? decodeURIComponent(m[1].trim()) : null
+}
+
+export function clearAuthNextCookie(): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${AUTH_NEXT_COOKIE}=; path=/; max-age=0; SameSite=Lax`
 }
 
 /**

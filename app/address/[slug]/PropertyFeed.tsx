@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
 import { createClient } from '@/lib/supabase/client'
 import type { Session } from '@supabase/supabase-js'
-import { setPendingZipCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
+import { setPendingZipCookie, setAuthNextCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
 const LOCK_DAYS = 60
 const PAGE_SIZE = 5
@@ -153,6 +153,7 @@ export default function PropertyFeed({
     if (!input || !input.includes('@')) return
     const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
     if (zip) setPendingZipCookie(zip)
+    setAuthNextCookie(window.location.pathname)
     const supabase = createClient()
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
     console.log('emailRedirectTo:', redirectTo)
