@@ -154,13 +154,13 @@ export default function PropertyFeed({
     const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
     if (zip) setPendingZipCookie(zip)
     const supabase = createClient()
-    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
-    console.log('[signInWithOtp] emailRedirectTo:', emailRedirectTo)
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
+    console.log('emailRedirectTo:', redirectTo)
     const { error } = await supabase.auth.signInWithOtp({
       email: input,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo,
+        emailRedirectTo: redirectTo,
       },
     })
     if (!error) {
