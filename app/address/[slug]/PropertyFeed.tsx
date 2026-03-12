@@ -5,7 +5,7 @@ import type { ComplaintRow, ViolationRow } from '@/lib/supabase-search'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import type { Session } from '@supabase/supabase-js'
 
-const LOCK_DAYS = 45
+const LOCK_DAYS = 60
 const PAGE_SIZE = 10
 
 function formatDate(iso: string | null | undefined): string {
@@ -96,7 +96,7 @@ export default function PropertyFeed({
 
   const hasSession = !!session
 
-  // Only the single most recent row meeting both conditions is locked per tab
+  // First locked row index: only that row shows the unlock overlay; all locked rows are blurred
   const firstLocked311Index = complaints.findIndex(isComplaintLocked)
   const showUnlockOverlay311 = !hasSession && firstLocked311Index >= 0
 
@@ -196,7 +196,8 @@ export default function PropertyFeed({
           ) : (
             <>
               {visibleComplaints.map((c, i) => {
-                const locked = !hasSession && i === firstLocked311Index
+                const locked = !hasSession && isComplaintLocked(c)
+                const showOverlay = locked && i === firstLocked311Index
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
 
                 if (locked) {
@@ -215,6 +216,7 @@ export default function PropertyFeed({
                         </div>
                         <div className={`status-badge ${statusClass}`}>Open</div>
                       </div>
+                      {showOverlay && (
                       <div className="unlock-overlay">
                         {(unlockStep311 === 'zip' || unlockStep311 === null) && (
                           <form onSubmit={handleZipSubmit311} className="unlock-zip-wrap">
@@ -252,6 +254,7 @@ export default function PropertyFeed({
                           <p className="unlock-sent">Check your inbox — click the link we sent to verify.</p>
                         )}
                       </div>
+                      )}
                     </div>
                   )
                 }
@@ -317,7 +320,8 @@ export default function PropertyFeed({
           ) : (
             <>
               {visibleViolationsList.map((v, i) => {
-                const locked = !hasSession && i === firstLockedViolationIndex
+                const locked = !hasSession && isViolationLocked(v)
+                const showOverlay = locked && i === firstLockedViolationIndex
                 const statusClass = violationStatusClass(v.inspection_status)
 
                 if (locked) {
@@ -341,6 +345,7 @@ export default function PropertyFeed({
                           {v.inspection_status ?? '—'}
                         </div>
                       </div>
+                      {showOverlay && (
                       <div className="unlock-overlay">
                         {(unlockStepViolations === 'zip' || unlockStepViolations === null) && (
                           <form onSubmit={handleZipSubmitViolations} className="unlock-zip-wrap">
@@ -378,6 +383,7 @@ export default function PropertyFeed({
                           <p className="unlock-sent">Check your inbox — click the link we sent to verify.</p>
                         )}
                       </div>
+                      )}
                     </div>
                   )
                 }

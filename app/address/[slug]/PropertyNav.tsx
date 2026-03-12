@@ -160,15 +160,6 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {session ? (
-            <Link href="/profile" className="nav-auth-btn">
-              Profile
-            </Link>
-          ) : (
-            <Link href="/login" className="nav-auth-btn">
-              Login
-            </Link>
-          )}
           <div className="nav-dropdown-panel">
             <Link className="nav-dropdown-row" href="/" onClick={() => setDropdownOpen(false)}>
               <div className="nav-dropdown-icon">
@@ -207,6 +198,15 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
             </Link>
           </div>
         </div>
+        {session ? (
+          <Link href="/profile" className="nav-auth-btn">
+            Profile
+          </Link>
+        ) : (
+          <Link href="/login" className="nav-auth-btn">
+            Login
+          </Link>
+        )}
       </div>
     </nav>
   )

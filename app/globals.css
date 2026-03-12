@@ -508,6 +508,7 @@ body {
   border-radius: 4px;
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
+  margin-left: auto;
 }
 
 .address-page .nav-auth-btn:hover {
