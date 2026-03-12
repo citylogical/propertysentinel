@@ -79,6 +79,17 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   }
 }
 
+export type ViolationRow = {
+  violation_description: string | null
+  inspection_status: string | null
+  inspection_category: string | null
+  department_bureau: string | null
+  violation_inspector_comments: string | null
+  violation_ordinance: string | null
+  inspection_number: string | null
+  violation_date: string | null
+}
+
 export async function fetchProperty(normalizedAddress: string): Promise<{
   property: PropertyRow | null
   error: string | null
@@ -96,6 +107,28 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
   } catch (e) {
     return {
       property: null,
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
+export async function fetchViolations(normalizedAddress: string): Promise<{
+  violations: ViolationRow[]
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('violations')
+      .select('violation_description, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, violation_date')
+      .eq('address_normalized', normalizedAddress)
+      .order('violation_date', { ascending: false })
+
+    if (error) throw new Error(error.message)
+
+    return { violations: (data as ViolationRow[]) ?? [], error: null }
+  } catch (e) {
+    return {
+      violations: [],
       error: e instanceof Error ? e.message : 'Unknown error',
     }
   }

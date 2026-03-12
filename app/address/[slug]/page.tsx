@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
-import { fetchProperty, fetchComplaints } from '@/lib/supabase-search'
+import { fetchProperty, fetchComplaints, fetchViolations } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
@@ -36,14 +36,20 @@ export default async function AddressPage({ params }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  const [propertyResult, complaintsResult] = await Promise.all([
+  const [propertyResult, complaintsResult, violationsResult] = await Promise.all([
     fetchProperty(normalizedAddress),
     fetchComplaints(normalizedAddress),
+    fetchViolations(normalizedAddress),
   ])
 
   const property = propertyResult.property
   const complaints = complaintsResult.complaints ?? []
+  const violations = violationsResult.violations ?? []
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
+  const violationsOpenCount = violations.filter((v) => {
+    const s = (v.inspection_status ?? '').toUpperCase()
+    return s === 'OPEN' || s === 'FAILED'
+  }).length
   const firstComplaint = complaints[0] ?? null
 
   // PIN: property first, then first complaint
@@ -109,8 +115,8 @@ export default async function AddressPage({ params }: PageProps) {
             </div>
             <div className="stat">
               <div className="stat-label">Violations</div>
-              <div className="stat-val amber">0</div>
-              <div className="stat-fraction">open / <strong>0</strong> total</div>
+              <div className={`stat-val ${violationsOpenCount > 0 ? 'amber' : ''}`}>{violationsOpenCount}</div>
+              <div className="stat-fraction">open / <strong>{violations.length}</strong> total</div>
             </div>
             <div className="stat">
               <div className="stat-label">Last Permit</div>
@@ -160,6 +166,8 @@ export default async function AddressPage({ params }: PageProps) {
         <PropertyFeed
           complaints={complaints}
           complaintsOpenCount={complaintsOpenCount}
+          violations={violations}
+          violationsOpenCount={violationsOpenCount}
           propertyZip={displayZip}
           currentSlug={slug}
         />

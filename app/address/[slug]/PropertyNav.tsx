@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Script from 'next/script'
 import { useRef, useState, useEffect } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { addressToSlug } from '@/lib/address-slug'
 import type { Session } from '@supabase/supabase-js'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
@@ -20,7 +21,7 @@ const CHICAGO_BOUNDS = {
   west: -87.9401,
 }
 
-function getStreetAddressOnly(place: PlaceResult): string {
+function getStreetAndZip(place: PlaceResult): { street: string; zip: string | null } {
   const components = place.address_components ?? []
   const map: Record<string, string> = {}
   components.forEach((c) => {
@@ -30,7 +31,9 @@ function getStreetAddressOnly(place: PlaceResult): string {
   })
   const streetNumber = map.street_number ?? ''
   const route = map.route ?? ''
-  return [streetNumber, route].filter(Boolean).join(' ') || (place.formatted_address ?? '')
+  const street = [streetNumber, route].filter(Boolean).join(' ') || (place.formatted_address ?? '')
+  const zip = map.postal_code && /^\d{5}$/.test(map.postal_code) ? map.postal_code : null
+  return { street, zip }
 }
 
 declare global {
@@ -53,9 +56,11 @@ function initNavAutocomplete(): void {
   autocomplete.addListener('place_changed', () => {
     const place = autocomplete.getPlace() as PlaceResult
     if (!place.address_components && !place.formatted_address) return
-    const streetOnly = getStreetAddressOnly(place)
-    if (streetOnly) {
-      const slug = streetOnly.trim().replace(/\s+/g, '-')
+    const { street, zip } = getStreetAndZip(place)
+    if (street) {
+      const zipInput = document.getElementById('prop-nav-zip') as HTMLInputElement | null
+      if (zipInput) zipInput.value = zip ?? ''
+      const slug = addressToSlug(street, zip)
       window.location.href = `/address/${slug}`
     }
   })
@@ -96,10 +101,11 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const input = e.currentTarget.querySelector('input[name="address"]') as HTMLInputElement
-    const address = input?.value?.trim()
+    const form = e.currentTarget
+    const address = (form.querySelector('input[name="address"]') as HTMLInputElement)?.value?.trim()
+    const zip = (form.querySelector('input[name="zip"]') as HTMLInputElement)?.value?.trim()
     if (!address) return
-    const slug = address.replace(/\s+/g, '-')
+    const slug = addressToSlug(address, zip || undefined)
     window.location.href = `/address/${slug}`
   }
 
@@ -129,6 +135,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <form action="/search" method="GET" onSubmit={handleSearchSubmit}>
+            <input type="hidden" name="zip" value="" id="prop-nav-zip" />
             <input
               id={NAV_SEARCH_INPUT_ID}
               className="nav-search-input"
