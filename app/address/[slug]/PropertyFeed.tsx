@@ -85,8 +85,6 @@ export default function PropertyFeed({
   const [session, setSession] = useState<Session | null>(null)
   const [unlockStep311, setUnlockStep311] = useState<UnlockStep>('zip')
   const [unlockStepViolations, setUnlockStepViolations] = useState<UnlockStep>('zip')
-  const [zipError311, setZipError311] = useState(false)
-  const [zipErrorViolations, setZipErrorViolations] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
   const [zipForUnlock311, setZipForUnlock311] = useState<string | null>(null)
@@ -124,30 +122,16 @@ export default function PropertyFeed({
 
   const handleZipSubmit311 = (e: React.FormEvent) => {
     e.preventDefault()
-    const input = (e.currentTarget.querySelector('input[name="zip"]') as HTMLInputElement)?.value?.trim()
-    const expected = (propertyZip ?? '').replace(/\D/g, '')
-    const entered = (input ?? '').replace(/\D/g, '')
-    if (entered.length === 5 && expected && entered === expected) {
-      setZipError311(false)
-      setZipForUnlock311(entered)
-      setUnlockStep311('email')
-    } else {
-      setZipError311(true)
-    }
+    const input = (e.currentTarget.querySelector('input[name="zip"]') as HTMLInputElement)?.value?.trim() ?? ''
+    setZipForUnlock311(input)
+    setUnlockStep311('email')
   }
 
   const handleZipSubmitViolations = (e: React.FormEvent) => {
     e.preventDefault()
-    const input = (e.currentTarget.querySelector('input[name="zip-violations"]') as HTMLInputElement)?.value?.trim()
-    const expected = (propertyZip ?? '').replace(/\D/g, '')
-    const entered = (input ?? '').replace(/\D/g, '')
-    if (entered.length === 5 && expected && entered === expected) {
-      setZipErrorViolations(false)
-      setZipForUnlockViolations(entered)
-      setUnlockStepViolations('email')
-    } else {
-      setZipErrorViolations(true)
-    }
+    const input = (e.currentTarget.querySelector('input[name="zip-violations"]') as HTMLInputElement)?.value?.trim() ?? ''
+    setZipForUnlockViolations(input)
+    setUnlockStepViolations('email')
   }
 
   const handleEmailSubmit = async (e: React.FormEvent, panel: '311' | 'violations') => {
@@ -254,9 +238,6 @@ export default function PropertyFeed({
                               />
                               <button type="submit" className="unlock-submit">Unlock</button>
                             </div>
-                            {zipError311 && (
-                              <p className="unlock-error">ZIP code doesn&apos;t match this property.</p>
-                            )}
                           </form>
                         )}
                         {unlockStep311 === 'email' && (
@@ -392,9 +373,6 @@ export default function PropertyFeed({
                               />
                               <button type="submit" className="unlock-submit">Unlock</button>
                             </div>
-                            {zipErrorViolations && (
-                              <p className="unlock-error">ZIP code doesn&apos;t match this property.</p>
-                            )}
                           </form>
                         )}
                         {unlockStepViolations === 'email' && (
