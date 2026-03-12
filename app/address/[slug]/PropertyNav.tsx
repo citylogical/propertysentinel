@@ -109,6 +109,12 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
     window.location.href = `/address/${slug}`
   }
 
+  const authLink = session ? (
+    <Link href="/profile" className="nav-auth-btn">Profile</Link>
+  ) : (
+    <Link href="/login" className="nav-auth-btn">Login</Link>
+  )
+
   return (
     <nav className="prop-nav">
       {apiKey && (
@@ -117,7 +123,13 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
           strategy="afterInteractive"
         />
       )}
-      <Link className="nav-brand" href="/">
+      <div className="nav-mobile-top">
+        <Link className="nav-brand" href="/">
+          Property Sentinel
+        </Link>
+        {authLink}
+      </div>
+      <Link className="nav-brand nav-brand-desk" href="/">
         Property Sentinel
       </Link>
       <div className="nav-right">
@@ -199,11 +211,11 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
           </div>
         </div>
         {session ? (
-          <Link href="/profile" className="nav-auth-btn">
+          <Link href="/profile" className="nav-auth-btn nav-auth-desk">
             Profile
           </Link>
         ) : (
-          <Link href="/login" className="nav-auth-btn">
+          <Link href="/login" className="nav-auth-btn nav-auth-desk">
             Login
           </Link>
         )}
