@@ -775,6 +775,18 @@ body {
   display: block;
 }
 
+.address-page .stat-val-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.address-page .stat-val-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
 .address-page .stat-fraction {
   font-size: 10px;
   color: var(--text-dim);
@@ -1000,6 +1012,24 @@ body {
   color: var(--green);
   background: var(--green-dim);
   border: 1px solid var(--green-border);
+}
+
+.address-page .status-badge-permit-active {
+  color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
+}
+
+.address-page .status-badge-permit-expired {
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+}
+
+.address-page .status-badge-permit-other {
+  color: var(--text-dim);
+  background: var(--cream-dark);
+  border: 1px solid var(--border);
 }
 
 .address-page .status-badge-stop-work {

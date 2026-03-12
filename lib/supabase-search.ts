@@ -136,3 +136,35 @@ export async function fetchViolations(normalizedAddress: string): Promise<{
     }
   }
 }
+
+export type PermitRow = {
+  permit_type: string | null
+  permit_status: string | null
+  work_description: string | null
+  issue_date: string | null
+  permit_number: string | null
+  is_roof_permit: boolean | null
+}
+
+export async function fetchPermits(normalizedAddress: string): Promise<{
+  permits: PermitRow[]
+  error: string | null
+}> {
+  try {
+    const pattern = `${normalizedAddress}%`
+    const { data, error } = await supabase
+      .from('permits')
+      .select('permit_type, permit_status, work_description, issue_date, permit_number, is_roof_permit')
+      .ilike('address_normalized', pattern)
+      .order('issue_date', { ascending: false })
+
+    if (error) throw new Error(error.message)
+
+    return { permits: (data as PermitRow[]) ?? [], error: null }
+  } catch (e) {
+    return {
+      permits: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}

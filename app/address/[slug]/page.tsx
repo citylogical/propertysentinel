@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
-import { fetchProperty, fetchComplaints, fetchViolations } from '@/lib/supabase-search'
+import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
@@ -36,15 +36,17 @@ export default async function AddressPage({ params }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  const [propertyResult, complaintsResult, violationsResult] = await Promise.all([
+  const [propertyResult, complaintsResult, violationsResult, permitsResult] = await Promise.all([
     fetchProperty(normalizedAddress),
     fetchComplaints(normalizedAddress),
     fetchViolations(normalizedAddress),
+    fetchPermits(normalizedAddress),
   ])
 
   const property = propertyResult.property
   const complaints = complaintsResult.complaints ?? []
   const violations = violationsResult.violations ?? []
+  const permits = permitsResult.permits ?? []
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
   // Use violation_status for OPEN/COMPLIED; fallback to inspection_status if violation_status is empty (e.g. OPEN/FAILED → open, COMPLIED/PASSED/CLOSED → complied)
   const violationsOpenCount = violations.filter((v) => {
@@ -56,6 +58,34 @@ export default async function AddressPage({ params }: PageProps) {
     return vs === 'COMPLIED' || vs === 'PASSED' || vs === 'CLOSED'
   }).length
   const firstComplaint = complaints[0] ?? null
+
+  const lastPermitDisplay =
+    permits.length > 0 && permits[0].issue_date
+      ? (() => {
+          const d = new Date(permits[0].issue_date)
+          return Number.isNaN(d.getTime()) ? 'Unknown' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+        })()
+      : 'Unknown'
+
+  const lastRoofPermit = permits.find((p) => p.is_roof_permit === true) ?? null
+  const roofAgeYears =
+    lastRoofPermit?.issue_date != null
+      ? (() => {
+          const d = new Date(lastRoofPermit.issue_date)
+          if (Number.isNaN(d.getTime())) return null
+          const now = new Date()
+          return Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+        })()
+      : null
+  const roofYear =
+    lastRoofPermit?.issue_date != null
+      ? (() => {
+          const d = new Date(lastRoofPermit.issue_date)
+          return Number.isNaN(d.getTime()) ? null : d.getFullYear()
+        })()
+      : null
+  const roofAgeDisplay = roofAgeYears != null ? `${roofAgeYears} yrs` : 'Unknown'
+  const roofYearDisplay = roofYear != null ? `~${roofYear}` : null
 
   // PIN: property first, then first complaint
   const displayPin =
@@ -127,11 +157,16 @@ export default async function AddressPage({ params }: PageProps) {
             </div>
             <div className="stat">
               <div className="stat-label">Last Permit</div>
-              <span className="stat-val na">N/A</span>
+              <span className="stat-val">{lastPermitDisplay}</span>
             </div>
             <div className="stat">
               <div className="stat-label">Roof Age Est.</div>
-              <span className="stat-val na">N/A</span>
+              <div className="stat-val-wrap">
+                <span className="stat-val">{roofAgeDisplay}</span>
+                {roofYearDisplay != null && (
+                  <span className="stat-val-sub">{roofYearDisplay}</span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -176,6 +211,7 @@ export default async function AddressPage({ params }: PageProps) {
           violations={violations}
           violationsOpenCount={violationsOpenCount}
           violationsCompliedCount={violationsCompliedCount}
+          permits={permits}
           propertyZip={displayZip}
           currentSlug={slug}
         />

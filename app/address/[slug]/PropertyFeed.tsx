@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { ComplaintRow, ViolationRow } from '@/lib/supabase-search'
+import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import type { Session } from '@supabase/supabase-js'
 import { setPendingZipCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
@@ -60,12 +60,20 @@ function violationStatusClass(status: string | null): 'open' | 'completed' {
   return s === 'OPEN' ? 'open' : 'completed'
 }
 
+function permitStatusClass(status: string | null): 'active' | 'expired' | 'other' {
+  const s = (status ?? '').toUpperCase()
+  if (s === 'ISSUED' || s === 'ACTIVE') return 'active'
+  if (s === 'EXPIRED' || s === 'REVOKED') return 'expired'
+  return 'other'
+}
+
 type PropertyFeedProps = {
   complaints: ComplaintRow[]
   complaintsOpenCount: number
   violations: ViolationRow[]
   violationsOpenCount: number
   violationsCompliedCount: number
+  permits: PermitRow[]
   propertyZip: string | null
   currentSlug: string
 }
@@ -78,6 +86,7 @@ export default function PropertyFeed({
   violations,
   violationsOpenCount,
   violationsCompliedCount,
+  permits,
   propertyZip,
   currentSlug,
 }: PropertyFeedProps) {
@@ -87,6 +96,7 @@ export default function PropertyFeed({
   const [unlockStepViolations, setUnlockStepViolations] = useState<UnlockStep>('zip')
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
+  const [visiblePermits, setVisiblePermits] = useState(PAGE_SIZE)
   const [zipForUnlock311, setZipForUnlock311] = useState<string | null>(null)
   const [zipForUnlockViolations, setZipForUnlockViolations] = useState<string | null>(null)
 
@@ -119,6 +129,8 @@ export default function PropertyFeed({
   const hasMore311 = complaints.length > visible311
   const visibleViolationsList = violations.slice(0, visibleViolations)
   const hasMoreViolations = violations.length > visibleViolations
+  const visiblePermitsList = permits.slice(0, visiblePermits)
+  const hasMorePermits = permits.length > visiblePermits
 
   const handleZipSubmit311 = (e: React.FormEvent) => {
     e.preventDefault()
@@ -176,7 +188,7 @@ export default function PropertyFeed({
           className={`tab ${activeTab === 'permits' ? 'active' : ''}`}
           onClick={() => setActiveTab('permits')}
         >
-          Permits <span className="tab-pill">0</span>
+          Permits <span className="tab-pill">{permits.length}</span>
         </button>
       </div>
 
@@ -459,16 +471,59 @@ export default function PropertyFeed({
       <div className={`tab-panel ${activeTab === 'permits' ? 'active' : ''}`} id="panel-permits">
         <div className="feed-body">
           <div className="feed-meta-bar">
-            <span className="feed-count"><strong>0</strong> permits on record</span>
+            <span className="feed-count"><strong>{permits.length}</strong> permits on record</span>
             <span className="feed-window-note">All time</span>
           </div>
-          <div className="empty-state">
-            No building permits found for this address.<br />
-            Permit data is updated weekly.
-          </div>
-          <div className="feed-nudge">
-            Subscribe to be alerted the moment a permit is pulled at this address.
-          </div>
+
+          {permits.length === 0 ? (
+            <div className="empty-state">
+              No building permits found for this address.<br />
+              Permit data is updated weekly.
+            </div>
+          ) : (
+            <>
+              {visiblePermitsList.map((p, i) => {
+                const statusClass = permitStatusClass(p.permit_status)
+                const workDesc = (p.work_description ?? '').trim()
+                const workDescTruncated = workDesc.length > 120 ? `${workDesc.slice(0, 120)}…` : workDesc
+                return (
+                  <div key={p.permit_number ?? i} className="complaint">
+                    <div>
+                      <div className="complaint-type-name">{p.permit_type ?? '—'}</div>
+                      {workDescTruncated && (
+                        <div className="complaint-comment" style={{ maxWidth: '100%' }}>{workDescTruncated}</div>
+                      )}
+                      {p.issue_date != null && (
+                        <div className="complaint-dates">
+                          <span>Issued: <strong>{formatDateShort(p.issue_date)}</strong></span>
+                        </div>
+                      )}
+                      <div className="complaint-sr">
+                        {p.permit_number ? `#${p.permit_number}` : '—'}
+                      </div>
+                    </div>
+                    <div className={`status-badge status-badge-permit-${statusClass}`}>
+                      {p.permit_status ?? '—'}
+                    </div>
+                  </div>
+                )
+              })}
+              {hasMorePermits && (
+                <div className="feed-more-wrap">
+                  <button
+                    type="button"
+                    className="feed-more-btn"
+                    onClick={() => setVisiblePermits((n) => n + PAGE_SIZE)}
+                  >
+                    Show 5 more
+                  </button>
+                </div>
+              )}
+              <div className="feed-nudge">
+                Subscribe to be alerted the moment a permit is pulled at this address.
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
