@@ -12,6 +12,7 @@ export type ComplaintRow = {
   pin: string | null
   ward: string | number | null
   community_area: number | string | null
+  address_normalized: string | null
 }
 
 export type PropertyRow = {
@@ -64,7 +65,7 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area')
+      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
       .eq('address_normalized', normalizedAddress)
       .order('created_date', { ascending: false })
 
@@ -115,21 +116,24 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
   }
 }
 
-export async function fetchViolations(normalizedAddress: string): Promise<{
+export async function fetchViolations(addressNormalized: string): Promise<{
   violations: ViolationRow[]
   error: string | null
 }> {
   try {
-    const pattern = `${normalizedAddress}%`
     const { data, error } = await supabase
       .from('violations')
-      .select('violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
-      .ilike('address_normalized', pattern)
+      .select('*')
+      .eq('address_normalized', addressNormalized)
       .order('violation_date', { ascending: false })
+      .limit(100)
 
     if (error) throw new Error(error.message)
 
-    return { violations: (data as ViolationRow[]) ?? [], error: null }
+    const rows = (data ?? []) as ViolationRow[]
+    console.log('[fetchViolations] addressNormalized:', addressNormalized, '| violation rows returned:', rows.length)
+
+    return { violations: rows, error: null }
   } catch (e) {
     return {
       violations: [],

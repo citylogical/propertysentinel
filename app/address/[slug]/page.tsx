@@ -36,15 +36,16 @@ export default async function AddressPage({ params }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  const [propertyResult, complaintsResult, violationsResult, permitsResult] = await Promise.all([
+  const [propertyResult, complaintsResult, permitsResult] = await Promise.all([
     fetchProperty(normalizedAddress),
     fetchComplaints(normalizedAddress),
-    fetchViolations(normalizedAddress),
     fetchPermits(normalizedAddress),
   ])
 
   const property = propertyResult.property
   const complaints = complaintsResult.complaints ?? []
+  const addressNormalizedForViolations = complaints[0]?.address_normalized ?? normalizedAddress
+  const violationsResult = await fetchViolations(addressNormalizedForViolations)
   const violations = violationsResult.violations ?? []
   const permits = permitsResult.permits ?? []
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
