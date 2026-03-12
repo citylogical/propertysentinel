@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import { fetchProperty, fetchComplaints } from '@/lib/supabase-search'
+import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
 
@@ -43,11 +44,29 @@ export default async function AddressPage({ params }: PageProps) {
   const property = propertyResult.property
   const complaints = complaintsResult.complaints ?? []
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
+  const firstComplaint = complaints[0] ?? null
+
+  // PIN: property first, then first complaint
+  const displayPin =
+    (property?.pin != null && String(property.pin).trim() !== '')
+      ? String(property.pin).trim()
+      : (firstComplaint?.pin != null && String(firstComplaint.pin).trim() !== '')
+        ? String(firstComplaint.pin).trim()
+        : null
+
+  // Ward: from first complaint (properties table not reliable)
+  const displayWard =
+    firstComplaint?.ward != null && firstComplaint.ward !== ''
+      ? String(firstComplaint.ward)
+      : null
+
+  // Community Area: name from first complaint's community_area number (1–77)
+  const displayCommunityAreaName = getCommunityAreaName(firstComplaint?.community_area)
 
   const zip = slugToZip(decodedSlug)
   const addressBarMeta = [
-    property?.community_area ?? null,
-    property?.ward != null ? `Ward ${property.ward}` : null,
+    displayCommunityAreaName ?? property?.community_area ?? null,
+    displayWard != null ? `Ward ${displayWard}` : (property?.ward != null ? `Ward ${property.ward}` : null),
     zip ? `Chicago, IL ${zip}` : 'Chicago, IL',
   ]
     .filter(Boolean)
@@ -103,15 +122,15 @@ export default async function AddressPage({ params }: PageProps) {
             <div className="detail-list">
               <div className="detail-row">
                 <span className="detail-key">PIN</span>
-                <span className={detailVal(property?.pin).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.pin).text}</span>
+                <span className={displayPin == null ? 'detail-val na' : 'detail-val'}>{displayPin ?? 'N/A'}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Community Area</span>
-                <span className={detailVal(property?.community_area).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.community_area).text}</span>
+                <span className={displayCommunityAreaName == null ? 'detail-val na' : 'detail-val'}>{displayCommunityAreaName ?? 'N/A'}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Ward</span>
-                <span className={detailVal(property?.ward).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.ward).text}</span>
+                <span className={displayWard == null ? 'detail-val na' : 'detail-val'}>{displayWard ?? 'N/A'}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Class</span>

@@ -9,6 +9,9 @@ export type ComplaintRow = {
   created_date: string | null
   closed_date: string | null
   last_modified_date: string | null
+  pin: string | null
+  ward: string | number | null
+  community_area: number | string | null
 }
 
 export type PropertyRow = {
@@ -60,7 +63,7 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date')
+      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area')
       .eq('address_normalized', normalizedAddress)
       .order('created_date', { ascending: false })
 
