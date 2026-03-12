@@ -120,10 +120,11 @@ export async function fetchViolations(normalizedAddress: string): Promise<{
   error: string | null
 }> {
   try {
+    const pattern = `${normalizedAddress}%`
     const { data, error } = await supabase
       .from('violations')
       .select('violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
-      .eq('address_normalized', normalizedAddress)
+      .ilike('address_normalized', pattern)
       .order('violation_date', { ascending: false })
 
     if (error) throw new Error(error.message)
