@@ -947,6 +947,19 @@ body {
   border: 1px solid var(--green-border);
 }
 
+.address-page .status-badge-stop-work {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: white;
+  background: var(--red);
+  border: none;
+  border-radius: 3px;
+}
+
 /* Locked complaint row */
 .address-page .complaint.locked {
   position: relative;

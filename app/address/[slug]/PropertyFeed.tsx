@@ -6,7 +6,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 import type { Session } from '@supabase/supabase-js'
 
 const LOCK_DAYS = 60
-const PAGE_SIZE = 10
+const PAGE_SIZE = 5
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -46,18 +46,17 @@ function isComplaintLocked(row: ComplaintRow): boolean {
   return isOpen(row.status) && isWithinDays(row.created_date, LOCK_DAYS)
 }
 
-function isViolationOpenOrFailed(status: string | null): boolean {
-  const s = (status ?? '').toUpperCase()
-  return s === 'OPEN' || s === 'FAILED'
+function isViolationStatusOpen(status: string | null): boolean {
+  return (status ?? '').toUpperCase() === 'OPEN'
 }
 
 function isViolationLocked(row: ViolationRow): boolean {
-  return isViolationOpenOrFailed(row.inspection_status) && isWithinDays(row.violation_date, LOCK_DAYS)
+  return isViolationStatusOpen(row.violation_status) && isWithinDays(row.violation_date, LOCK_DAYS)
 }
 
 function violationStatusClass(status: string | null): 'open' | 'completed' {
   const s = (status ?? '').toUpperCase()
-  return s === 'OPEN' || s === 'FAILED' ? 'open' : 'completed'
+  return s === 'OPEN' ? 'open' : 'completed'
 }
 
 type PropertyFeedProps = {
@@ -65,6 +64,7 @@ type PropertyFeedProps = {
   complaintsOpenCount: number
   violations: ViolationRow[]
   violationsOpenCount: number
+  violationsCompliedCount: number
   propertyZip: string | null
   currentSlug: string
 }
@@ -76,6 +76,7 @@ export default function PropertyFeed({
   complaintsOpenCount,
   violations,
   violationsOpenCount,
+  violationsCompliedCount,
   propertyZip,
   currentSlug,
 }: PropertyFeedProps) {
@@ -100,6 +101,7 @@ export default function PropertyFeed({
   const firstLocked311Index = complaints.findIndex(isComplaintLocked)
   const showUnlockOverlay311 = !hasSession && firstLocked311Index >= 0
 
+  // Only the single most recent violation meeting OPEN + within 60 days is locked
   const firstLockedViolationIndex = violations.findIndex(isViolationLocked)
   const showUnlockOverlayViolations = !hasSession && firstLockedViolationIndex >= 0
 
@@ -287,7 +289,7 @@ export default function PropertyFeed({
                     className="feed-more-btn"
                     onClick={() => setVisible311((n) => n + PAGE_SIZE)}
                   >
-                    Show 10 more
+                    Show 5 more
                   </button>
                 </div>
               )}
@@ -308,7 +310,7 @@ export default function PropertyFeed({
         <div className="feed-body">
           <div className="feed-meta-bar">
             <span className="feed-count">
-              <strong>{violations.length}</strong> violations · <strong>{violationsOpenCount}</strong> open
+              <strong>{violationsOpenCount}</strong> open / <strong>{violationsCompliedCount}</strong> complied
             </span>
             <span className="feed-window-note">All time</span>
           </div>
@@ -320,9 +322,10 @@ export default function PropertyFeed({
           ) : (
             <>
               {visibleViolationsList.map((v, i) => {
-                const locked = !hasSession && isViolationLocked(v)
-                const showOverlay = locked && i === firstLockedViolationIndex
-                const statusClass = violationStatusClass(v.inspection_status)
+                const isFirstLocked = i === firstLockedViolationIndex
+                const locked = !hasSession && isFirstLocked && isViolationLocked(v)
+                const showOverlay = locked
+                const statusClass = violationStatusClass(v.violation_status)
 
                 if (locked) {
                   return (
@@ -335,14 +338,22 @@ export default function PropertyFeed({
                             <div className="complaint-dept complaint-dept-secondary">{v.department_bureau}</div>
                           )}
                           <div className="complaint-dates">
-                            <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
+                            {v.violation_date != null && (
+                              <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
+                            )}
+                            {isViolationStatusOpen(v.violation_status) && v.violation_last_modified_date != null && (
+                              <span>Last Modified: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
+                            )}
+                            {!isViolationStatusOpen(v.violation_status) && v.violation_status?.toUpperCase() === 'COMPLIED' && v.violation_last_modified_date != null && (
+                              <span>Closed: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
+                            )}
                           </div>
                           <div className="complaint-sr">
                             {v.inspection_number ? `Inspection #${v.inspection_number}` : '—'}
                           </div>
                         </div>
                         <div className={`status-badge ${statusClass}`}>
-                          {v.inspection_status ?? '—'}
+                          {v.violation_status ?? '—'}
                         </div>
                       </div>
                       {showOverlay && (
@@ -392,6 +403,11 @@ export default function PropertyFeed({
                   <div key={v.inspection_number ?? i} className="complaint">
                     <div>
                       <div className="complaint-type-name">{v.violation_description ?? '—'}</div>
+                      {v.is_stop_work_order === true && (
+                        <span className="status-badge status-badge-stop-work" aria-label="Stop work order">
+                          ⚠ STOP WORK ORDER
+                        </span>
+                      )}
                       {v.violation_inspector_comments && (
                         <div className="complaint-comment">{v.violation_inspector_comments}</div>
                       )}
@@ -403,14 +419,22 @@ export default function PropertyFeed({
                         <div className="complaint-dept complaint-dept-secondary">{v.department_bureau}</div>
                       )}
                       <div className="complaint-dates">
-                        <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
+                        {v.violation_date != null && (
+                          <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
+                        )}
+                        {isViolationStatusOpen(v.violation_status) && v.violation_last_modified_date != null && (
+                          <span>Last Modified: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
+                        )}
+                        {(v.violation_status ?? '').toUpperCase() === 'COMPLIED' && v.violation_last_modified_date != null && (
+                          <span>Closed: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
+                        )}
                       </div>
                       <div className="complaint-sr">
                         {v.inspection_number ? `Inspection #${v.inspection_number}` : '—'}
                       </div>
                     </div>
                     <div className={`status-badge ${statusClass}`}>
-                      {v.inspection_status ?? '—'}
+                      {v.violation_status ?? '—'}
                     </div>
                   </div>
                 )
@@ -422,7 +446,7 @@ export default function PropertyFeed({
                     className="feed-more-btn"
                     onClick={() => setVisibleViolations((n) => n + PAGE_SIZE)}
                   >
-                    Show 10 more
+                    Show 5 more
                   </button>
                 </div>
               )}

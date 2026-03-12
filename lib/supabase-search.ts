@@ -81,13 +81,16 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
 
 export type ViolationRow = {
   violation_description: string | null
+  violation_status: string | null
+  violation_date: string | null
+  violation_last_modified_date: string | null
   inspection_status: string | null
   inspection_category: string | null
   department_bureau: string | null
   violation_inspector_comments: string | null
   violation_ordinance: string | null
   inspection_number: string | null
-  violation_date: string | null
+  is_stop_work_order: boolean | null
 }
 
 export async function fetchProperty(normalizedAddress: string): Promise<{
@@ -119,7 +122,7 @@ export async function fetchViolations(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('violation_description, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, violation_date')
+      .select('violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .eq('address_normalized', normalizedAddress)
       .order('violation_date', { ascending: false })
 
