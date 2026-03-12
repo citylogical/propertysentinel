@@ -4,14 +4,10 @@ import HomeSearch from './components/HomeSearch'
 import HowItWorks from './components/HowItWorks'
 import LiveTimestamp from './components/LiveTimestamp'
 import AuthErrorBanner from './components/AuthErrorBanner'
-import AuthCodeRedirect from './components/AuthCodeRedirect'
 
 export default function Home() {
   return (
     <>
-      <Suspense fallback={null}>
-        <AuthCodeRedirect />
-      </Suspense>
       <nav className="landing-nav">
         <Link className="nav-brand" href="/">
           Property Sentinel

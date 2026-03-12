@@ -16,11 +16,13 @@ function LoginForm() {
     e.preventDefault()
     setError(null)
     const supabase = createClient()
+    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+    console.log('[signInWithOtp] emailRedirectTo:', emailRedirectTo)
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo,
       },
     })
     if (err) {
