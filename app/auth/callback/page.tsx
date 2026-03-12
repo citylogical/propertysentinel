@@ -5,11 +5,30 @@ import { useSearchParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
+function redirectToHomeWithAuthError(kind: 'expired' | 'denied' = 'expired') {
+  if (typeof window === 'undefined') return
+  window.location.replace(`${window.location.origin}/?auth_error=${kind}`)
+}
+
+function getHashParams(): URLSearchParams {
+  if (typeof window === 'undefined') return new URLSearchParams()
+  const hash = window.location.hash.replace(/^#/, '')
+  return new URLSearchParams(hash)
+}
+
 function CallbackContent() {
   const searchParams = useSearchParams()
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
+  const [status, setStatus] = useState<'loading' | 'ok'>('loading')
 
   useEffect(() => {
+    const hashParams = getHashParams()
+    const hashError = hashParams.get('error')
+    if (hashError) {
+      const kind = hashError === 'access_denied' ? 'denied' : 'expired'
+      redirectToHomeWithAuthError(kind)
+      return
+    }
+
     const next = searchParams.get('next') ?? '/'
     const code = searchParams.get('code')
 
@@ -17,7 +36,7 @@ function CallbackContent() {
       if (code) {
         const { data, error } = await supabaseBrowser.auth.exchangeCodeForSession(code)
         if (error) {
-          setStatus('error')
+          redirectToHomeWithAuthError('expired')
           return
         }
         if (data.session) {
@@ -39,7 +58,7 @@ function CallbackContent() {
               refresh_token,
             })
             if (error) {
-              setStatus('error')
+              redirectToHomeWithAuthError('expired')
               return
             }
             if (data.session) {
@@ -58,14 +77,6 @@ function CallbackContent() {
 
     handleCallback()
   }, [searchParams])
-
-  if (status === 'error') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f2f0eb]">
-        <p className="text-[#1a1a1a]">Something went wrong signing you in. Try again.</p>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f2f0eb]">
