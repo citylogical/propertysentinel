@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
 function CallbackContent() {
   const searchParams = useSearchParams()
@@ -14,10 +15,17 @@ function CallbackContent() {
 
     async function handleCallback() {
       if (code) {
-        const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code)
+        const { data, error } = await supabaseBrowser.auth.exchangeCodeForSession(code)
         if (error) {
           setStatus('error')
           return
+        }
+        if (data.session) {
+          const zip = getPendingZipFromCookie()
+          if (zip) {
+            await upsertSubscriberOnSession(data.session, zip)
+            clearPendingZipCookie()
+          }
         }
       } else {
         const hash = typeof window !== 'undefined' ? window.location.hash : ''
@@ -26,13 +34,20 @@ function CallbackContent() {
           const access_token = params.get('access_token')
           const refresh_token = params.get('refresh_token')
           if (access_token && refresh_token) {
-            const { error } = await supabaseBrowser.auth.setSession({
+            const { data, error } = await supabaseBrowser.auth.setSession({
               access_token,
               refresh_token,
             })
             if (error) {
               setStatus('error')
               return
+            }
+            if (data.session) {
+              const zip = getPendingZipFromCookie()
+              if (zip) {
+                await upsertSubscriberOnSession(data.session, zip)
+                clearPendingZipCookie()
+              }
             }
           }
         }

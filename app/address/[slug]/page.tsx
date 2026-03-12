@@ -46,8 +46,15 @@ export default async function AddressPage({ params }: PageProps) {
   const complaints = complaintsResult.complaints ?? []
   const violations = violationsResult.violations ?? []
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
-  const violationsOpenCount = violations.filter((v) => (v.violation_status ?? '').toUpperCase() === 'OPEN').length
-  const violationsCompliedCount = violations.filter((v) => (v.violation_status ?? '').toUpperCase() === 'COMPLIED').length
+  // Use violation_status for OPEN/COMPLIED; fallback to inspection_status if violation_status is empty (e.g. OPEN/FAILED → open, COMPLIED/PASSED/CLOSED → complied)
+  const violationsOpenCount = violations.filter((v) => {
+    const vs = (v.violation_status ?? v.inspection_status ?? '').toUpperCase()
+    return vs === 'OPEN' || vs === 'FAILED'
+  }).length
+  const violationsCompliedCount = violations.filter((v) => {
+    const vs = (v.violation_status ?? v.inspection_status ?? '').toUpperCase()
+    return vs === 'COMPLIED' || vs === 'PASSED' || vs === 'CLOSED'
+  }).length
   const firstComplaint = complaints[0] ?? null
 
   // PIN: property first, then first complaint
@@ -114,7 +121,9 @@ export default async function AddressPage({ params }: PageProps) {
             <div className="stat">
               <div className="stat-label">Violations</div>
               <div className={`stat-val ${violationsOpenCount > 0 ? 'amber' : ''}`}>{violationsOpenCount}</div>
-              <div className="stat-fraction"><strong>{violationsOpenCount}</strong> open / <strong>{violationsCompliedCount}</strong> complied</div>
+              <div className="stat-fraction">
+                <strong>{violationsOpenCount}</strong> open / <strong>{violationsCompliedCount}</strong> complied
+              </div>
             </div>
             <div className="stat">
               <div className="stat-label">Last Permit</div>

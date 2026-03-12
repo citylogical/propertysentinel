@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import type { ComplaintRow, ViolationRow } from '@/lib/supabase-search'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import type { Session } from '@supabase/supabase-js'
+import { setPendingZipCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
 const LOCK_DAYS = 60
 const PAGE_SIZE = 5
@@ -88,12 +89,23 @@ export default function PropertyFeed({
   const [zipErrorViolations, setZipErrorViolations] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
+  const [zipForUnlock311, setZipForUnlock311] = useState<string | null>(null)
+  const [zipForUnlockViolations, setZipForUnlockViolations] = useState<string | null>(null)
 
   useEffect(() => {
     supabaseBrowser.auth.getSession().then(({ data: { session: s } }) => setSession(s))
     const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!session) return
+    const zip = getPendingZipFromCookie()
+    if (!zip) return
+    upsertSubscriberOnSession(session, zip).then(() => {
+      clearPendingZipCookie()
+    })
+  }, [session])
 
   const hasSession = !!session
 
@@ -117,6 +129,7 @@ export default function PropertyFeed({
     const entered = (input ?? '').replace(/\D/g, '')
     if (entered.length === 5 && expected && entered === expected) {
       setZipError311(false)
+      setZipForUnlock311(entered)
       setUnlockStep311('email')
     } else {
       setZipError311(true)
@@ -130,6 +143,7 @@ export default function PropertyFeed({
     const entered = (input ?? '').replace(/\D/g, '')
     if (entered.length === 5 && expected && entered === expected) {
       setZipErrorViolations(false)
+      setZipForUnlockViolations(entered)
       setUnlockStepViolations('email')
     } else {
       setZipErrorViolations(true)
@@ -140,6 +154,8 @@ export default function PropertyFeed({
     e.preventDefault()
     const input = (e.currentTarget.querySelector('input[name="email"]') as HTMLInputElement)?.value?.trim()
     if (!input || !input.includes('@')) return
+    const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
+    if (zip) setPendingZipCookie(zip)
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://propertysentinel.io'
     const next = `/address/${currentSlug}`
     const { error } = await supabaseBrowser.auth.signInWithOtp({
