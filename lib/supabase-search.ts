@@ -174,47 +174,67 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
   }
 }
 
-export type AssessedValueRow = {
-  board_tot: number | null
+export type AssessedValueRawRow = {
   tax_year: number | string | null
+  board_tot: number | null
+  certified_tot: number | null
+  mailed_tot: number | null
 }
 
-/** Fetches most recent assessed value by PIN. Tries canonical PIN first, then with/without dashes if no result. */
+export type AssessedValueResult = {
+  displayValue: number
+  valueType: 'board' | 'certified' | 'mailed'
+  taxYear: number
+}
+
+/**
+ * Fetches best available assessed value by PIN (no dashes).
+ * Uses COALESCE hierarchy: board_tot → certified_tot → mailed_tot across the most recent years.
+ */
 export async function fetchAssessedValue(pin: string | null): Promise<{
-  assessed: AssessedValueRow | null
+  assessed: AssessedValueResult | null
   error: string | null
 }> {
   if (pin == null || String(pin).trim() === '') {
     return { assessed: null, error: null }
   }
-  const canonical = String(pin).trim()
-
-  const tryPin = async (p: string): Promise<AssessedValueRow | null> => {
-    const { data, error } = await supabase
-      .from('assessed_values')
-      .select('board_tot, tax_year')
-      .eq('pin', p)
-      .order('tax_year', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return data as AssessedValueRow | null
-  }
+  const pinNoDashes = String(pin).trim().replace(/-/g, '')
+  if (!pinNoDashes) return { assessed: null, error: null }
 
   try {
-    let row = await tryPin(canonical)
-    if (row == null && canonical.includes('-')) {
-      const noDashes = canonical.replace(/-/g, '')
-      if (noDashes !== canonical) row = await tryPin(noDashes)
+    const { data, error } = await supabase
+      .from('assessed_values')
+      .select('tax_year, board_tot, certified_tot, mailed_tot')
+      .eq('pin', pinNoDashes)
+      .order('tax_year', { ascending: false })
+      .limit(5)
+
+    if (error) throw new Error(error.message)
+
+    const rows = (data ?? []) as AssessedValueRawRow[]
+    const best = rows.find(
+      (row) =>
+        row.board_tot != null || row.certified_tot != null || row.mailed_tot != null
+    )
+
+    if (best == null) return { assessed: null, error: null }
+
+    const displayValue = (best.board_tot ?? best.certified_tot ?? best.mailed_tot) as number
+    const valueType: 'board' | 'certified' | 'mailed' =
+      best.board_tot != null ? 'board' : best.certified_tot != null ? 'certified' : 'mailed'
+    const taxYear =
+      typeof best.tax_year === 'number'
+        ? best.tax_year
+        : parseInt(String(best.tax_year ?? ''), 10)
+
+    if (!Number.isFinite(displayValue) || !Number.isFinite(taxYear)) {
+      return { assessed: null, error: null }
     }
-    if (row == null && !canonical.includes('-') && canonical.length >= 10) {
-      const withDashes =
-        canonical.length === 14
-          ? `${canonical.slice(0, 2)}-${canonical.slice(2, 4)}-${canonical.slice(4, 7)}-${canonical.slice(7, 11)}-${canonical.slice(11)}`
-          : canonical
-      if (withDashes !== canonical) row = await tryPin(withDashes)
+
+    return {
+      assessed: { displayValue, valueType, taxYear },
+      error: null,
     }
-    return { assessed: row, error: null }
   } catch (e) {
     return {
       assessed: null,

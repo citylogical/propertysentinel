@@ -79,14 +79,11 @@ export default async function AddressPage({ params }: PageProps) {
   const assessedResult = await fetchAssessedValue(displayPin)
   const assessed = assessedResult.assessed
   const assessedValueFormatted =
-    assessed?.board_tot != null && Number.isFinite(Number(assessed.board_tot))
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Number(assessed.board_tot))
+    assessed != null && Number.isFinite(assessed.displayValue)
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(assessed.displayValue)
       : null
-  const assessedYear =
-    assessed?.tax_year != null
-      ? (typeof assessed.tax_year === 'number' ? assessed.tax_year : parseInt(String(assessed.tax_year), 10))
-      : null
-  const assessedYearDisplay = assessedYear != null && !Number.isNaN(assessedYear) ? `${assessedYear} assessed` : null
+  const assessedSubtext =
+    assessed != null ? `${assessed.taxYear} · ${assessed.valueType}` : null
 
   // Ward: from first complaint (properties table not reliable)
   const displayWard =
@@ -157,8 +154,8 @@ export default async function AddressPage({ params }: PageProps) {
                 <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`}>
                   {assessedValueFormatted ?? 'N/A'}
                 </span>
-                {assessedYearDisplay != null && (
-                  <span className="stat-val-sub">{assessedYearDisplay}</span>
+                {assessedSubtext != null && (
+                  <span className="stat-val-sub">{assessedSubtext}</span>
                 )}
               </div>
             </div>
