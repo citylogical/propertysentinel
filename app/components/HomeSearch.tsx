@@ -106,6 +106,10 @@ export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps
 
   useEffect(() => {
     if (!apiKey) return
+    /* When used in drawer (hideSubmitButton), allow re-init so autocomplete attaches after drawer opens */
+    if (hideSubmitButton) {
+      homeSearchAutocompleteInited = false
+    }
     const run = () => {
       if (initedRef.current) return
       const input = document.getElementById(INPUT_ID)
@@ -119,7 +123,7 @@ export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps
       clearTimeout(t)
       homeSearchAutocompleteInited = false
     }
-  }, [apiKey])
+  }, [apiKey, hideSubmitButton])
 
   return (
     <>

@@ -227,6 +227,11 @@ body {
   font-family: "DM Sans", system-ui, sans-serif;
 }
 
+/* Google Places autocomplete dropdown: above mobile nav drawer (z-index 9999) */
+.pac-container {
+  z-index: 10000 !important;
+}
+
 .search-btn:disabled {
   opacity: 0.8;
   cursor: not-allowed;

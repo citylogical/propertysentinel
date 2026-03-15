@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import HomeSearch from '@/app/components/HomeSearch'
 import type { Session } from '@supabase/supabase-js'
@@ -14,6 +15,9 @@ type MobileNavDrawerProps = {
 }
 
 export default function MobileNavDrawer({ open, onClose, apiKey, session }: MobileNavDrawerProps) {
+  const pathname = usePathname()
+  const isHomepage = pathname === '/'
+
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden'
@@ -34,7 +38,7 @@ export default function MobileNavDrawer({ open, onClose, apiKey, session }: Mobi
       aria-modal="true"
       aria-label="Menu"
     >
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full overflow-visible">
         {/* Close row: same height as menu rows (56px), × right-aligned */}
         <div className="flex items-center justify-end min-h-[56px] px-4 shrink-0 border-b border-gray-200">
           <button
@@ -46,54 +50,56 @@ export default function MobileNavDrawer({ open, onClose, apiKey, session }: Mobi
             ×
           </button>
         </div>
-        <div className="flex-1 overflow-auto px-4 pb-6">
-          {/* Search row - aligns with homepage search (pin icon + padding) */}
-          <div className="min-h-[56px] flex items-center border-b border-gray-200 mb-0">
-            <div className="w-full">
-              <HomeSearch apiKey={apiKey} hideSubmitButton />
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-6 nav-drawer-scroll">
+          {/* Search row: hide on homepage only; other pages show it */}
+          {!isHomepage && (
+            <div className="min-h-[56px] flex items-center border-b border-gray-200 mb-0">
+              <div className="w-full">
+                <HomeSearch apiKey={apiKey} hideSubmitButton />
+              </div>
             </div>
-          </div>
-          {/* Menu items: left-aligned with search placeholder text, chevron + label */}
+          )}
+          {/* Menu items: chevron at pin left (36px), label at "E" (8px gap + 19px = label starts at 69px) */}
           <Link
             href="/tax-appeals"
-            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
             onClick={onClose}
           >
-            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
             Tax Appeals
           </Link>
           <Link
             href="/about"
-            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
             onClick={onClose}
           >
-            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
             About
           </Link>
           <Link
             href="/contact"
-            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
             onClick={onClose}
           >
-            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
             Contact
           </Link>
           {session ? (
             <Link
               href="/profile"
-              className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+              className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
               onClick={onClose}
             >
-              <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+              <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
               My Account
             </Link>
           ) : (
             <Link
               href="/login"
-              className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+              className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
               onClick={onClose}
             >
-              <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+              <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
               Log In
             </Link>
           )}
