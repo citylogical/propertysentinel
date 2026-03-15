@@ -232,6 +232,13 @@ body {
   z-index: 10000 !important;
 }
 
+/* Desktop nav menu dropdown (14px Inter, same as spec) */
+.nav-menu-dropdown,
+.nav-menu-dropdown-item {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+}
+
 .search-btn:disabled {
   opacity: 0.8;
   cursor: not-allowed;

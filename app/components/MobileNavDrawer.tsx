@@ -33,7 +33,7 @@ export default function MobileNavDrawer({ open, onClose, apiKey, session }: Mobi
 
   const drawer = (
     <div
-      className="fixed inset-0 z-[9999] bg-white nav-drawer"
+      className="fixed inset-0 z-[9999] bg-white nav-drawer md:hidden"
       role="dialog"
       aria-modal="true"
       aria-label="Menu"

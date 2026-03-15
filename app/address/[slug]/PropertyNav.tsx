@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { addressToSlug } from '@/lib/address-slug'
 import type { Session } from '@supabase/supabase-js'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
+import NavMenuDropdown from '@/app/components/NavMenuDropdown'
+import HamburgerIcon from '@/app/components/HamburgerIcon'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
 
@@ -70,10 +72,9 @@ function initNavAutocomplete(): void {
 type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
 
   useEffect(() => {
@@ -84,14 +85,15 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
   }, [])
 
   useEffect(() => {
+    if (!menuOpen) return
     const close = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
       }
     }
     document.addEventListener('click', close)
     return () => document.removeEventListener('click', close)
-  }, [])
+  }, [menuOpen])
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -130,16 +132,13 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
           type="button"
           className="nav-hamburger md:hidden flex items-center justify-center w-10 h-10 text-white border-0 bg-transparent cursor-pointer p-0"
           aria-label="Open menu"
-          onClick={() => setDrawerOpen(true)}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((o) => !o)}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+          <HamburgerIcon />
         </button>
 
-        {/* Desktop: search + about + login */}
+        {/* Desktop: search + hamburger (dropdown replaces About + Profile) */}
         <div className="nav-right hidden md:flex">
           <div className="nav-search-wrap">
             <svg
@@ -166,73 +165,30 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
               />
             </form>
           </div>
-          <div
-            className={`nav-dropdown ${dropdownOpen ? 'open' : ''}`}
-            ref={dropdownRef}
-          >
+          <div ref={menuRef} className="relative flex items-center">
             <button
               type="button"
-              className="nav-dropdown-btn"
-              onClick={() => setDropdownOpen((o) => !o)}
+              className="nav-hamburger flex items-center justify-center w-10 h-10 text-white border-0 bg-transparent cursor-pointer p-0"
+              aria-label="Open menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
             >
-              About
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <HamburgerIcon />
             </button>
-            <div className="nav-dropdown-panel">
-              <Link className="nav-dropdown-row" href="/" onClick={() => setDropdownOpen(false)}>
-                <div className="nav-dropdown-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <polyline points="9 22 9 12 15 12 15 22" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="nav-dropdown-label">Property Sentinel</div>
-                  <div className="nav-dropdown-desc">Real-time monitoring for Chicago landlords and STR operators</div>
-                </div>
-              </Link>
-              <Link className="nav-dropdown-row" href="/#how" onClick={() => setDropdownOpen(false)}>
-                <div className="nav-dropdown-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="nav-dropdown-label">How it works</div>
-                  <div className="nav-dropdown-desc">Where the data comes from and what we monitor</div>
-                </div>
-              </Link>
-              <Link className="nav-dropdown-row" href="/#contact" onClick={() => setDropdownOpen(false)}>
-                <div className="nav-dropdown-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="nav-dropdown-label">Contact</div>
-                  <div className="nav-dropdown-desc">Questions, partnerships, or press inquiries</div>
-                </div>
-              </Link>
-            </div>
+            {menuOpen && (
+              <NavMenuDropdown
+                onClose={() => setMenuOpen(false)}
+                apiKey={apiKey}
+                session={session}
+              />
+            )}
           </div>
-          {session ? (
-            <Link href="/profile" className="nav-auth-btn">
-              Profile
-            </Link>
-          ) : (
-            <Link href="/login" className="nav-auth-btn">
-              Login
-            </Link>
-          )}
         </div>
       </nav>
 
       <MobileNavDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
         apiKey={apiKey}
         session={session}
       />
