@@ -253,7 +253,8 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
             <div className="flex justify-end p-4 shrink-0">
               <button
                 type="button"
-                className="flex items-center justify-center w-10 h-10 text-[#1a1a1a] border-0 bg-transparent cursor-pointer rounded hover:bg-gray-100 aria-label="Close menu"
+                className="flex items-center justify-center w-10 h-10 text-[#1a1a1a] border-0 bg-transparent cursor-pointer rounded hover:bg-gray-100"
+                aria-label="Close menu"
                 onClick={() => setDrawerOpen(false)}
               >
                 <span className="text-2xl leading-none font-sans">×</span>
