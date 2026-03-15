@@ -57,11 +57,14 @@ function getStreetAndZip(place: PlaceResult): { street: string; zip: string | nu
   return { street, zip }
 }
 
+let homeSearchAutocompleteInited = false
 function initAutocomplete(): void {
   const input = document.getElementById(INPUT_ID) as HTMLInputElement | null
   const form = document.getElementById(FORM_ID) as HTMLFormElement | null
   const zipInput = document.getElementById('home-search-zip') as HTMLInputElement | null
   if (!input || !form || !window.google?.maps?.places?.Autocomplete) return
+  if (homeSearchAutocompleteInited) return
+  homeSearchAutocompleteInited = true
 
   const autocomplete = new window.google.maps.places.Autocomplete(input, {
     types: ['address'],
@@ -88,6 +91,7 @@ type HomeSearchProps = {
 
 export default function HomeSearch({ apiKey }: HomeSearchProps) {
   const registeredRef = useRef(false)
+  const initedRef = useRef(false)
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -95,6 +99,23 @@ export default function HomeSearch({ apiKey }: HomeSearchProps) {
     window.initAutocomplete = initAutocomplete
     return () => {
       delete window.initAutocomplete
+    }
+  }, [apiKey])
+
+  useEffect(() => {
+    if (!apiKey) return
+    const run = () => {
+      if (initedRef.current) return
+      const input = document.getElementById(INPUT_ID)
+      if (!input || !window.google?.maps?.places?.Autocomplete) return
+      initedRef.current = true
+      initAutocomplete()
+    }
+    run()
+    const t = setTimeout(run, 500)
+    return () => {
+      clearTimeout(t)
+      homeSearchAutocompleteInited = false
     }
   }, [apiKey])
 
