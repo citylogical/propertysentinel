@@ -19,10 +19,12 @@ export default function MobileNavDrawer({ open, onClose, apiKey, session }: Mobi
   const isHomepage = pathname === '/'
 
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
+    if (!open) {
       document.body.style.overflow = ''
+      return
+    }
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      document.body.style.overflow = 'hidden'
     }
     return () => {
       document.body.style.overflow = ''

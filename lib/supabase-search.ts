@@ -173,3 +173,52 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
     }
   }
 }
+
+export type AssessedValueRow = {
+  board_tot: number | null
+  tax_year: number | string | null
+}
+
+/** Fetches most recent assessed value by PIN. Tries canonical PIN first, then with/without dashes if no result. */
+export async function fetchAssessedValue(pin: string | null): Promise<{
+  assessed: AssessedValueRow | null
+  error: string | null
+}> {
+  if (pin == null || String(pin).trim() === '') {
+    return { assessed: null, error: null }
+  }
+  const canonical = String(pin).trim()
+
+  const tryPin = async (p: string): Promise<AssessedValueRow | null> => {
+    const { data, error } = await supabase
+      .from('assessed_values')
+      .select('board_tot, tax_year')
+      .eq('pin', p)
+      .order('tax_year', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return data as AssessedValueRow | null
+  }
+
+  try {
+    let row = await tryPin(canonical)
+    if (row == null && canonical.includes('-')) {
+      const noDashes = canonical.replace(/-/g, '')
+      if (noDashes !== canonical) row = await tryPin(noDashes)
+    }
+    if (row == null && !canonical.includes('-') && canonical.length >= 10) {
+      const withDashes =
+        canonical.length === 14
+          ? `${canonical.slice(0, 2)}-${canonical.slice(2, 4)}-${canonical.slice(4, 7)}-${canonical.slice(7, 11)}-${canonical.slice(11)}`
+          : canonical
+      if (withDashes !== canonical) row = await tryPin(withDashes)
+    }
+    return { assessed: row, error: null }
+  } catch (e) {
+    return {
+      assessed: null,
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}

@@ -41,7 +41,16 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
         <Link className="nav-brand" href="/">
           Property Sentinel
         </Link>
-        <div ref={menuRef} className="relative flex items-center">
+        <div
+          ref={menuRef}
+          className="relative flex items-center"
+          onMouseEnter={() => {
+            if (typeof window !== 'undefined' && window.innerWidth >= 769) setMenuOpen(true)
+          }}
+          onMouseLeave={() => {
+            if (typeof window !== 'undefined' && window.innerWidth >= 769) setMenuOpen(false)
+          }}
+        >
           <button
             type="button"
             className="flex items-center justify-center w-10 h-10 text-white border-0 bg-transparent cursor-pointer p-0 hover:opacity-100 opacity-90 transition-opacity nav-hamburger-btn"

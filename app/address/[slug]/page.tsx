@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
-import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits } from '@/lib/supabase-search'
+import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits, fetchAssessedValue } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
@@ -68,33 +68,25 @@ export default async function AddressPage({ params }: PageProps) {
         })()
       : 'Unknown'
 
-  const lastRoofPermit = permits.find((p) => p.is_roof_permit === true) ?? null
-  const roofAgeYears =
-    lastRoofPermit?.issue_date != null
-      ? (() => {
-          const d = new Date(lastRoofPermit.issue_date)
-          if (Number.isNaN(d.getTime())) return null
-          const now = new Date()
-          return Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-        })()
-      : null
-  const roofYear =
-    lastRoofPermit?.issue_date != null
-      ? (() => {
-          const d = new Date(lastRoofPermit.issue_date)
-          return Number.isNaN(d.getTime()) ? null : d.getFullYear()
-        })()
-      : null
-  const roofAgeDisplay = roofAgeYears != null ? `${roofAgeYears} yrs` : 'Unknown'
-  const roofYearDisplay = roofYear != null ? `~${roofYear}` : null
-
-  // PIN: property first, then first complaint
+  // PIN: property first, then first complaint (needed for assessed value fetch)
   const displayPin =
     (property?.pin != null && String(property.pin).trim() !== '')
       ? String(property.pin).trim()
       : (firstComplaint?.pin != null && String(firstComplaint.pin).trim() !== '')
         ? String(firstComplaint.pin).trim()
         : null
+
+  const assessedResult = await fetchAssessedValue(displayPin)
+  const assessed = assessedResult.assessed
+  const assessedValueFormatted =
+    assessed?.board_tot != null && Number.isFinite(Number(assessed.board_tot))
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Number(assessed.board_tot))
+      : null
+  const assessedYear =
+    assessed?.tax_year != null
+      ? (typeof assessed.tax_year === 'number' ? assessed.tax_year : parseInt(String(assessed.tax_year), 10))
+      : null
+  const assessedYearDisplay = assessedYear != null && !Number.isNaN(assessedYear) ? `${assessedYear} assessed` : null
 
   // Ward: from first complaint (properties table not reliable)
   const displayWard =
@@ -142,18 +134,17 @@ export default async function AddressPage({ params }: PageProps) {
       <div className="prop-page">
         <div className="profile">
           <div className="stat-row">
-            <div className="stat">
+            <div className="stat stat-sub-bottom">
               <div className="stat-label">Complaints</div>
               <div className={`stat-val ${complaintsOpenCount > 0 ? 'red' : ''}`}>{complaintsOpenCount}</div>
-              <div className="stat-fraction">
-                open / <strong>{complaints.length}</strong> total
-              </div>
+              <div className="stat-fraction">open</div>
             </div>
-            <div className="stat">
+            <div className="stat stat-sub-bottom">
               <div className="stat-label">Violations</div>
               <div className={`stat-val ${violationsOpenCount > 0 ? 'amber' : ''}`}>{violationsOpenCount}</div>
               <div className="stat-fraction">
-                <strong>{violationsOpenCount}</strong> open / <strong>{violationsCompliedCount}</strong> complied
+                <span className="block">open</span>
+                <span className="block">{violationsCompliedCount} complied</span>
               </div>
             </div>
             <div className="stat">
@@ -161,11 +152,13 @@ export default async function AddressPage({ params }: PageProps) {
               <span className="stat-val stat-val-muted">{lastPermitDisplay}</span>
             </div>
             <div className="stat">
-              <div className="stat-label">Roof Age Est.</div>
+              <div className="stat-label">Assessed Value</div>
               <div className="stat-val-wrap">
-                <span className="stat-val stat-val-muted">{roofAgeDisplay}</span>
-                {roofYearDisplay != null && (
-                  <span className="stat-val-sub">{roofYearDisplay}</span>
+                <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`}>
+                  {assessedValueFormatted ?? 'N/A'}
+                </span>
+                {assessedYearDisplay != null && (
+                  <span className="stat-val-sub">{assessedYearDisplay}</span>
                 )}
               </div>
             </div>

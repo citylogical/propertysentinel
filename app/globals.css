@@ -232,11 +232,11 @@ body {
   z-index: 10000 !important;
 }
 
-/* Desktop nav menu dropdown (14px Inter, same as spec) */
+/* Desktop nav menu dropdown (15px Inter) */
 .nav-menu-dropdown,
 .nav-menu-dropdown-item {
   font-family: "Inter", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .search-btn:disabled {
@@ -727,6 +727,17 @@ body {
   padding: 10px 10px 8px;
 }
 
+.address-page .stat-sub-bottom {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+
+.address-page .stat-sub-bottom .stat-fraction {
+  margin-top: auto;
+  padding-top: 2px;
+}
+
 .address-page .stat-label {
   font-family: var(--mono);
   font-size: 8px;
@@ -748,7 +759,8 @@ body {
   color: var(--red);
 }
 
-.address-page .stat-val.amber {
+.address-page .stat-val.amber,
+.address-page .stat-val-amber {
   color: var(--amber);
 }
 
