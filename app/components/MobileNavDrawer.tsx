@@ -1,0 +1,109 @@
+'use client'
+
+import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import Link from 'next/link'
+import HomeSearch from '@/app/components/HomeSearch'
+import type { Session } from '@supabase/supabase-js'
+
+type MobileNavDrawerProps = {
+  open: boolean
+  onClose: () => void
+  apiKey: string | undefined
+  session: Session | null
+}
+
+export default function MobileNavDrawer({ open, onClose, apiKey, session }: MobileNavDrawerProps) {
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [open])
+
+  if (!open) return null
+
+  const drawer = (
+    <div
+      className="fixed inset-0 z-[9999] bg-white nav-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menu"
+    >
+      <div className="flex flex-col h-full">
+        {/* Close row: same height as menu rows (56px), × right-aligned */}
+        <div className="flex items-center justify-end min-h-[56px] px-4 shrink-0 border-b border-gray-200">
+          <button
+            type="button"
+            className="flex items-center justify-center w-10 h-10 text-[#374151] border-0 bg-transparent cursor-pointer rounded hover:bg-gray-100 font-bold text-xl nav-drawer-close-btn"
+            aria-label="Close menu"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto px-4 pb-6">
+          {/* Search row - aligns with homepage search (pin icon + padding) */}
+          <div className="min-h-[56px] flex items-center border-b border-gray-200 mb-0">
+            <div className="w-full">
+              <HomeSearch apiKey={apiKey} hideSubmitButton />
+            </div>
+          </div>
+          {/* Menu items: left-aligned with search placeholder text, chevron + label */}
+          <Link
+            href="/tax-appeals"
+            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            onClick={onClose}
+          >
+            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            Tax Appeals
+          </Link>
+          <Link
+            href="/about"
+            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            onClick={onClose}
+          >
+            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            About
+          </Link>
+          <Link
+            href="/contact"
+            className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+            onClick={onClose}
+          >
+            <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+            Contact
+          </Link>
+          {session ? (
+            <Link
+              href="/profile"
+              className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+              onClick={onClose}
+            >
+              <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+              My Account
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center min-h-[56px] pl-[53px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
+              onClick={onClose}
+            >
+              <span className="text-[14px] text-[#9ca3af] mr-2 select-none">&gt;</span>
+              Log In
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  if (typeof document !== 'undefined') {
+    return createPortal(drawer, document.body)
+  }
+  return null
+}

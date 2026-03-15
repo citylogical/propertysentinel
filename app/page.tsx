@@ -1,23 +1,14 @@
-import Link from 'next/link'
 import { Suspense } from 'react'
 import HomeSearch from './components/HomeSearch'
 import HowItWorks from './components/HowItWorks'
 import LiveTimestamp from './components/LiveTimestamp'
 import AuthErrorBanner from './components/AuthErrorBanner'
+import LandingNav from './components/LandingNav'
 
 export default function Home() {
   return (
     <>
-      <nav className="landing-nav">
-        <Link className="nav-brand" href="/">
-          Property Sentinel
-        </Link>
-        <button type="button" className="nav-menu-btn" aria-label="Menu">
-          <span />
-          <span />
-          <span />
-        </button>
-      </nav>
+      <LandingNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       <section className="landing-hero">
         <div className="hero-inner">

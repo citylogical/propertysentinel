@@ -87,9 +87,11 @@ function initAutocomplete(): void {
 
 type HomeSearchProps = {
   apiKey: string | undefined
+  /** When true, hide the submit button (e.g. for drawer); Enter key and autocomplete still trigger search */
+  hideSubmitButton?: boolean
 }
 
-export default function HomeSearch({ apiKey }: HomeSearchProps) {
+export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps) {
   const registeredRef = useRef(false)
   const initedRef = useRef(false)
 
@@ -128,7 +130,7 @@ export default function HomeSearch({ apiKey }: HomeSearchProps) {
         />
       )}
       <div className="search-wrap">
-        <form id={FORM_ID} action="/search" method="GET" className="search-bar">
+        <form id={FORM_ID} action="/search" method="GET" className={hideSubmitButton ? 'search-bar search-bar-no-btn' : 'search-bar'}>
           <input type="hidden" id="home-search-zip" name="zip" value="" />
           <div className="search-icon" aria-hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -140,13 +142,15 @@ export default function HomeSearch({ apiKey }: HomeSearchProps) {
             id={INPUT_ID}
             type="text"
             name="address"
-            required
+            required={!hideSubmitButton}
             placeholder="Enter a Chicago address…"
             autoComplete="off"
           />
-          <button type="submit" className="search-btn">
-            Search
-          </button>
+          {!hideSubmitButton && (
+            <button type="submit" className="search-btn">
+              Search
+            </button>
+          )}
         </form>
       </div>
     </>

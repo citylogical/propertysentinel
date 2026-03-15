@@ -212,6 +212,21 @@ body {
   background: var(--navy-mid);
 }
 
+.search-bar-no-btn input {
+  padding-right: 16px;
+}
+
+/* Mobile nav drawer: use same fonts as landing (Merriweather + DM Sans) */
+.nav-drawer {
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+.nav-drawer-close-btn {
+  font-family: "Merriweather", Georgia, serif;
+}
+.nav-drawer-item {
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
 .search-btn:disabled {
   opacity: 0.8;
   cursor: not-allowed;
@@ -408,8 +423,9 @@ body {
   z-index: 100;
 }
 
+/* Nav brand: match landing page font (Merriweather) on all pages */
 .address-page .prop-nav .nav-brand {
-  font-family: var(--serif);
+  font-family: "Merriweather", Georgia, serif;
   font-size: 20px;
   font-weight: 700;
   color: white;

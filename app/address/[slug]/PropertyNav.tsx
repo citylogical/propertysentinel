@@ -6,7 +6,7 @@ import { useRef, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { addressToSlug } from '@/lib/address-slug'
 import type { Session } from '@supabase/supabase-js'
-import HomeSearch from '@/app/components/HomeSearch'
+import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
 
@@ -92,17 +92,6 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
     document.addEventListener('click', close)
     return () => document.removeEventListener('click', close)
   }, [])
-
-  useEffect(() => {
-    if (drawerOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [drawerOpen])
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -241,73 +230,12 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
         </div>
       </nav>
 
-      {/* Mobile drawer overlay */}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-[200] bg-white md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Menu"
-        >
-          <div className="flex flex-col h-full">
-            <div className="flex justify-end p-4 shrink-0">
-              <button
-                type="button"
-                className="flex items-center justify-center w-10 h-10 text-[#1a1a1a] border-0 bg-transparent cursor-pointer rounded hover:bg-gray-100"
-                aria-label="Close menu"
-                onClick={() => setDrawerOpen(false)}
-              >
-                <span className="text-2xl leading-none font-sans">×</span>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto px-4 pb-6">
-              <div className="min-h-[56px] flex items-center border-b border-gray-200 mb-1">
-                <div className="w-full">
-                  <HomeSearch apiKey={apiKey} />
-                </div>
-              </div>
-              <Link
-                href="/tax-appeals"
-                className="flex items-center min-h-[56px] px-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 font-sans"
-                onClick={() => setDrawerOpen(false)}
-              >
-                Tax Appeals
-              </Link>
-              <Link
-                href="/about"
-                className="flex items-center min-h-[56px] px-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 font-sans"
-                onClick={() => setDrawerOpen(false)}
-              >
-                About
-              </Link>
-              <Link
-                href="/contact"
-                className="flex items-center min-h-[56px] px-0 py-4 text-base font-normal text-[#1a1a1a] border-b border-gray-200 no-underline hover:bg-gray-50 font-sans"
-                onClick={() => setDrawerOpen(false)}
-              >
-                Contact
-              </Link>
-              {session ? (
-                <Link
-                  href="/profile"
-                  className="flex items-center min-h-[56px] px-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 font-sans"
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  My Account
-                </Link>
-              ) : (
-                <Link
-                  href="/login"
-                  className="flex items-center min-h-[56px] px-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 font-sans"
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  Log In
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <MobileNavDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        apiKey={apiKey}
+        session={session}
+      />
     </>
   )
 }
