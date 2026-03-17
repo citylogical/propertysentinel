@@ -28,6 +28,17 @@ export type PropertyRow = {
   zoning: string | null
 }
 
+/** Fields from property_chars_residential / property_chars_condo for property details card. */
+export type PropertyCharsRow = {
+  class_code?: string | null
+  units?: number | null
+  tax_year?: string | null
+  zoning?: string | null
+  community_area?: string | null
+  ward?: string | null
+  [key: string]: unknown
+}
+
 const DIRECTIONAL_ABBREV: [RegExp, string][] = [
   [/\bWEST\b/g, 'W'],
   [/\bEAST\b/g, 'E'],
@@ -67,6 +78,29 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
       .from('complaints_311')
       .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
       .eq('address_normalized', normalizedAddress)
+      .order('created_date', { ascending: false })
+
+    if (error) throw new Error(error.message)
+
+    return { complaints: (data as ComplaintRow[]) ?? [], error: null }
+  } catch (e) {
+    return {
+      complaints: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
+/** Complaints by PIN (use after resolving PIN from properties table). */
+export async function fetchComplaintsByPin(pin: string): Promise<{
+  complaints: ComplaintRow[]
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('complaints_311')
+      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
+      .eq('pin', pin)
       .order('created_date', { ascending: false })
 
     if (error) throw new Error(error.message)
@@ -130,10 +164,31 @@ export async function fetchViolations(addressNormalized: string): Promise<{
 
     if (error) throw new Error(error.message)
 
-    const rows = (data ?? []) as ViolationRow[]
-    console.log('[fetchViolations] addressNormalized:', addressNormalized, '| violation rows returned:', rows.length)
+    return { violations: (data ?? []) as ViolationRow[], error: null }
+  } catch (e) {
+    return {
+      violations: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
 
-    return { violations: rows, error: null }
+/** Violations by PIN (use after resolving PIN from properties table). */
+export async function fetchViolationsByPin(pin: string): Promise<{
+  violations: ViolationRow[]
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('violations')
+      .select('*')
+      .eq('pin', pin)
+      .order('violation_date', { ascending: false })
+      .limit(100)
+
+    if (error) throw new Error(error.message)
+
+    return { violations: (data ?? []) as ViolationRow[], error: null }
   } catch (e) {
     return {
       violations: [],
@@ -169,6 +224,53 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
   } catch (e) {
     return {
       permits: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
+/** Permits by PIN (use after resolving PIN from properties table). */
+export async function fetchPermitsByPin(pin: string): Promise<{
+  permits: PermitRow[]
+  error: string | null
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('permits')
+      .select('permit_type, permit_status, work_description, issue_date, permit_number, is_roof_permit')
+      .eq('pin', pin)
+      .order('issue_date', { ascending: false })
+
+    if (error) throw new Error(error.message)
+
+    return { permits: (data as PermitRow[]) ?? [], error: null }
+  } catch (e) {
+    return {
+      permits: [],
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
+/** Property details from property_chars_residential or property_chars_condo by PIN. */
+export async function fetchPropertyChars(pin: string): Promise<{
+  chars: PropertyCharsRow | null
+  error: string | null
+}> {
+  try {
+    const [resResidential, resCondo] = await Promise.all([
+      supabase.from('property_chars_residential').select('*').eq('pin', pin).limit(1).maybeSingle(),
+      supabase.from('property_chars_condo').select('*').eq('pin', pin).limit(1).maybeSingle(),
+    ])
+    const residential = resResidential.data as PropertyCharsRow | null
+    const condo = resCondo.data as PropertyCharsRow | null
+    if (resResidential.error) throw new Error(resResidential.error.message)
+    if (resCondo.error) throw new Error(resCondo.error.message)
+    const chars = residential ?? condo
+    return { chars, error: null }
+  } catch (e) {
+    return {
+      chars: null,
       error: e instanceof Error ? e.message : 'Unknown error',
     }
   }

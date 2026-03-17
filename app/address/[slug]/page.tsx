@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
-import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits, fetchAssessedValue } from '@/lib/supabase-search'
+import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits, fetchAssessedValue, fetchComplaintsByPin, fetchViolationsByPin, fetchPermitsByPin, fetchPropertyChars } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
@@ -36,20 +36,47 @@ export default async function AddressPage({ params }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  const [propertyResult, complaintsResult, permitsResult] = await Promise.all([
-    fetchProperty(normalizedAddress),
-    fetchComplaints(normalizedAddress),
-    fetchPermits(normalizedAddress),
-  ])
-
+  // STEP 1 — Address resolution: properties table is canonical (1.86M rows, address_normalized).
+  const propertyResult = await fetchProperty(normalizedAddress)
   const property = propertyResult.property
-  const complaints = complaintsResult.complaints ?? []
-  const addressNormalizedForViolations = complaints[0]?.address_normalized ?? normalizedAddress
-  const violationsResult = await fetchViolations(addressNormalizedForViolations)
-  const violations = violationsResult.violations ?? []
-  const permits = permitsResult.permits ?? []
+  const pin =
+    property?.pin != null && String(property.pin).trim() !== ''
+      ? String(property.pin).trim()
+      : null
+
+  // STEP 2 — Fan out from PIN (or fallback to address for complaints/violations/permits when no property).
+  let complaints: Awaited<ReturnType<typeof fetchComplaints>>['complaints'] = []
+  let violations: Awaited<ReturnType<typeof fetchViolations>>['violations'] = []
+  let permits: Awaited<ReturnType<typeof fetchPermits>>['permits'] = []
+  let propertyChars: Awaited<ReturnType<typeof fetchPropertyChars>>['chars'] = null
+
+  let assessed: Awaited<ReturnType<typeof fetchAssessedValue>>['assessed'] = null
+
+  if (pin) {
+    const [assessedResult, complaintsResult, violationsResult, permitsResult, charsResult] = await Promise.all([
+      fetchAssessedValue(pin),
+      fetchComplaintsByPin(pin),
+      fetchViolationsByPin(pin),
+      fetchPermitsByPin(pin),
+      fetchPropertyChars(pin),
+    ])
+    complaints = complaintsResult.complaints ?? []
+    violations = violationsResult.violations ?? []
+    permits = permitsResult.permits ?? []
+    propertyChars = charsResult.chars
+    assessed = assessedResult.assessed
+  } else {
+    const [complaintsResult, violationsResult, permitsResult] = await Promise.all([
+      fetchComplaints(normalizedAddress),
+      fetchViolations(normalizedAddress),
+      fetchPermits(normalizedAddress),
+    ])
+    complaints = complaintsResult.complaints ?? []
+    violations = violationsResult.violations ?? []
+    permits = permitsResult.permits ?? []
+  }
+
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
-  // Use violation_status for OPEN/COMPLIED; fallback to inspection_status if violation_status is empty (e.g. OPEN/FAILED → open, COMPLIED/PASSED/CLOSED → complied)
   const violationsOpenCount = violations.filter((v) => {
     const vs = (v.violation_status ?? v.inspection_status ?? '').toUpperCase()
     return vs === 'OPEN' || vs === 'FAILED'
@@ -68,16 +95,8 @@ export default async function AddressPage({ params }: PageProps) {
         })()
       : 'Unknown'
 
-  // PIN: property first, then first complaint (needed for assessed value fetch)
-  const displayPin =
-    (property?.pin != null && String(property.pin).trim() !== '')
-      ? String(property.pin).trim()
-      : (firstComplaint?.pin != null && String(firstComplaint.pin).trim() !== '')
-        ? String(firstComplaint.pin).trim()
-        : null
+  const displayPin = pin
 
-  const assessedResult = await fetchAssessedValue(displayPin)
-  const assessed = assessedResult.assessed
   const assessedValueFormatted =
     assessed != null && Number.isFinite(assessed.displayValue)
       ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(assessed.displayValue)
@@ -85,20 +104,33 @@ export default async function AddressPage({ params }: PageProps) {
   const assessedSubtext =
     assessed != null ? `${assessed.taxYear} · ${assessed.valueType}` : null
 
-  // Ward: from first complaint (properties table not reliable)
   const displayWard =
     firstComplaint?.ward != null && firstComplaint.ward !== ''
       ? String(firstComplaint.ward)
-      : null
+      : (property?.ward != null && String(property.ward).trim() !== '')
+        ? String(property.ward).trim()
+        : (propertyChars?.ward != null && String(propertyChars.ward).trim() !== '')
+          ? String(propertyChars.ward).trim()
+          : null
 
-  // Community Area: name from first complaint's community_area number (1–77)
-  const displayCommunityAreaName = getCommunityAreaName(firstComplaint?.community_area)
+  const displayCommunityAreaName =
+    getCommunityAreaName(firstComplaint?.community_area ?? null) ??
+    (property?.community_area != null && String(property.community_area).trim() !== ''
+      ? String(property.community_area).trim()
+      : null) ??
+    (propertyChars?.community_area != null && String(propertyChars.community_area).trim() !== ''
+      ? String(propertyChars.community_area).trim()
+      : null)
 
-  // ZIP: property table first, then parse from slug
   const displayZip =
     (property?.zip != null && String(property.zip).trim() !== '')
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
+
+  const displayClass = propertyChars?.class_code ?? property?.class_code
+  const displayUnits = propertyChars?.units ?? property?.units
+  const displayTaxYear = propertyChars?.tax_year ?? property?.tax_year
+  const displayZoning = propertyChars?.zoning ?? property?.zoning
 
   const addressBarMeta = [
     displayCommunityAreaName ?? property?.community_area ?? null,
@@ -178,19 +210,19 @@ export default async function AddressPage({ params }: PageProps) {
               </div>
               <div className="detail-row">
                 <span className="detail-key">Class</span>
-                <span className="detail-val na">{na(property?.class_code)}</span>
+                <span className="detail-val na">{na(displayClass)}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Units</span>
-                <span className="detail-val na">{na(property?.units)}</span>
+                <span className="detail-val na">{na(displayUnits)}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Tax Year</span>
-                <span className="detail-val na">{na(property?.tax_year)}</span>
+                <span className="detail-val na">{na(displayTaxYear)}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Zoning</span>
-                <span className="detail-val na">{na(property?.zoning)}</span>
+                <span className="detail-val na">{na(displayZoning)}</span>
               </div>
             </div>
           </div>
