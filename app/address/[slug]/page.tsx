@@ -1,6 +1,19 @@
 import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
-import { fetchProperty, fetchComplaints, fetchViolations, fetchPermits, fetchAssessedValue, fetchComplaintsByPin, fetchViolationsByPin, fetchPermitsByPin, fetchPropertyChars } from '@/lib/supabase-search'
+import {
+  fetchProperty,
+  fetchComplaints,
+  fetchViolations,
+  fetchPermits,
+  fetchAssessedValue,
+  fetchComplaintsByPin,
+  fetchViolationsByPin,
+  fetchPermitsByPin,
+  fetchPropertyCharsResidential,
+  fetchPropertyCharsCondo,
+  normalizePin,
+} from '@/lib/supabase-search'
+import type { PropertyCharsResidentialRow, PropertyCharsCondoRow } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
@@ -36,35 +49,45 @@ export default async function AddressPage({ params }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  // STEP 1 — Address resolution: properties table is canonical (1.86M rows, address_normalized).
+  // STEP 1 — Address resolution: properties table is canonical. Must fully resolve before any downstream queries.
   const propertyResult = await fetchProperty(normalizedAddress)
   const property = propertyResult.property
-  const pin =
+  const pin: string | null =
     property?.pin != null && String(property.pin).trim() !== ''
       ? String(property.pin).trim()
       : null
 
-  // STEP 2 — Fan out from PIN (or fallback to address for complaints/violations/permits when no property).
+  console.log('Resolved PIN:', pin, typeof pin)
+
+  // STEP 2 — Fan out from PIN only after PIN is confirmed non-null from properties. Do not run assessed_values, property_chars, complaints, violations, or permits until PIN is resolved.
   let complaints: Awaited<ReturnType<typeof fetchComplaints>>['complaints'] = []
   let violations: Awaited<ReturnType<typeof fetchViolations>>['violations'] = []
   let permits: Awaited<ReturnType<typeof fetchPermits>>['permits'] = []
-  let propertyChars: Awaited<ReturnType<typeof fetchPropertyChars>>['chars'] = null
-
+  let charsResidential: PropertyCharsResidentialRow | null = null
+  let charsCondo: PropertyCharsCondoRow | null = null
   let assessed: Awaited<ReturnType<typeof fetchAssessedValue>>['assessed'] = null
 
   if (pin) {
-    const [assessedResult, complaintsResult, violationsResult, permitsResult, charsResult] = await Promise.all([
-      fetchAssessedValue(pin),
-      fetchComplaintsByPin(pin),
-      fetchViolationsByPin(pin),
-      fetchPermitsByPin(pin),
-      fetchPropertyChars(pin),
-    ])
-    complaints = complaintsResult.complaints ?? []
-    violations = violationsResult.violations ?? []
-    permits = permitsResult.permits ?? []
-    propertyChars = charsResult.chars
-    assessed = assessedResult.assessed
+    const normalizedPin = normalizePin(pin)
+    if (!normalizedPin) {
+      // Do not fire downstream queries with an empty PIN
+    } else {
+      const [assessedResult, complaintsResult, violationsResult, permitsResult, charsResResult, charsCondoResult] =
+        await Promise.all([
+          fetchAssessedValue(normalizedPin),
+          fetchComplaintsByPin(normalizedPin),
+          fetchViolationsByPin(normalizedPin),
+          fetchPermitsByPin(normalizedPin),
+          fetchPropertyCharsResidential(normalizedPin),
+          fetchPropertyCharsCondo(normalizedPin),
+        ])
+      complaints = complaintsResult.complaints ?? []
+      violations = violationsResult.violations ?? []
+      permits = permitsResult.permits ?? []
+      charsResidential = charsResResult.chars
+      charsCondo = charsCondoResult.chars
+      assessed = assessedResult.assessed
+    }
   } else {
     const [complaintsResult, violationsResult, permitsResult] = await Promise.all([
       fetchComplaints(normalizedAddress),
@@ -96,6 +119,10 @@ export default async function AddressPage({ params }: PageProps) {
       : 'Unknown'
 
   const displayPin = pin
+  const propertyChars = (charsResidential ?? charsCondo) as Record<string, unknown> | null
+  const charsSource =
+    charsResidential != null ? 'residential' : charsCondo != null ? 'condo' : 'none'
+  const avHit = assessed != null ? 'hit' : 'miss'
 
   const assessedValueFormatted =
     assessed != null && Number.isFinite(assessed.displayValue)
@@ -127,10 +154,10 @@ export default async function AddressPage({ params }: PageProps) {
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
 
-  const displayClass = propertyChars?.class_code ?? property?.class_code
-  const displayUnits = propertyChars?.units ?? property?.units
-  const displayTaxYear = propertyChars?.tax_year ?? property?.tax_year
-  const displayZoning = propertyChars?.zoning ?? property?.zoning
+  const displayClass = (propertyChars?.class_code ?? property?.class_code) as string | null | undefined
+  const displayUnits = (propertyChars?.units ?? property?.units) as number | null | undefined
+  const displayTaxYear = (propertyChars?.tax_year ?? property?.tax_year) as string | null | undefined
+  const displayZoning = (propertyChars?.zoning ?? property?.zoning) as string | null | undefined
 
   const addressBarMeta = [
     displayCommunityAreaName ?? property?.community_area ?? null,
@@ -196,34 +223,191 @@ export default async function AddressPage({ params }: PageProps) {
           <div className="profile-card">
             <div className="profile-card-header">Property Details</div>
             <div className="detail-list">
+              {/* From properties */}
               <div className="detail-row">
                 <span className="detail-key">PIN</span>
-                <span className={displayPin == null ? 'detail-val na' : 'detail-val'}>{displayPin ?? 'N/A'}</span>
+                <span className={detailVal(displayPin ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayPin ?? null).text}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-key">Class (property)</span>
+                <span className={detailVal(property?.class_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.class_code ?? null).text}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-key">Zip</span>
+                <span className={detailVal(property?.zip ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.zip ?? null).text}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-key">Address (normalized)</span>
+                <span className={detailVal(property?.address_normalized ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.address_normalized ?? null).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Community Area</span>
-                <span className={displayCommunityAreaName == null ? 'detail-val na' : 'detail-val'}>{displayCommunityAreaName ?? 'N/A'}</span>
+                <span className={detailVal(displayCommunityAreaName ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayCommunityAreaName ?? null).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Ward</span>
-                <span className={displayWard == null ? 'detail-val na' : 'detail-val'}>{displayWard ?? 'N/A'}</span>
+                <span className={detailVal(displayWard ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayWard ?? null).text}</span>
+              </div>
+
+              {/* From assessed_values */}
+              <div className="detail-row">
+                <span className="detail-key">AV Tax Year</span>
+                <span className={detailVal(assessed?.taxYear ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.taxYear ?? null).text}</span>
               </div>
               <div className="detail-row">
-                <span className="detail-key">Class</span>
-                <span className="detail-val na">{na(displayClass)}</span>
+                <span className="detail-key">AV Class</span>
+                <span className={detailVal(assessed?.class ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.class ?? null).text}</span>
               </div>
               <div className="detail-row">
-                <span className="detail-key">Units</span>
-                <span className="detail-val na">{na(displayUnits)}</span>
+                <span className="detail-key">Township</span>
+                <span className={detailVal(assessed?.township_name ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.township_name ?? null).text}</span>
               </div>
               <div className="detail-row">
-                <span className="detail-key">Tax Year</span>
-                <span className="detail-val na">{na(displayTaxYear)}</span>
+                <span className="detail-key">Neighborhood Code</span>
+                <span className={detailVal(assessed?.neighborhood_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.neighborhood_code ?? null).text}</span>
               </div>
               <div className="detail-row">
-                <span className="detail-key">Zoning</span>
-                <span className="detail-val na">{na(displayZoning)}</span>
+                <span className="detail-key">AV Value Source</span>
+                <span className={detailVal(assessed?.valueType ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.valueType ?? null).text}</span>
               </div>
+
+              {/* Property characteristics (residential or condo) — show every field attempted */}
+              {charsSource !== 'none' && (charsResidential != null ? (
+                <>
+                  <div className="detail-row">
+                    <span className="detail-key">Year Built</span>
+                    <span className={detailVal(charsResidential.year_built ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.year_built ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Building Sqft</span>
+                    <span className={detailVal(charsResidential.building_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.building_sqft ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Land Sqft</span>
+                    <span className={detailVal(charsResidential.land_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.land_sqft ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Bedrooms</span>
+                    <span className={detailVal(charsResidential.num_bedrooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_bedrooms ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Rooms</span>
+                    <span className={detailVal(charsResidential.num_rooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_rooms ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Full Baths</span>
+                    <span className={detailVal(charsResidential.num_full_baths ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_full_baths ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Half Baths</span>
+                    <span className={detailVal(charsResidential.num_half_baths ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_half_baths ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Fireplaces</span>
+                    <span className={detailVal(charsResidential.num_fireplaces ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_fireplaces ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Type of Residence</span>
+                    <span className={detailVal(charsResidential.type_of_residence ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.type_of_residence ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Apartments</span>
+                    <span className={detailVal(charsResidential.num_apartments ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_apartments ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Garage Size</span>
+                    <span className={detailVal(charsResidential.garage_size ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.garage_size ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Garage Attached</span>
+                    <span className={detailVal(charsResidential.garage_attached ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.garage_attached ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Basement Type</span>
+                    <span className={detailVal(charsResidential.basement_type ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.basement_type ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Ext Wall Material</span>
+                    <span className={detailVal(charsResidential.ext_wall_material ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.ext_wall_material ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Central Heating</span>
+                    <span className={detailVal(charsResidential.central_heating ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.central_heating ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Central Air</span>
+                    <span className={detailVal(charsResidential.central_air ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.central_air ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Attic Type</span>
+                    <span className={detailVal(charsResidential.attic_type ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.attic_type ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Roof Material</span>
+                    <span className={detailVal(charsResidential.roof_material ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.roof_material ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Construction Quality</span>
+                    <span className={detailVal(charsResidential.construction_quality ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.construction_quality ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Single vs Multi Family</span>
+                    <span className={detailVal(charsResidential.single_v_multi_family ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.single_v_multi_family ?? null).text}</span>
+                  </div>
+                </>
+              ) : charsCondo != null ? (
+                <>
+                  <div className="detail-row">
+                    <span className="detail-key">Year Built</span>
+                    <span className={detailVal(charsCondo.year_built ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.year_built ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Building Sqft</span>
+                    <span className={detailVal(charsCondo.building_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_sqft ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Unit Sqft</span>
+                    <span className={detailVal(charsCondo.unit_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.unit_sqft ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Bedrooms</span>
+                    <span className={detailVal(charsCondo.num_bedrooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.num_bedrooms ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Building Pins</span>
+                    <span className={detailVal(charsCondo.building_pins ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_pins ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Building Non-Units</span>
+                    <span className={detailVal(charsCondo.building_non_units ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_non_units ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Bldg Mixed Use</span>
+                    <span className={detailVal(charsCondo.bldg_is_mixed_use ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.bldg_is_mixed_use ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Land Sqft</span>
+                    <span className={detailVal(charsCondo.land_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.land_sqft ?? null).text}</span>
+                  </div>
+                </>
+              ) : null)}
+
+              {/* Show chars section as "Not available" when charsSource is none */}
+              {charsSource === 'none' && (
+                <>
+                  <div className="detail-row">
+                    <span className="detail-key">Property Chars (residential/condo)</span>
+                    <span className="detail-val na">Not available</span>
+                  </div>
+                </>
+              )}
+
+              {process.env.NODE_ENV === 'development' && (
+                <div className="detail-row" style={{ marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  <span className="detail-key">Debug</span>
+                  <span className="detail-val">PIN: {detailVal(displayPin ?? null).text} | AV: {avHit} | Chars: {charsSource}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
