@@ -189,6 +189,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
                 onClose={() => setMenuOpen(false)}
                 apiKey={apiKey}
                 session={session}
+                skipMapsScript
               />
             )}
           </div>
@@ -200,6 +201,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
         onClose={() => setMenuOpen(false)}
         apiKey={apiKey}
         session={session}
+        skipMapsScript
       />
     </>
   )

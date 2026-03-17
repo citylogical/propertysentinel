@@ -89,9 +89,11 @@ type HomeSearchProps = {
   apiKey: string | undefined
   /** When true, hide the submit button (e.g. for drawer); Enter key and autocomplete still trigger search */
   hideSubmitButton?: boolean
+  /** When true, do not load the Maps script (e.g. when parent already loaded it); avoids duplicate script on property page */
+  skipMapsScript?: boolean
 }
 
-export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps) {
+export default function HomeSearch({ apiKey, hideSubmitButton, skipMapsScript }: HomeSearchProps) {
   const registeredRef = useRef(false)
   const initedRef = useRef(false)
 
@@ -127,7 +129,7 @@ export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps
 
   return (
     <>
-      {apiKey && (
+      {apiKey && !skipMapsScript && (
         <Script
           src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initAutocomplete`}
           strategy="afterInteractive"

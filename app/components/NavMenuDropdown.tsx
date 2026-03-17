@@ -9,9 +9,11 @@ type NavMenuDropdownProps = {
   onClose: () => void
   apiKey: string | undefined
   session: Session | null
+  /** When true, HomeSearch will not load Maps script (parent already loaded it). */
+  skipMapsScript?: boolean
 }
 
-export default function NavMenuDropdown({ onClose, apiKey, session }: NavMenuDropdownProps) {
+export default function NavMenuDropdown({ onClose, apiKey, session, skipMapsScript }: NavMenuDropdownProps) {
   const pathname = usePathname()
   const isHomepage = pathname === '/'
   const isPropertyPage = pathname.startsWith('/address/')
@@ -29,7 +31,7 @@ export default function NavMenuDropdown({ onClose, apiKey, session }: NavMenuDro
       {showSearch && (
         <div className="min-h-[48px] flex items-center pl-5 pr-5 border-b border-[#f0f0f0]">
           <div className="w-full min-w-0">
-            <HomeSearch apiKey={apiKey} hideSubmitButton />
+            <HomeSearch apiKey={apiKey} hideSubmitButton skipMapsScript={skipMapsScript} />
           </div>
         </div>
       )}

@@ -34,6 +34,15 @@ function na(val: string | number | null | undefined): string {
   return String(val)
 }
 
+/** Locale-independent date format for "Month YYYY" (e.g. Mar 2024). Avoids hydration mismatch. */
+function formatMonthYear(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'Unknown'
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return 'Unknown'
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+}
+
 function detailVal(
   val: string | number | null | undefined
 ): { text: string; isNa: boolean } {
@@ -119,10 +128,7 @@ export default async function AddressPage({ params }: PageProps) {
 
   const lastPermitDisplay =
     permits.length > 0 && permits[0].issue_date
-      ? (() => {
-          const d = new Date(permits[0].issue_date)
-          return Number.isNaN(d.getTime()) ? 'Unknown' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-        })()
+      ? formatMonthYear(permits[0].issue_date)
       : 'Unknown'
 
   const displayPin = pin
@@ -428,6 +434,7 @@ export default async function AddressPage({ params }: PageProps) {
           permits={permits}
           propertyZip={displayZip}
           currentSlug={slug}
+          serverTime={Date.now()}
         />
 
         <div className="rail">

@@ -9,50 +9,64 @@ import { setPendingZipCookie, setAuthNextCookie, getPendingZipFromCookie, clearP
 const LOCK_DAYS = 60
 const PAGE_SIZE = 5
 
+/** Locale-independent YYYY-MM-DD. Avoids hydration mismatch. */
+function formatDateISO(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toISOString().split('T')[0]
+}
+
+/** Locale-independent date + time (24h). Avoids hydration mismatch. */
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const datePart = d.toISOString().split('T')[0]
+  const h = d.getUTCHours()
+  const m = d.getUTCMinutes()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${datePart} ${pad(h)}:${pad(m)}`
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).replace(' AM', 'am').replace(' PM', 'pm')
+  return formatDateTime(iso)
 }
 
 function formatDateShort(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  return formatDateISO(iso)
 }
 
 function isOpen(status: string | null): boolean {
   return (status ?? '').toUpperCase() === 'OPEN'
 }
 
-function isWithinDays(iso: string | null | undefined, days: number): boolean {
+/** nowMs: use server time on first render to avoid hydration mismatch. */
+function isWithinDays(iso: string | null | undefined, days: number, nowMs?: number): boolean {
   if (!iso) return false
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return false
-  const now = new Date()
-  const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)
+  const now = nowMs != null ? nowMs : Date.now()
+  const diff = (now - d.getTime()) / (1000 * 60 * 60 * 24)
   return diff <= days
 }
 
-function isComplaintLocked(row: ComplaintRow): boolean {
-  return isOpen(row.status) && isWithinDays(row.created_date, LOCK_DAYS)
+function isComplaintLocked(row: ComplaintRow, nowMs?: number): boolean {
+  return isOpen(row.status) && isWithinDays(row.created_date, LOCK_DAYS, nowMs)
 }
 
 function isViolationStatusOpen(status: string | null): boolean {
   return (status ?? '').toUpperCase() === 'OPEN'
 }
 
-function isViolationLocked(row: ViolationRow): boolean {
-  return isViolationStatusOpen(row.violation_status) && isWithinDays(row.violation_date, LOCK_DAYS)
+function isViolationLocked(row: ViolationRow, nowMs?: number): boolean {
+  return isViolationStatusOpen(row.violation_status) && isWithinDays(row.violation_date, LOCK_DAYS, nowMs)
 }
 
 function violationStatusClass(status: string | null): 'open' | 'completed' {
@@ -76,6 +90,8 @@ type PropertyFeedProps = {
   permits: PermitRow[]
   propertyZip: string | null
   currentSlug: string
+  /** Server timestamp for stable first-render (avoids hydration mismatch). */
+  serverTime?: number
 }
 
 type UnlockStep = 'zip' | 'email' | 'sent' | null
@@ -89,6 +105,7 @@ export default function PropertyFeed({
   permits,
   propertyZip,
   currentSlug,
+  serverTime,
 }: PropertyFeedProps) {
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
   const [session, setSession] = useState<Session | null>(null)
@@ -118,12 +135,12 @@ export default function PropertyFeed({
 
   const hasSession = !!session
 
-  // First locked row index: only that row shows the unlock overlay; all locked rows are blurred
-  const firstLocked311Index = complaints.findIndex(isComplaintLocked)
+  // First locked row index: only that row shows the unlock overlay; all locked rows are blurred (use serverTime for stable hydration)
+  const firstLocked311Index = complaints.findIndex((row) => isComplaintLocked(row, serverTime))
   const showUnlockOverlay311 = !hasSession && firstLocked311Index >= 0
 
   // Only the single most recent violation meeting OPEN + within 60 days is locked
-  const firstLockedViolationIndex = violations.findIndex(isViolationLocked)
+  const firstLockedViolationIndex = violations.findIndex((row) => isViolationLocked(row, serverTime))
   const showUnlockOverlayViolations = !hasSession && firstLockedViolationIndex >= 0
 
   const visibleComplaints = complaints.slice(0, visible311)
@@ -213,7 +230,7 @@ export default function PropertyFeed({
           ) : (
             <>
               {visibleComplaints.map((c, i) => {
-                const locked = !hasSession && isComplaintLocked(c)
+                const locked = !hasSession && isComplaintLocked(c, serverTime)
                 const showOverlay = locked && i === firstLocked311Index
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
 
@@ -335,7 +352,7 @@ export default function PropertyFeed({
             <>
               {visibleViolationsList.map((v, i) => {
                 const isFirstLocked = i === firstLockedViolationIndex
-                const locked = !hasSession && isFirstLocked && isViolationLocked(v)
+                const locked = !hasSession && isFirstLocked && isViolationLocked(v, serverTime)
                 const showOverlay = locked
                 const statusClass = violationStatusClass(v.violation_status)
 

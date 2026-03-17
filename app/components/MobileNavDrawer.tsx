@@ -12,9 +12,11 @@ type MobileNavDrawerProps = {
   onClose: () => void
   apiKey: string | undefined
   session: Session | null
+  /** When true, HomeSearch will not load Maps script (parent already loaded it). */
+  skipMapsScript?: boolean
 }
 
-export default function MobileNavDrawer({ open, onClose, apiKey, session }: MobileNavDrawerProps) {
+export default function MobileNavDrawer({ open, onClose, apiKey, session, skipMapsScript }: MobileNavDrawerProps) {
   const pathname = usePathname()
   const isHomepage = pathname === '/'
 
@@ -57,7 +59,7 @@ export default function MobileNavDrawer({ open, onClose, apiKey, session }: Mobi
           {!isHomepage && (
             <div className="min-h-[56px] flex items-center border-b border-gray-200 mb-0">
               <div className="w-full">
-                <HomeSearch apiKey={apiKey} hideSubmitButton />
+                <HomeSearch apiKey={apiKey} hideSubmitButton skipMapsScript={skipMapsScript} />
               </div>
             </div>
           )}
