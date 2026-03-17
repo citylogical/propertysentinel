@@ -188,8 +188,9 @@ export type AssessedValueResult = {
 }
 
 /**
- * Fetches best available assessed value by PIN (no dashes).
- * Uses COALESCE hierarchy: board_tot → certified_tot → mailed_tot across the most recent years.
+ * Fetches the most recent year's best available assessed value by PIN.
+ * PIN: no dashes, 14 digits (strip dashes from properties/complaints PIN before querying).
+ * Uses COALESCE: board_tot → certified_tot → mailed_tot; value_source = board | certified | mailed.
  */
 export async function fetchAssessedValue(pin: string | null): Promise<{
   assessed: AssessedValueResult | null
@@ -198,8 +199,11 @@ export async function fetchAssessedValue(pin: string | null): Promise<{
   if (pin == null || String(pin).trim() === '') {
     return { assessed: null, error: null }
   }
-  const pinNoDashes = String(pin).trim().replace(/-/g, '')
+  let pinNoDashes = String(pin).trim().replace(/-/g, '')
   if (!pinNoDashes) return { assessed: null, error: null }
+  if (/^\d+$/.test(pinNoDashes) && pinNoDashes.length < 14) {
+    pinNoDashes = pinNoDashes.padStart(14, '0')
+  }
 
   try {
     const { data, error } = await supabase
@@ -207,32 +211,30 @@ export async function fetchAssessedValue(pin: string | null): Promise<{
       .select('tax_year, board_tot, certified_tot, mailed_tot')
       .eq('pin', pinNoDashes)
       .order('tax_year', { ascending: false })
-      .limit(5)
+      .limit(1)
+      .maybeSingle()
 
     if (error) throw new Error(error.message)
 
-    const rows = (data ?? []) as AssessedValueRawRow[]
-    const best = rows.find(
-      (row) =>
-        row.board_tot != null || row.certified_tot != null || row.mailed_tot != null
-    )
+    const row = data as AssessedValueRawRow | null
+    if (row == null) return { assessed: null, error: null }
 
-    if (best == null) return { assessed: null, error: null }
-
-    const displayValue = (best.board_tot ?? best.certified_tot ?? best.mailed_tot) as number
-    const valueType: 'board' | 'certified' | 'mailed' =
-      best.board_tot != null ? 'board' : best.certified_tot != null ? 'certified' : 'mailed'
-    const taxYear =
-      typeof best.tax_year === 'number'
-        ? best.tax_year
-        : parseInt(String(best.tax_year ?? ''), 10)
-
-    if (!Number.isFinite(displayValue) || !Number.isFinite(taxYear)) {
+    const displayValue = row.board_tot ?? row.certified_tot ?? row.mailed_tot
+    if (displayValue == null || !Number.isFinite(Number(displayValue))) {
       return { assessed: null, error: null }
     }
 
+    const valueType: 'board' | 'certified' | 'mailed' =
+      row.board_tot != null ? 'board' : row.certified_tot != null ? 'certified' : 'mailed'
+    const taxYear =
+      typeof row.tax_year === 'number'
+        ? row.tax_year
+        : parseInt(String(row.tax_year ?? ''), 10)
+
+    if (!Number.isFinite(taxYear)) return { assessed: null, error: null }
+
     return {
-      assessed: { displayValue, valueType, taxYear },
+      assessed: { displayValue: Number(displayValue), valueType, taxYear },
       error: null,
     }
   } catch (e) {

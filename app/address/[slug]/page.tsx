@@ -152,7 +152,7 @@ export default async function AddressPage({ params }: PageProps) {
               <div className="stat-label">Assessed Value</div>
               <div className="stat-val-wrap">
                 <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`}>
-                  {assessedValueFormatted ?? 'N/A'}
+                  {assessedValueFormatted ?? 'Not available'}
                 </span>
                 {assessedSubtext != null && (
                   <span className="stat-val-sub">{assessedSubtext}</span>
