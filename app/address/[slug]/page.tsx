@@ -43,6 +43,13 @@ function detailVal(
   return { text: s, isNa: false }
 }
 
+/** Convert boolean (and string/number) to value safe for detailVal; booleans become 'Yes'/'No'. */
+function displayVal(val: string | number | boolean | null | undefined): string | number | null | undefined {
+  if (val === null || val === undefined) return null
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No'
+  return val
+}
+
 export default async function AddressPage({ params }: PageProps) {
   const { slug } = await params
   const decodedSlug = decodeURIComponent(slug)
@@ -320,7 +327,7 @@ export default async function AddressPage({ params }: PageProps) {
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Garage Attached</span>
-                    <span className={detailVal(charsResidential.garage_attached ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.garage_attached ?? null).text}</span>
+                    <span className={detailVal(displayVal(charsResidential.garage_attached ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsResidential.garage_attached ?? null)).text}</span>
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Basement Type</span>
@@ -336,7 +343,7 @@ export default async function AddressPage({ params }: PageProps) {
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Central Air</span>
-                    <span className={detailVal(charsResidential.central_air ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.central_air ?? null).text}</span>
+                    <span className={detailVal(displayVal(charsResidential.central_air ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsResidential.central_air ?? null)).text}</span>
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Attic Type</span>
@@ -383,7 +390,7 @@ export default async function AddressPage({ params }: PageProps) {
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Bldg Mixed Use</span>
-                    <span className={detailVal(charsCondo.bldg_is_mixed_use ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.bldg_is_mixed_use ?? null).text}</span>
+                    <span className={detailVal(displayVal(charsCondo.bldg_is_mixed_use ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsCondo.bldg_is_mixed_use ?? null)).text}</span>
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">Land Sqft</span>
