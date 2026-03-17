@@ -188,9 +188,20 @@ export type AssessedValueResult = {
 }
 
 /**
+ * Normalizes PIN for assessed_values: strip dashes, digits only, left-pad to 14 digits.
+ * Table stores pin without dashes, zero-padded to 14 digits e.g. "17204160210000".
+ */
+function normalizePinForAssessedValues(pin: string): string {
+  const stripped = String(pin).trim().replace(/-/g, '')
+  const digitsOnly = stripped.replace(/\D/g, '')
+  if (!digitsOnly) return ''
+  const padded = digitsOnly.padStart(14, '0')
+  return padded.slice(0, 14)
+}
+
+/**
  * Fetches the most recent year's best available assessed value by PIN.
- * PIN: no dashes, 14 digits (strip dashes from properties/complaints PIN before querying).
- * Uses COALESCE: board_tot → certified_tot → mailed_tot; value_source = board | certified | mailed.
+ * PIN: normalized to no dashes, exactly 14 digits (strip + left-pad). COALESCE: board_tot → certified_tot → mailed_tot.
  */
 export async function fetchAssessedValue(pin: string | null): Promise<{
   assessed: AssessedValueResult | null
@@ -199,17 +210,16 @@ export async function fetchAssessedValue(pin: string | null): Promise<{
   if (pin == null || String(pin).trim() === '') {
     return { assessed: null, error: null }
   }
-  let pinNoDashes = String(pin).trim().replace(/-/g, '')
-  if (!pinNoDashes) return { assessed: null, error: null }
-  if (/^\d+$/.test(pinNoDashes) && pinNoDashes.length < 14) {
-    pinNoDashes = pinNoDashes.padStart(14, '0')
-  }
+  const pinQuery = normalizePinForAssessedValues(pin)
+  if (!pinQuery) return { assessed: null, error: null }
+
+  console.log('[fetchAssessedValue] PIN passed to query (after strip + 14-digit pad):', JSON.stringify(pinQuery))
 
   try {
     const { data, error } = await supabase
       .from('assessed_values')
       .select('tax_year, board_tot, certified_tot, mailed_tot')
-      .eq('pin', pinNoDashes)
+      .eq('pin', pinQuery)
       .order('tax_year', { ascending: false })
       .limit(1)
       .maybeSingle()
