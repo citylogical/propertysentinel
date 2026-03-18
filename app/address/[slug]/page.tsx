@@ -13,11 +13,15 @@ import {
   fetchPropertyCharsResidential,
   fetchPropertyCharsCondo,
   normalizePin,
+  fetchCommercialChars,
+  fetchExemptChars
 } from '@/lib/supabase-search'
 import type { PropertyCharsResidentialRow, PropertyCharsCondoRow } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
+import { getClassDescription } from '@/lib/class-codes'
 import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
+import React from 'react'
 
 type PageProps = { params: Promise<{ slug: string }> }
 
@@ -84,6 +88,8 @@ export default async function AddressPage({ params }: PageProps) {
   let charsCondo: PropertyCharsCondoRow | null = null
   let assessed: Awaited<ReturnType<typeof fetchAssessedValue>>['assessed'] = null
   let parcel: Awaited<ReturnType<typeof fetchParcelUniverse>>['parcel'] = null
+  let commercialChars: any[] = []
+  let exemptChars: any | null = null
 
   if (pin) {
     const normalizedPin = normalizePin(pin)
@@ -105,6 +111,19 @@ export default async function AddressPage({ params }: PageProps) {
       charsResidential = charsResResult.chars
       charsCondo = charsCondoResult.chars
       assessed = assessedResult.assessed
+
+      const majorClass = parseInt((assessed?.['class'] ?? '0').toString().substring(0, 1))
+      const isCommercial = [5, 6, 7, 8].includes(majorClass)
+      const isExempt = majorClass === 4
+
+      if (isCommercial) {
+        const { chars } = await fetchCommercialChars(normalizedPin)
+        commercialChars = chars
+      }
+      if (isExempt) {
+        const { exempt } = await fetchExemptChars(normalizedPin)
+        exemptChars = exempt
+      }
     }
   } else {
     const [complaintsResult, violationsResult, permitsResult] = await Promise.all([
@@ -155,6 +174,8 @@ export default async function AddressPage({ params }: PageProps) {
           ? String(propertyChars.ward).trim()
           : null
 
+  const propertyTypeUse = commercialChars.length > 0 ? commercialChars[0].property_type_use : null
+          
   const displayCommunityAreaName =
     getCommunityAreaName(firstComplaint?.community_area ?? null) ??
     (property?.community_area != null && String(property.community_area).trim() !== ''
@@ -170,11 +191,14 @@ export default async function AddressPage({ params }: PageProps) {
       : slugToZip(decodedSlug)
 
     const displayClass = (parcel?.['class'] ?? assessed?.class) as string | null | undefined
+    const classDescription = getClassDescription(displayClass)
     const displayUnits = (charsResidential?.num_apartments ?? null) as number | null | undefined
     const displayTaxYear = (charsResidential?.tax_year ?? charsCondo?.tax_year ?? null) as string | null | undefined
     const displayZoning = null
 
   const addressBarMeta = [
+    propertyTypeUse,
+    displayCommunityAreaName ?? property?.community_area ?? null,
     displayCommunityAreaName ?? property?.community_area ?? null,
     displayWard != null ? `Ward ${displayWard}` : (property?.ward != null ? `Ward ${property.ward}` : null),
     displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL',
@@ -245,7 +269,7 @@ export default async function AddressPage({ params }: PageProps) {
               </div>
               <div className="detail-row">
                 <span className="detail-key">Class (property)</span>
-                <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayClass ?? null).text}</span>
+                <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{displayClass ?? 'N/A'}{classDescription ? ` — ${classDescription}` : ''}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Zip</span>
@@ -406,7 +430,78 @@ export default async function AddressPage({ params }: PageProps) {
                   </div>
                 </>
               ) : null)}
+                            {/* Commercial Valuation */}
+              {commercialChars.length > 0 && (
+                <>
+                  <div className="detail-row section-header">
+                    <span className="detail-key" style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', opacity: 0.5 }}>Commercial Valuation</span>
+                  </div>
+                  {commercialChars.map((row, i) => (
+                    <React.Fragment key={`comm-${i}`}>
+                      <div className="detail-row">
+                        <span className="detail-key">Tax Year</span>
+                        <span className="detail-val">{row.tax_year}</span>
+                      </div>
+                      {row.property_type_use && (
+                        <div className="detail-row">
+                          <span className="detail-key">Property Type</span>
+                          <span className="detail-val">{row.property_type_use}</span>
+                        </div>
+                      )}
+                      {row.sheet && (
+                        <div className="detail-row">
+                          <span className="detail-key">Sheet</span>
+                          <span className="detail-val">{row.sheet}</span>
+                        </div>
+                      )}
+                      {row.building_sqft && (
+                        <div className="detail-row">
+                          <span className="detail-key">Building Sqft</span>
+                          <span className="detail-val">{Number(row.building_sqft).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {row.noi && (
+                        <div className="detail-row">
+                          <span className="detail-key">NOI</span>
+                          <span className="detail-val">${Number(row.noi).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {row.caprate && (
+                        <div className="detail-row">
+                          <span className="detail-key">Cap Rate</span>
+                          <span className="detail-val">{(Number(row.caprate) * 100).toFixed(2)}%</span>
+                        </div>
+                      )}
+                      {row.final_market_value && (
+                        <div className="detail-row">
+                          <span className="detail-key">Final Market Value</span>
+                          <span className="detail-val">${Number(row.final_market_value).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {i < commercialChars.length - 1 && (
+                        <div className="detail-row" style={{ borderTop: '1px solid rgba(0,0,0,0.06)', margin: '4px 0' }} />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </>
+              )}
 
+              {/* Exempt */}
+              {exemptChars && (
+                <>
+                  <div className="detail-row">
+                    <span className="detail-key" style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', opacity: 0.5 }}>Tax Exempt</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Owner</span>
+                    <span className="detail-val">{exemptChars.owner_name}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Township</span>
+                    <span className="detail-val">{exemptChars.township_name}</span>
+                  </div>
+                </>
+              )}
               {/* Show chars section as "Not available" when charsSource is none */}
               {charsSource === 'none' && (
                 <>

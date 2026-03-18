@@ -104,6 +104,45 @@ export type PropertyCharsCondoRow = {
   [key: string]: unknown
 }
 
+export async function fetchCommercialChars(pin: string): Promise<{
+  chars: any[]
+  error: string | null
+}> {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('property_chars_commercial')
+      .select('keypin, tax_year, sheet, class, property_type_use, year_built, building_sqft, land_sqft, noi, caprate, final_market_value, income_market_value, adj_rent_sf, investment_rating')
+      .eq('keypin', pin)
+      .order('tax_year', { ascending: false })
+      .order('sheet', { ascending: true })
+    if (error) throw new Error(error.message)
+    return { chars: data ?? [], error: null }
+  } catch (e) {
+    return { chars: [], error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+}
+
+export async function fetchExemptChars(pin: string): Promise<{
+  exempt: any | null
+  error: string | null
+}> {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('property_tax_exempt')
+      .select('pin, tax_year, owner_name, owner_num, class, property_address, township_name')
+      .eq('pin', pin)
+      .order('tax_year', { ascending: false })
+      .limit(1)
+      .single()
+    if (error && error.code !== 'PGRST116') throw new Error(error.message)
+    return { exempt: data ?? null, error: null }
+  } catch (e) {
+    return { exempt: null, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+}
+
 function normalizePinSilent(pin: string): string {
   if (!pin || String(pin).trim() === '') return ''
   const digitsOnly = String(pin).trim().replace(/-/g, '').replace(/\D/g, '')
