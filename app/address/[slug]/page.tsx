@@ -167,10 +167,10 @@ export default async function AddressPage({ params }: PageProps) {
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
 
-  const displayClass = (propertyChars?.class_code ?? property?.class_code) as string | null | undefined
-  const displayUnits = (propertyChars?.units ?? property?.units) as number | null | undefined
-  const displayTaxYear = (propertyChars?.tax_year ?? property?.tax_year) as string | null | undefined
-  const displayZoning = (propertyChars?.zoning ?? property?.zoning) as string | null | undefined
+    const displayClass = (parcel?.class ?? assessed?.class) as string | null | undefined
+    const displayUnits = (charsResidential?.num_apartments ?? null) as number | null | undefined
+    const displayTaxYear = (charsResidential?.tax_year ?? charsCondo?.tax_year ?? null) as string | null | undefined
+    const displayZoning = null
 
   const addressBarMeta = [
     displayCommunityAreaName ?? property?.community_area ?? null,
