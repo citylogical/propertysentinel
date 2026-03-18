@@ -94,8 +94,8 @@ export default async function AddressPage({ params }: PageProps) {
         await Promise.all([
           fetchAssessedValue(normalizedPin),
           fetchComplaintsByPin(normalizedPin),
-          fetchViolationsByPin(normalizedPin),
-          fetchPermitsByPin(normalizedPin),
+          fetchViolations(normalizedAddress),
+          fetchPermits(normalizedAddress),
           fetchPropertyCharsResidential(normalizedPin),
           fetchPropertyCharsCondo(normalizedPin),
         ])
