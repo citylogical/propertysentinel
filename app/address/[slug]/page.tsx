@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import {
   fetchProperty,
+  fetchParcelUniverse,
   fetchComplaints,
   fetchViolations,
   fetchPermits,
@@ -82,6 +83,7 @@ export default async function AddressPage({ params }: PageProps) {
   let charsResidential: PropertyCharsResidentialRow | null = null
   let charsCondo: PropertyCharsCondoRow | null = null
   let assessed: Awaited<ReturnType<typeof fetchAssessedValue>>['assessed'] = null
+  let parcel: Awaited<ReturnType<typeof fetchParcelUniverse>>['parcel'] = null
 
   if (pin) {
     const normalizedPin = normalizePin(pin)
@@ -167,7 +169,7 @@ export default async function AddressPage({ params }: PageProps) {
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
 
-    const displayClass = (parcel?.class ?? assessed?.class) as string | null | undefined
+    const displayClass = (parcel?.['class'] ?? assessed?.class) as string | null | undefined
     const displayUnits = (charsResidential?.num_apartments ?? null) as number | null | undefined
     const displayTaxYear = (charsResidential?.tax_year ?? charsCondo?.tax_year ?? null) as string | null | undefined
     const displayZoning = null
@@ -243,7 +245,7 @@ export default async function AddressPage({ params }: PageProps) {
               </div>
               <div className="detail-row">
                 <span className="detail-key">Class (property)</span>
-                <span className={detailVal(property?.class_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.class_code ?? null).text}</span>
+                <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayClass ?? null).text}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-key">Zip</span>
