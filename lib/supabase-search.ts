@@ -1,4 +1,6 @@
-import { supabase } from './supabase'
+import { supabase as _supabase, getSupabaseAdmin } from './supabase'
+
+const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : _supabase
 
 export type ComplaintRow = {
   sr_number: string
@@ -16,30 +18,52 @@ export type ComplaintRow = {
 }
 
 export type PropertyRow = {
+  address: string | null
   address_normalized: string | null
-  street_address: string | null
   pin: string | null
+  pin10: string | null
   zip: string | null
-  community_area: string | null
   ward: string | null
-  class_code: string | null
-  units: number | null
+  community_area: string | null
+  property_class: string | null
+  lat: number | null
+  lng: number | null
+  health_score: number | null
+  mailing_name: string | null
+  mailing_address: string | null
   tax_year: string | null
-  zoning: string | null
 }
 
-/** Fields from property_chars_residential / property_chars_condo for property details card. */
+export type ParcelUniverseRow = {
+  pin: string | null
+  pin10: string | null
+  tax_year: number | null
+  class: string | null
+  ward: string | null
+  community_area_name: string | null
+  community_area_num: string | null
+  lat: number | null
+  lng: number | null
+  township_name: string | null
+  neighborhood_code: string | null
+  municipality_name: string | null
+  school_elementary_name: string | null
+  school_secondary_name: string | null
+  tif_district_num: string | null
+  walkability_score: number | null
+  flood_fema_sfha: boolean | null
+  ohare_noise_contour: boolean | null
+}
+
 export type PropertyCharsRow = {
-  class_code?: string | null
-  units?: number | null
-  tax_year?: string | null
-  zoning?: string | null
+  class?: string | null
+  num_apartments?: number | null
+  tax_year?: number | string | null
   community_area?: string | null
   ward?: string | null
   [key: string]: unknown
 }
 
-/** Explicit row shape for property_chars_residential (most recent year). */
 export type PropertyCharsResidentialRow = {
   year_built?: number | string | null
   building_sqft?: number | null
@@ -65,7 +89,6 @@ export type PropertyCharsResidentialRow = {
   [key: string]: unknown
 }
 
-/** Explicit row shape for property_chars_condo (most recent year, excluding parking/common). */
 export type PropertyCharsCondoRow = {
   year_built?: number | string | null
   building_sqft?: number | null
@@ -88,10 +111,6 @@ function normalizePinSilent(pin: string): string {
   return digitsOnly.padStart(14, '0').slice(0, 14)
 }
 
-/**
- * Normalizes PIN for all DB queries: strip dashes, digits only, zero-pad to 14 digits.
- * Logs the sanitized PIN to console for verification.
- */
 export function normalizePin(pin: string | null | undefined): string {
   const out = normalizePinSilent(pin ?? '')
   if (out && typeof console !== 'undefined' && console.log) {
@@ -152,7 +171,6 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   }
 }
 
-/** Complaints by PIN (use after resolving PIN from properties table). */
 export async function fetchComplaintsByPin(pin: string): Promise<{
   complaints: ComplaintRow[]
   error: string | null
@@ -193,12 +211,15 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
   property: PropertyRow | null
   error: string | null
 }> {
+  console.log('fetchProperty received:', JSON.stringify(normalizedAddress))
   try {
     const { data, error } = await supabase
       .from('properties')
-      .select('address_normalized, street_address, pin, zip, community_area, ward, class_code, units, tax_year, zoning')
-      .eq('address_normalized', normalizedAddress)
+      .select('address, address_normalized, pin, pin10, zip, ward, community_area, property_class, lat, lng, health_score, mailing_name, mailing_address, tax_year')
+      .eq('address', normalizedAddress)
       .maybeSingle()
+
+    console.log('fetchProperty result:', JSON.stringify(data), 'error:', error)
 
     if (error) throw new Error(error.message)
 
@@ -211,6 +232,32 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
   }
 }
 
+export async function fetchParcelUniverse(pin: string): Promise<{
+  parcel: ParcelUniverseRow | null
+  error: string | null
+}> {
+  if (!pin || !normalizePinSilent(pin)) return { parcel: null, error: null }
+  const pinQuery = normalizePinSilent(pin)
+  try {
+    const { data, error } = await supabase
+      .from('parcel_universe')
+      .select('pin, pin10, tax_year, class, ward, community_area_name, community_area_num, lat, lng, township_name, neighborhood_code, municipality_name, school_elementary_name, school_secondary_name, tif_district_num, walkability_score, flood_fema_sfha, ohare_noise_contour')
+      .eq('pin', pinQuery)
+      .order('tax_year', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw new Error(error.message)
+
+    return { parcel: (data as ParcelUniverseRow | null) ?? null, error: null }
+  } catch (e) {
+    return {
+      parcel: null,
+      error: e instanceof Error ? e.message : 'Unknown error',
+    }
+  }
+}
+
 export async function fetchViolations(addressNormalized: string): Promise<{
   violations: ViolationRow[]
   error: string | null
@@ -218,7 +265,7 @@ export async function fetchViolations(addressNormalized: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('*')
+      .select('violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .eq('address_normalized', addressNormalized)
       .order('violation_date', { ascending: false })
       .limit(100)
@@ -234,7 +281,6 @@ export async function fetchViolations(addressNormalized: string): Promise<{
   }
 }
 
-/** Violations by PIN (use after resolving PIN from properties table). */
 export async function fetchViolationsByPin(pin: string): Promise<{
   violations: ViolationRow[]
   error: string | null
@@ -242,7 +288,7 @@ export async function fetchViolationsByPin(pin: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('*')
+      .select('violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .eq('pin', pin)
       .order('violation_date', { ascending: false })
       .limit(100)
@@ -290,7 +336,6 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
   }
 }
 
-/** Permits by PIN (use after resolving PIN from properties table). */
 export async function fetchPermitsByPin(pin: string): Promise<{
   permits: PermitRow[]
   error: string | null
@@ -318,7 +363,6 @@ const RESIDENTIAL_COLS =
 const CONDO_COLS =
   'year_built,building_sqft,unit_sqft,num_bedrooms,building_pins,building_non_units,bldg_is_mixed_use,is_parking_space,is_common_area,land_sqft,tax_year'
 
-/** Most recent property_chars_residential row by PIN. */
 export async function fetchPropertyCharsResidential(pin: string): Promise<{
   chars: PropertyCharsResidentialRow | null
   error: string | null
@@ -343,7 +387,6 @@ export async function fetchPropertyCharsResidential(pin: string): Promise<{
   }
 }
 
-/** Most recent property_chars_condo row by PIN (excludes parking and common area). */
 export async function fetchPropertyCharsCondo(pin: string): Promise<{
   chars: PropertyCharsCondoRow | null
   error: string | null
@@ -370,7 +413,6 @@ export async function fetchPropertyCharsCondo(pin: string): Promise<{
   }
 }
 
-/** Property details from property_chars_residential or property_chars_condo by PIN (legacy). */
 export async function fetchPropertyChars(pin: string): Promise<{
   chars: PropertyCharsRow | null
   error: string | null
@@ -404,22 +446,20 @@ export type AssessedValueResult = {
   neighborhood_code?: string | null
 }
 
-/**
- * Fetches the most recent year's best available assessed value by PIN.
- * Logical query: SELECT tax_year, COALESCE(board_tot, certified_tot, mailed_tot) as display_value,
- *   CASE WHEN board_tot IS NOT NULL THEN 'board' WHEN certified_tot IS NOT NULL THEN 'certified' ELSE 'mailed' END as value_source
- * FROM assessed_values WHERE pin = $pin ORDER BY tax_year DESC LIMIT 1.
- * $pin must be the 14-digit no-dash PIN. Do not run if pin is null, undefined, or empty.
- */
 export async function fetchAssessedValue(pin: string | null | undefined): Promise<{
   assessed: AssessedValueResult | null
   error: string | null
 }> {
+  console.log('fetchAssessedValue called with:', JSON.stringify(pin))
   if (!pin || typeof pin !== 'string' || String(pin).trim() === '') {
+    console.log('fetchAssessedValue: early return — null or empty pin')
     return { assessed: null, error: null }
   }
   const pinQuery = normalizePinSilent(pin)
-  if (!pinQuery) return { assessed: null, error: null }
+  if (!pinQuery) {
+    console.log('fetchAssessedValue: early return — normalizePinSilent returned empty')
+    return { assessed: null, error: null }
+  }
 
   console.log('Querying assessed_values with PIN:', pinQuery)
 
@@ -429,12 +469,18 @@ export async function fetchAssessedValue(pin: string | null | undefined): Promis
       .select('tax_year, class, township_name, neighborhood_code, board_tot, certified_tot, mailed_tot')
       .eq('pin', pinQuery)
       .order('tax_year', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .limit(10)
+
+    console.log('assessed_values raw data:', JSON.stringify(data), 'error:', JSON.stringify(error))
 
     if (error) throw new Error(error.message)
 
-    const row = data as AssessedValueRawRow | null
+    const rows = (data ?? []) as AssessedValueRawRow[]
+
+    const row = rows.find(r =>
+      r.board_tot != null || r.certified_tot != null || r.mailed_tot != null
+    ) ?? null
+
     if (row == null) return { assessed: null, error: null }
 
     const displayValue = row.board_tot ?? row.certified_tot ?? row.mailed_tot
@@ -463,6 +509,7 @@ export async function fetchAssessedValue(pin: string | null | undefined): Promis
       error: null,
     }
   } catch (e) {
+    console.log('fetchAssessedValue error:', e instanceof Error ? e.message : String(e))
     return {
       assessed: null,
       error: e instanceof Error ? e.message : 'Unknown error',

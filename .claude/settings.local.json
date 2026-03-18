@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f ~/Documents/propertysentinel/.next/dev/lock)",
+      "Bash(timeout 30 npm run dev)",
+      "Bash(cmd.exe /c \"rmdir /S /Q C:\\\\Users\\\\jrmcm\\\\Documents\\\\propertysentinel\\\\.next\")",
+      "Bash(cmd.exe /c \"tasklist | findstr node\" 2>&1)",
+      "Bash(cmd.exe /c \"tasklist /FI \\\\\"IMAGENAME eq node.exe\\\\\"\" 2>&1)"
+    ]
+  }
+}
