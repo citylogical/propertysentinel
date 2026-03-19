@@ -1,12 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
-import { createClient } from '@/lib/supabase/client'
-import type { Session } from '@supabase/supabase-js'
-import { setPendingZipCookie, setAuthNextCookie, getPendingZipFromCookie, clearPendingZipCookie, upsertSubscriberOnSession } from '@/lib/subscriber'
 
-const LOCK_DAYS = 60
 const PAGE_SIZE = 5
 
 /** Locale-independent YYYY-MM-DD. Avoids hydration mismatch. */
@@ -47,26 +43,8 @@ function isOpen(status: string | null): boolean {
   return (status ?? '').toUpperCase() === 'OPEN'
 }
 
-/** nowMs: use server time on first render to avoid hydration mismatch. */
-function isWithinDays(iso: string | null | undefined, days: number, nowMs?: number): boolean {
-  if (!iso) return false
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return false
-  const now = nowMs != null ? nowMs : Date.now()
-  const diff = (now - d.getTime()) / (1000 * 60 * 60 * 24)
-  return diff <= days
-}
-
-function isComplaintLocked(row: ComplaintRow, nowMs?: number): boolean {
-  return isOpen(row.status) && isWithinDays(row.created_date, LOCK_DAYS, nowMs)
-}
-
 function isViolationStatusOpen(status: string | null): boolean {
   return (status ?? '').toUpperCase() === 'OPEN'
-}
-
-function isViolationLocked(row: ViolationRow, nowMs?: number): boolean {
-  return isViolationStatusOpen(row.violation_status) && isWithinDays(row.violation_date, LOCK_DAYS, nowMs)
 }
 
 function violationStatusClass(status: string | null): 'open' | 'completed' {
@@ -94,8 +72,6 @@ type PropertyFeedProps = {
   serverTime?: number
 }
 
-type UnlockStep = 'zip' | 'email' | 'sent' | null
-
 export default function PropertyFeed({
   complaints,
   complaintsOpenCount,
@@ -108,40 +84,9 @@ export default function PropertyFeed({
   serverTime,
 }: PropertyFeedProps) {
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
-  const [session, setSession] = useState<Session | null>(null)
-  const [unlockStep311, setUnlockStep311] = useState<UnlockStep>('zip')
-  const [unlockStepViolations, setUnlockStepViolations] = useState<UnlockStep>('zip')
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
   const [visiblePermits, setVisiblePermits] = useState(PAGE_SIZE)
-  const [zipForUnlock311, setZipForUnlock311] = useState<string | null>(null)
-  const [zipForUnlockViolations, setZipForUnlockViolations] = useState<string | null>(null)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (!session) return
-    const zip = getPendingZipFromCookie()
-    if (!zip) return
-    upsertSubscriberOnSession(session, zip).then(() => {
-      clearPendingZipCookie()
-    })
-  }, [session])
-
-  const hasSession = !!session
-
-  // First locked row index: only that row shows the unlock overlay; all locked rows are blurred (use serverTime for stable hydration)
-  const firstLocked311Index = complaints.findIndex((row) => isComplaintLocked(row, serverTime))
-  const showUnlockOverlay311 = !hasSession && firstLocked311Index >= 0
-
-  // Only the single most recent violation meeting OPEN + within 60 days is locked
-  const firstLockedViolationIndex = violations.findIndex((row) => isViolationLocked(row, serverTime))
-  const showUnlockOverlayViolations = !hasSession && firstLockedViolationIndex >= 0
 
   const visibleComplaints = complaints.slice(0, visible311)
   const hasMore311 = complaints.length > visible311
@@ -149,43 +94,6 @@ export default function PropertyFeed({
   const hasMoreViolations = violations.length > visibleViolations
   const visiblePermitsList = permits.slice(0, visiblePermits)
   const hasMorePermits = permits.length > visiblePermits
-
-  const handleZipSubmit311 = (e: React.FormEvent) => {
-    e.preventDefault()
-    const input = (e.currentTarget.querySelector('input[name="zip"]') as HTMLInputElement)?.value?.trim() ?? ''
-    setZipForUnlock311(input)
-    setUnlockStep311('email')
-  }
-
-  const handleZipSubmitViolations = (e: React.FormEvent) => {
-    e.preventDefault()
-    const input = (e.currentTarget.querySelector('input[name="zip-violations"]') as HTMLInputElement)?.value?.trim() ?? ''
-    setZipForUnlockViolations(input)
-    setUnlockStepViolations('email')
-  }
-
-  const handleEmailSubmit = async (e: React.FormEvent, panel: '311' | 'violations') => {
-    e.preventDefault()
-    const input = (e.currentTarget.querySelector('input[name="email"]') as HTMLInputElement)?.value?.trim()
-    if (!input || !input.includes('@')) return
-    const zip = panel === '311' ? zipForUnlock311 : zipForUnlockViolations
-    if (zip) setPendingZipCookie(zip)
-    setAuthNextCookie(window.location.pathname)
-    const supabase = createClient()
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
-    console.log('emailRedirectTo:', redirectTo)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: input,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: redirectTo,
-      },
-    })
-    if (!error) {
-      if (panel === '311') setUnlockStep311('sent')
-      else setUnlockStepViolations('sent')
-    }
-  }
 
   return (
     <div className="feed">
@@ -229,66 +137,8 @@ export default function PropertyFeed({
             </div>
           ) : (
             <>
-              {visibleComplaints.map((c, i) => {
-                const locked = !hasSession && isComplaintLocked(c, serverTime)
-                const showOverlay = locked && i === firstLocked311Index
+              {visibleComplaints.map((c) => {
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
-
-                if (locked) {
-                  return (
-                    <div key={c.sr_number} className="complaint locked" id="locked-311">
-                      <div className="complaint-inner" style={{ filter: 'blur(4px)' }}>
-                        <div>
-                          <div className="complaint-type-name">{c.sr_type ?? '—'}</div>
-                          <div className="complaint-dept">
-                            {[c.owner_department, c.origin].filter(Boolean).join(' · ')}
-                          </div>
-                          <div className="complaint-dates">
-                            <span>Filed: <strong>{formatDate(c.created_date)}</strong></span>
-                          </div>
-                          <div className="complaint-sr">#{c.sr_number}</div>
-                        </div>
-                        <div className={`status-badge ${statusClass}`}>Open</div>
-                      </div>
-                      {showOverlay && (
-                      <div className="unlock-overlay">
-                        {(unlockStep311 === 'zip' || unlockStep311 === null) && (
-                          <form onSubmit={handleZipSubmit311} className="unlock-zip-wrap">
-                            <label htmlFor="unlock-zip-311" className="unlock-label-block">
-                              Enter your ZIP code to unlock
-                            </label>
-                            <div className="unlock-form">
-                              <input
-                                id="unlock-zip-311"
-                                name="zip"
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={5}
-                                placeholder="ZIP code"
-                                className="unlock-input"
-                                autoComplete="postal-code"
-                              />
-                              <button type="submit" className="unlock-submit">Unlock</button>
-                            </div>
-                          </form>
-                        )}
-                        {unlockStep311 === 'email' && (
-                          <form onSubmit={(e) => handleEmailSubmit(e, '311')} className="unlock-zip-wrap">
-                            <p className="unlock-label-block">Almost there — enter your email to see the full details.</p>
-                            <div className="unlock-form">
-                              <input name="email" type="email" placeholder="Email" className="unlock-input" required />
-                              <button type="submit" className="unlock-submit">Submit</button>
-                            </div>
-                          </form>
-                        )}
-                        {unlockStep311 === 'sent' && (
-                          <p className="unlock-sent">Check your inbox — click the link we sent to verify.</p>
-                        )}
-                      </div>
-                      )}
-                    </div>
-                  )
-                }
 
                 return (
                   <div key={c.sr_number} className="complaint">
@@ -323,11 +173,7 @@ export default function PropertyFeed({
                 </div>
               )}
               <div className="feed-nudge" id="nudge-311">
-                {!hasSession && firstLocked311Index >= 0 ? (
-                  <>Enter your ZIP above to unlock recent open complaints, then verify your email.</>
-                ) : (
-                  'Subscribe to get alerted the moment a new complaint is filed at this address.'
-                )}
+                Subscribe to get alerted the moment a new complaint is filed at this address.
               </div>
             </>
           )}
@@ -351,79 +197,7 @@ export default function PropertyFeed({
           ) : (
             <>
               {visibleViolationsList.map((v, i) => {
-                const isFirstLocked = i === firstLockedViolationIndex
-                const locked = !hasSession && isFirstLocked && isViolationLocked(v, serverTime)
-                const showOverlay = locked
                 const statusClass = violationStatusClass(v.violation_status)
-
-                if (locked) {
-                  return (
-                    <div key={v.inspection_number ?? i} className="complaint locked" id="locked-violations">
-                      <div className="complaint-inner" style={{ filter: 'blur(4px)' }}>
-                        <div>
-                          <div className="complaint-type-name">{v.violation_description ?? '—'}</div>
-                          <div className="complaint-dept">{v.inspection_category ?? '—'}</div>
-                          {v.department_bureau && (
-                            <div className="complaint-dept complaint-dept-secondary">{v.department_bureau}</div>
-                          )}
-                          <div className="complaint-dates">
-                            {v.violation_date != null && (
-                              <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
-                            )}
-                            {isViolationStatusOpen(v.violation_status) && v.violation_last_modified_date != null && (
-                              <span>Last Modified: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
-                            )}
-                            {!isViolationStatusOpen(v.violation_status) && v.violation_status?.toUpperCase() === 'COMPLIED' && v.violation_last_modified_date != null && (
-                              <span>Closed: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
-                            )}
-                          </div>
-                          <div className="complaint-sr">
-                            {v.inspection_number ? `Inspection #${v.inspection_number}` : '—'}
-                          </div>
-                        </div>
-                        <div className={`status-badge ${statusClass}`}>
-                          {v.violation_status ?? '—'}
-                        </div>
-                      </div>
-                      {showOverlay && (
-                      <div className="unlock-overlay">
-                        {(unlockStepViolations === 'zip' || unlockStepViolations === null) && (
-                          <form onSubmit={handleZipSubmitViolations} className="unlock-zip-wrap">
-                            <label htmlFor="unlock-zip-violations" className="unlock-label-block">
-                              Enter your ZIP code to unlock
-                            </label>
-                            <div className="unlock-form">
-                              <input
-                                id="unlock-zip-violations"
-                                name="zip-violations"
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={5}
-                                placeholder="ZIP code"
-                                className="unlock-input"
-                                autoComplete="postal-code"
-                              />
-                              <button type="submit" className="unlock-submit">Unlock</button>
-                            </div>
-                          </form>
-                        )}
-                        {unlockStepViolations === 'email' && (
-                          <form onSubmit={(e) => handleEmailSubmit(e, 'violations')} className="unlock-zip-wrap">
-                            <p className="unlock-label-block">Almost there — enter your email to see the full details.</p>
-                            <div className="unlock-form">
-                              <input name="email" type="email" placeholder="Email" className="unlock-input" required />
-                              <button type="submit" className="unlock-submit">Submit</button>
-                            </div>
-                          </form>
-                        )}
-                        {unlockStepViolations === 'sent' && (
-                          <p className="unlock-sent">Check your inbox — click the link we sent to verify.</p>
-                        )}
-                      </div>
-                      )}
-                    </div>
-                  )
-                }
 
                 return (
                   <div key={v.inspection_number ?? i} className="complaint">
@@ -477,11 +251,7 @@ export default function PropertyFeed({
                 </div>
               )}
               <div className="feed-nudge">
-                {!hasSession && firstLockedViolationIndex >= 0 ? (
-                  <>Enter your ZIP above to unlock recent open violations, then verify your email.</>
-                ) : (
-                  'Subscribe to be alerted the moment a violation is issued at this address.'
-                )}
+                Subscribe to be alerted the moment a violation is issued at this address.
               </div>
             </>
           )}

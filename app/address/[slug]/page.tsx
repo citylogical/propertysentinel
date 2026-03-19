@@ -197,7 +197,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           .filter((s) => {
             const siblingClass = s.assessedClass
             const major = parseInt((siblingClass ?? '0').toString()[0], 10)
-            return !Number.isNaN(major) && [3, 5, 6, 7, 8].includes(major)
+            return !Number.isNaN(major) && [5, 6, 7, 8].includes(major)
           })
           .map((s) => s.pin)
 

@@ -9,6 +9,7 @@ import type { Session } from '@supabase/supabase-js'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 import HamburgerIcon from '@/app/components/HamburgerIcon'
+import LoginModal from '@/app/components/LoginModal'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
 
@@ -73,6 +74,7 @@ type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [loginModalOpen, setLoginModalOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
@@ -187,6 +189,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
             {menuOpen && (
               <NavMenuDropdown
                 onClose={() => setMenuOpen(false)}
+                onLoginClick={() => setLoginModalOpen(true)}
                 apiKey={apiKey}
                 session={session}
                 skipMapsScript
@@ -199,10 +202,12 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
       <MobileNavDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
+        onLoginClick={() => setLoginModalOpen(true)}
         apiKey={apiKey}
         session={session}
         skipMapsScript
       />
+      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} isAuthenticated={!!session} />
     </>
   )
 }

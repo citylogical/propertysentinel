@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  getAuthNextCookie,
   clearAuthNextCookie,
   getPendingZipFromCookie,
   clearPendingZipCookie,
@@ -31,8 +30,7 @@ export default function AuthCallbackPage() {
         await upsertSubscriberOnSession(session, zip)
         clearPendingZipCookie()
       }
-      const next = getAuthNextCookie() ?? '/'
-      redirectTo(next)
+      redirectTo('/profile')
     }
 
     async function run() {

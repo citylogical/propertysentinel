@@ -18,11 +18,10 @@ type Props = {
 }
 
 function getAssessmentLevel(assessedClass: string | null): number {
-  if (!assessedClass) return 0.1
-  const major = parseInt(assessedClass.toString()[0], 10)
-  if (Number.isNaN(major)) return 0.1
+  if (!assessedClass) return 0.10
+  const major = parseInt(assessedClass.toString()[0])
   if (major === 4 || major === 5) return 0.25
-  return 0.1
+  return 0.10
 }
 
 function formatTitleCaseAddress(address: string): string {
@@ -44,7 +43,7 @@ function isCommercialAssessedClass(assessedClass: string | null): boolean {
   if (!assessedClass) return false
   const d = String(assessedClass).replace(/\D/g, '')
   const f = d.charAt(0)
-  return f === '3' || f === '5' || f === '6' || f === '7' || f === '8'
+  return f === '5' || f === '6' || f === '7' || f === '8'
 }
 
 function levelNote(level: number): string {
