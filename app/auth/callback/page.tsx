@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   clearAuthNextCookie,
@@ -9,13 +10,8 @@ import {
   upsertSubscriberOnSession,
 } from '@/lib/subscriber'
 
-function redirectTo(next: string) {
-  if (typeof window === 'undefined') return
-  clearAuthNextCookie()
-  window.location.replace(next)
-}
-
 export default function AuthCallbackPage() {
+  const router = useRouter()
   const handled = useRef(false)
 
   useEffect(() => {
@@ -30,7 +26,15 @@ export default function AuthCallbackPage() {
         await upsertSubscriberOnSession(session, zip)
         clearPendingZipCookie()
       }
-      redirectTo('/profile')
+      clearAuthNextCookie()
+      const params = new URLSearchParams(window.location.hash.substring(1))
+      const type = params.get('type')
+
+      if (type === 'recovery') {
+        router.push('/profile/set-password')
+      } else {
+        router.push('/profile')
+      }
     }
 
     async function run() {
@@ -51,18 +55,18 @@ export default function AuthCallbackPage() {
           if (s) {
             await finishWithSession(s)
           } else {
-            redirectTo('/?auth_error=expired')
+            router.push('/?auth_error=expired')
           }
           subscription.unsubscribe()
         }, 1500)
         return
       }
 
-      redirectTo('/?auth_error=expired')
+      router.push('/?auth_error=expired')
     }
 
     run()
-  }, [])
+  }, [router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f2f0eb]">
