@@ -1,6 +1,8 @@
 'use client'
 
-import { SignInButton, UserButton, useAuth } from '@clerk/nextjs'
+import { SignInButton, useAuth, useClerk } from '@clerk/nextjs'
+import Link from 'next/link'
+import { useState, useRef, useEffect } from 'react'
 
 type Props = {
   /** e.g. dropdown row vs drawer row */
@@ -10,6 +12,20 @@ type Props = {
 
 export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
   const { isSignedIn } = useAuth()
+  const { signOut } = useClerk()
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [open])
 
   if (isSignedIn) {
     return (
@@ -18,18 +34,25 @@ export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
           variant === 'dropdown' ? 'flex min-h-[48px] items-center pl-5 pr-5' : 'flex min-h-[56px] items-center pl-[36px] pr-4'
         }
       >
-        <UserButton
-          {...({
-            afterSignOutUrl: '/',
-            children: (
-              <UserButton.MenuItems>
-                <UserButton.Link label="My Profile" labelIcon={<span>👤</span>} href="/profile" />
-                <UserButton.Action label="manageAccount" />
-                <UserButton.Action label="signOut" />
-              </UserButton.MenuItems>
-            ),
-          } as React.ComponentProps<typeof UserButton>)}
-        />
+        <div
+          ref={wrapRef}
+          style={{ position: 'relative' }}
+          className={variant === 'drawer' ? 'nav-account-wrap--drawer' : undefined}
+        >
+          <button type="button" onClick={() => setOpen((v) => !v)} className="nav-account-btn">
+            My Account
+          </button>
+          {open && (
+            <div className="nav-account-dropdown">
+              <Link href="/profile" onClick={() => setOpen(false)}>
+                My Profile
+              </Link>
+              <button type="button" onClick={() => signOut({ redirectUrl: '/' })}>
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     )
   }

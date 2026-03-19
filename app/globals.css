@@ -1456,3 +1456,56 @@ body {
     width: 160px;
   }
 }
+
+/* Nav: custom account dropdown (Clerk — NavClerkAuth) */
+.nav-account-btn {
+  color: #fff;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-family: var(--sans);
+  padding: 4px 8px;
+}
+
+.nav-menu-dropdown .nav-account-btn,
+.nav-drawer .nav-account-btn {
+  color: var(--text, var(--ink, #1a1a1a));
+}
+
+.nav-account-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: #fff;
+  border: 1px solid var(--border, #ddd9d0);
+  border-radius: 6px;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.nav-account-wrap--drawer .nav-account-dropdown {
+  left: 36px;
+  right: auto;
+}
+
+.nav-account-dropdown a,
+.nav-account-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text, var(--ink, #1a1a1a));
+  text-decoration: none;
+}
+
+.nav-account-dropdown a:hover,
+.nav-account-dropdown button:hover {
+  background: var(--cream, var(--grey-hero, #f2f0eb));
+}
