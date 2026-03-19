@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
-import type { Session } from '@supabase/supabase-js'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 import HamburgerIcon from '@/app/components/HamburgerIcon'
-import LoginModal from '@/app/components/LoginModal'
 
 type LandingNavProps = {
   apiKey: string | undefined
@@ -15,16 +12,7 @@ type LandingNavProps = {
 
 export default function LandingNav({ apiKey }: LandingNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [loginModalOpen, setLoginModalOpen] = useState(false)
-  const [session, setSession] = useState<Session | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
-    return () => subscription.unsubscribe()
-  }, [])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -65,9 +53,7 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
           {menuOpen && (
             <NavMenuDropdown
               onClose={() => setMenuOpen(false)}
-              onLoginClick={() => setLoginModalOpen(true)}
               apiKey={apiKey}
-              session={session}
             />
           )}
         </div>
@@ -75,11 +61,8 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
       <MobileNavDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        onLoginClick={() => setLoginModalOpen(true)}
         apiKey={apiKey}
-        session={session}
       />
-      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} isAuthenticated={!!session} />
     </>
   )
 }

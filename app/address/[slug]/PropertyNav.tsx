@@ -3,13 +3,10 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { useRef, useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { addressToSlug } from '@/lib/address-slug'
-import type { Session } from '@supabase/supabase-js'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 import HamburgerIcon from '@/app/components/HamburgerIcon'
-import LoginModal from '@/app/components/LoginModal'
 
 const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
 
@@ -74,17 +71,8 @@ type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [loginModalOpen, setLoginModalOpen] = useState(false)
-  const [session, setSession] = useState<Session | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
-    return () => subscription.unsubscribe()
-  }, [])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -189,9 +177,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
             {menuOpen && (
               <NavMenuDropdown
                 onClose={() => setMenuOpen(false)}
-                onLoginClick={() => setLoginModalOpen(true)}
                 apiKey={apiKey}
-                session={session}
                 skipMapsScript
               />
             )}
@@ -202,12 +188,9 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
       <MobileNavDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        onLoginClick={() => setLoginModalOpen(true)}
         apiKey={apiKey}
-        session={session}
         skipMapsScript
       />
-      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} isAuthenticated={!!session} />
     </>
   )
 }

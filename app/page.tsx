@@ -1,8 +1,6 @@
-import { Suspense } from 'react'
 import HomeSearch from './components/HomeSearch'
 import HowItWorks from './components/HowItWorks'
 import LiveTimestamp from './components/LiveTimestamp'
-import AuthErrorBanner from './components/AuthErrorBanner'
 import LandingNav from './components/LandingNav'
 
 export default function Home() {
@@ -12,9 +10,6 @@ export default function Home() {
 
       <section className="landing-hero">
         <div className="hero-inner">
-          <Suspense fallback={null}>
-            <AuthErrorBanner />
-          </Suspense>
           <h1 className="hero-headline">
             Know what the city
             <br />

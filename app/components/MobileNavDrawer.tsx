@@ -5,19 +5,17 @@ import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import HomeSearch from '@/app/components/HomeSearch'
-import type { Session } from '@supabase/supabase-js'
+import NavClerkAuth from '@/app/components/NavClerkAuth'
 
 type MobileNavDrawerProps = {
   open: boolean
   onClose: () => void
-  onLoginClick: () => void
   apiKey: string | undefined
-  session: Session | null
   /** When true, HomeSearch will not load Maps script (parent already loaded it). */
   skipMapsScript?: boolean
 }
 
-export default function MobileNavDrawer({ open, onClose, onLoginClick, apiKey, session, skipMapsScript }: MobileNavDrawerProps) {
+export default function MobileNavDrawer({ open, onClose, apiKey, skipMapsScript }: MobileNavDrawerProps) {
   const pathname = usePathname()
   const isHomepage = pathname === '/'
 
@@ -89,28 +87,7 @@ export default function MobileNavDrawer({ open, onClose, onLoginClick, apiKey, s
             <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
             Contact
           </Link>
-          {session ? (
-            <Link
-              href="/profile"
-              className="flex items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 no-underline hover:bg-gray-50 nav-drawer-item"
-              onClick={onClose}
-            >
-              <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
-              My Profile
-            </Link>
-          ) : (
-            <button
-              type="button"
-              className="flex w-full items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#c0392b] border-b border-gray-200 bg-transparent no-underline hover:bg-gray-50 nav-drawer-item text-left"
-              onClick={() => {
-                onClose()
-                onLoginClick()
-              }}
-            >
-              <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
-              Log In
-            </button>
-          )}
+          <NavClerkAuth variant="drawer" onAfterAuthAction={onClose} />
         </div>
       </div>
     </div>

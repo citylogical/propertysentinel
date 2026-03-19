@@ -3,18 +3,16 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import HomeSearch from '@/app/components/HomeSearch'
-import type { Session } from '@supabase/supabase-js'
+import NavClerkAuth from '@/app/components/NavClerkAuth'
 
 type NavMenuDropdownProps = {
   onClose: () => void
-  onLoginClick: () => void
   apiKey: string | undefined
-  session: Session | null
   /** When true, HomeSearch will not load Maps script (parent already loaded it). */
   skipMapsScript?: boolean
 }
 
-export default function NavMenuDropdown({ onClose, onLoginClick, apiKey, session, skipMapsScript }: NavMenuDropdownProps) {
+export default function NavMenuDropdown({ onClose, apiKey, skipMapsScript }: NavMenuDropdownProps) {
   const pathname = usePathname()
   const isHomepage = pathname === '/'
   const isPropertyPage = pathname.startsWith('/address/')
@@ -48,24 +46,7 @@ export default function NavMenuDropdown({ onClose, onLoginClick, apiKey, session
         {chevron}
         Contact
       </Link>
-      {session ? (
-        <Link href="/profile" className={itemClassRed} onClick={onClose}>
-          {chevron}
-          My Profile
-        </Link>
-      ) : (
-        <button
-          type="button"
-          className={`${itemClassRed} w-full text-left bg-transparent border-0`}
-          onClick={() => {
-            onClose()
-            onLoginClick()
-          }}
-        >
-          {chevron}
-          Log In
-        </button>
-      )}
+      <NavClerkAuth variant="dropdown" onAfterAuthAction={onClose} />
     </div>
   )
 }
