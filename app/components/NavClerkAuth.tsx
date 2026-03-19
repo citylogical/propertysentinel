@@ -14,18 +14,17 @@ export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
   const { isSignedIn } = useAuth()
   const { signOut } = useClerk()
   const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false)
       }
     }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
-  }, [open])
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   if (isSignedIn) {
     return (
@@ -35,11 +34,18 @@ export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
         }
       >
         <div
-          ref={wrapRef}
-          style={{ position: 'relative' }}
+          ref={ref}
+          style={{ position: 'relative', zIndex: 150 }}
           className={variant === 'drawer' ? 'nav-account-wrap--drawer' : undefined}
         >
-          <button type="button" onClick={() => setOpen((v) => !v)} className="nav-account-btn">
+          <button
+            type="button"
+            onClick={() => {
+              console.log('My Account clicked')
+              setOpen((v) => !v)
+            }}
+            className="nav-account-btn"
+          >
             My Account
           </button>
           {open && (
