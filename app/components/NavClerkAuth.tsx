@@ -18,7 +18,18 @@ export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
           variant === 'dropdown' ? 'flex min-h-[48px] items-center pl-5 pr-5' : 'flex min-h-[56px] items-center pl-[36px] pr-4'
         }
       >
-        <UserButton />
+        <UserButton
+          {...({
+            afterSignOutUrl: '/',
+            children: (
+              <UserButton.MenuItems>
+                <UserButton.Link label="My Profile" labelIcon={<span>👤</span>} href="/profile" />
+                <UserButton.Action label="manageAccount" />
+                <UserButton.Action label="signOut" />
+              </UserButton.MenuItems>
+            ),
+          } as React.ComponentProps<typeof UserButton>)}
+        />
       </div>
     )
   }
