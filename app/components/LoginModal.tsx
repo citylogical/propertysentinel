@@ -51,7 +51,7 @@ export default function LoginModal({ open, onClose, isAuthenticated }: Props) {
   const message = useMemo(() => {
     if (action === 'verify_email') return `We've sent a verification email to ${email}. Please verify before signing in.`
     if (action === 'set_password_email_sent') return "We've sent you an email to set up your password. Please check your inbox."
-    if (action === 'registered') return 'Check your email to verify your account'
+    if (action === 'registered') return 'Check your email to verify your account before signing in.'
     if (action === 'password_reset_sent') return 'Password reset email sent.'
     return null
   }, [action, email])
@@ -95,8 +95,12 @@ export default function LoginModal({ open, onClose, isAuthenticated }: Props) {
   const submitRegistration = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim() || !password) return
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('Passwords must match.')
       return
     }
     setLoading(true)
@@ -221,7 +225,7 @@ export default function LoginModal({ open, onClose, isAuthenticated }: Props) {
         ) : action === 'register' ? (
           <form onSubmit={submitRegistration} className="space-y-3">
             <label htmlFor="login-password" className="block text-sm font-medium text-[#1a1a1a]">
-              Password
+              Create a password
             </label>
             <input
               id="login-password"
@@ -244,6 +248,12 @@ export default function LoginModal({ open, onClose, isAuthenticated }: Props) {
               minLength={8}
               className="w-full rounded border border-[#d6d1c6] px-3 py-2 text-sm outline-none focus:border-[#0f2744]"
             />
+            {password.length > 0 && password.length < 8 && (
+              <p className="text-sm text-[#c0392b]">Password must be at least 8 characters.</p>
+            )}
+            {confirmPassword.length > 0 && password !== confirmPassword && (
+              <p className="text-sm text-[#c0392b]">Passwords must match.</p>
+            )}
             <button
               type="submit"
               disabled={loading}

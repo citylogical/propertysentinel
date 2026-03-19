@@ -44,9 +44,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ action: 'enter_password' })
     }
 
-    const { error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: normalizedEmail,
+    const { error: recoveryError } = await supabaseAdmin.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/profile/set-password`,
     })
     if (recoveryError) {
       return NextResponse.json({ error: recoveryError.message }, { status: 500 })
