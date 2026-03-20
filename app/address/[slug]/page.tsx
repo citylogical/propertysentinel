@@ -88,6 +88,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   console.log('DEBUG normalizedAddress:', JSON.stringify(normalizedAddress))
   console.log('DEBUG propertyResult:', JSON.stringify(propertyResult))
   const property = propertyResult.property
+  const nearestParcel = propertyResult.nearestParcel
   const pin: string | null =
     property?.pin != null && String(property.pin).trim() !== ''
       ? String(property.pin).trim()
@@ -330,8 +331,17 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     .filter(Boolean)
     .join(' · ')
 
-  return (
-    <div className="address-page">
+    function nearestParcelSlug(addr: string | null, zip: string | null): string {
+      if (!addr) return ''
+      const titleCase = addr
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join('-')
+      return `${titleCase}-Chicago-${zip ?? ''}`
+    }
+  
+    return (
+      <div className="address-page">
       <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       {addressRange && (
@@ -385,8 +395,29 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           </div>
 
           <div className="profile-card">
-            <div className="profile-card-header">Property Details</div>
-            {isExpanded && expandedSiblings.length > 0 ? (
+          <div className="profile-card-header">Property Details</div>
+
+{!property && nearestParcel && (
+  <div className="nearest-parcel-note">
+    <div className="nearest-parcel-heading">
+      No Assessor record at this address
+    </div>
+    <div className="nearest-parcel-sub">
+      The Cook County Assessor does not have a parcel at this exact address —
+      likely part of a building range. Nearest parcel on record:{' '}
+      <Link
+        href={`/address/${nearestParcelSlug(nearestParcel.address_normalized, nearestParcel.zip)}`}
+        className="nearest-parcel-link"
+      >
+        {nearestParcel.address_normalized ?? nearestParcel.address}
+        {nearestParcel.pin ? ` · PIN ${nearestParcel.pin}` : ''}
+        {' →'}
+      </Link>
+    </div>
+  </div>
+)}
+
+{isExpanded && expandedSiblings.length > 0 ? (
               <PropertyDetailsExpanded
                 key={expandedSiblings.map((s) => s.pin).join(',')}
                 siblings={expandedSiblings}

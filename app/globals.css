@@ -216,7 +216,7 @@ body {
   padding-right: 16px;
 }
 
-/* Mobile nav drawer: use same fonts as landing (Merriweather + DM Sans) */
+/* Mobile nav drawer */
 .nav-drawer {
   font-family: "DM Sans", system-ui, sans-serif;
 }
@@ -227,12 +227,12 @@ body {
   font-family: "DM Sans", system-ui, sans-serif;
 }
 
-/* Google Places autocomplete dropdown: above mobile nav drawer (z-index 9999) */
+/* Google Places autocomplete dropdown */
 .pac-container {
   z-index: 10000 !important;
 }
 
-/* Desktop nav menu dropdown (15px Inter) */
+/* Desktop nav menu dropdown */
 .nav-menu-dropdown,
 .nav-menu-dropdown-item {
   font-family: "Inter", system-ui, sans-serif;
@@ -390,7 +390,7 @@ body {
   }
 }
 
-/* ── Address / Property page (Playfair + Inter) ── */
+/* ── Address / Property page ── */
 .address-page {
   --navy: #0f2744;
   --navy-mid: #1a3a5c;
@@ -422,7 +422,7 @@ body {
   color: var(--text);
 }
 
-/* Building banner (single + expanded: same dark red/amber) */
+/* Building banner */
 .building-banner {
   background: #92400e;
   color: #fff;
@@ -446,7 +446,7 @@ body {
   opacity: 1;
 }
 
-/* Property details — expanded building (per-PIN collapsibles) */
+/* Property details — expanded building */
 .address-page .property-details-expanded {
   padding: 0 0 0.5rem;
 }
@@ -525,7 +525,42 @@ body {
   z-index: 100;
 }
 
-/* Nav brand: match landing page font (Merriweather) on all pages */
+/* Nearest parcel note — shown when Assessor has no record at searched address */
+.nearest-parcel-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  background: rgba(183, 121, 31, 0.07);
+  border-left: 2px solid var(--amber);
+  border-radius: 0 4px 4px 0;
+}
+
+.nearest-parcel-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  margin-bottom: 4px;
+}
+
+.nearest-parcel-sub {
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+
+.nearest-parcel-link {
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+
+.nearest-parcel-link:hover {
+  opacity: 0.8;
+}
+
+/* Nav brand */
 .address-page .prop-nav .nav-brand {
   font-family: "Merriweather", Georgia, serif;
   font-size: 20px;

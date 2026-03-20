@@ -245,7 +245,6 @@ export async function fetchSiblingPins(
 
     // PATH B — commercial chars pins column
     // Does NOT return early — falls through to Path C which is authoritative
-    // Path C via mailing name catches addresses commercial chars may miss
     const { data: commercial } = await supabaseAdmin
       .from('property_chars_commercial')
       .select('keypin, pins')
@@ -261,7 +260,7 @@ export async function fetchSiblingPins(
       .select('mailing_name, address_normalized')
       .eq('pin', pin)
       .maybeSingle()
-      console.log('Path C subject:', JSON.stringify(subject), 'pin queried:', pin)
+    console.log('Path C subject:', JSON.stringify(subject), 'pin queried:', pin)
 
     if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
       const streetWords = addressNormalized.split(' ').slice(2).join(' ')
@@ -326,26 +325,30 @@ function buildAddressRange(addresses: string[]): string | null {
 
 export async function fetchProperty(normalizedAddress: string): Promise<{
   property: PropertyRow | null
+  nearestParcel: (PropertyRow & { _nearestDist: number }) | null
   error: string | null
 }> {
   console.log('fetchProperty received:', JSON.stringify(normalizedAddress))
+  const SELECT_COLS = 'address, address_normalized, pin, pin10, zip, ward, community_area, property_class, lat, lng, health_score, mailing_name, mailing_address, tax_year'
+
   try {
+    // Tier 1 — exact match on address
     let { data, error } = await supabase
       .from('properties')
-      .select('address, address_normalized, pin, pin10, zip, ward, community_area, property_class, lat, lng, health_score, mailing_name, mailing_address, tax_year')
+      .select(SELECT_COLS)
       .eq('address', normalizedAddress)
       .order('pin', { ascending: true })
       .limit(1)
       .maybeSingle()
 
-    // Fallback: strip street type suffix and try ILIKE
-    // Handles cases where slug says "Drive" but data has "Street" etc.
+    // Tier 2 — strip street type suffix, prefix LIKE (btree-safe, data is already uppercase)
+    // Handles slug/data street-type mismatches e.g. slug says "Drive" but data has "Street"
     if (!data && !error) {
       const withoutSuffix = normalizedAddress.replace(/\s+(ST|AVE|BLVD|DR|CT|PL|LN|RD|WAY|PKWY|TER|CIR)$/i, '')
       const fallback = await supabase
         .from('properties')
-        .select('address, address_normalized, pin, pin10, zip, ward, community_area, property_class, lat, lng, health_score, mailing_name, mailing_address, tax_year')
-        .ilike('address', `${withoutSuffix}%`)
+        .select(SELECT_COLS)
+        .like('address', `${withoutSuffix}%`)  // LIKE not ILIKE — ILIKE prevents btree index use
         .order('pin', { ascending: true })
         .limit(1)
         .maybeSingle()
@@ -353,14 +356,76 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
       error = fallback.error
     }
 
-    console.log('fetchProperty result:', JSON.stringify(data), 'error:', error)
-
     if (error) throw new Error(error.message)
 
-    return { property: (data as PropertyRow | null) ?? null, error: null }
+    if (data) {
+      console.log('fetchProperty result:', JSON.stringify(data))
+      return { property: data as PropertyRow, nearestParcel: null, error: null }
+    }
+
+    // Tier 3 — direction-agnostic nearest-number search
+    // Handles two known failure modes:
+    //   (a) Direction mismatch: Assessor stores "5532 E HYDE PARK BLVD",
+    //       DOB writes "5540 S HYDE PARK BLVD" — diagonal streets use E vs S interchangeably
+    //   (b) Address range: Assessor stores only the low address (5532),
+    //       DOB inspector walked in at 5540
+    //   (c) Both combined
+    //
+    // Returns nearestParcel for the UI hint banner ONLY.
+    // Does NOT set `property` — the page shows N/A for PIN/assessor fields
+    // and surfaces a soft banner instead of asserting this is the same building.
+    //
+    // Uses .in() on all candidate addresses — fast on indexed column, no leading wildcards.
+    let nearestParcel: (PropertyRow & { _nearestDist: number }) | null = null
+
+    const addressParts = normalizedAddress.split(' ')
+    const streetNum = parseInt(addressParts[0])
+    const hasDirection = addressParts.length >= 3 && /^[NSEW]$/.test(addressParts[1])
+    const streetSuffix = hasDirection
+      ? addressParts.slice(2).join(' ')
+      : addressParts.slice(1).join(' ')
+
+    if (!isNaN(streetNum) && streetSuffix.length > 2) {
+      const directions = ['N', 'S', 'E', 'W']
+      // Offset 0 first (same number, different direction), then step outward by 2s up to ±10
+      const stepOffsets = [0, -2, 2, -4, 4, -6, 6, -8, 8, -10, 10]
+
+      const candidates: string[] = []
+      for (const offset of stepOffsets) {
+        const num = streetNum + offset
+        if (num <= 0) continue
+        for (const dir of directions) {
+          candidates.push(`${num} ${dir} ${streetSuffix}`)
+        }
+      }
+
+      const { data: nearbyData } = await supabase
+        .from('properties')
+        .select(SELECT_COLS)
+        .in('address_normalized', candidates)
+        .limit(10)
+
+      if (nearbyData && nearbyData.length > 0) {
+        const closest = (nearbyData as PropertyRow[])
+          .map((r) => {
+            const num = parseInt((r.address_normalized ?? r.address ?? '').split(' ')[0])
+            return { ...r, _nearestDist: isNaN(num) ? 9999 : Math.abs(num - streetNum) }
+          })
+          .sort((a, b) => a._nearestDist - b._nearestDist)[0]
+
+        // Cap at 10 street numbers to avoid false positives on dense blocks
+        if (closest._nearestDist <= 10) {
+          nearestParcel = closest
+        }
+      }
+    }
+
+    console.log('fetchProperty: no match, nearestParcel:', nearestParcel?.address_normalized ?? 'none')
+    return { property: null, nearestParcel, error: null }
   } catch (e) {
     return {
       property: null,
+      nearestParcel: null,
       error: e instanceof Error ? e.message : 'Unknown error',
     }
   }
