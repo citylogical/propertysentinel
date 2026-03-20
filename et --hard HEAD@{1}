@@ -1,0 +1,78 @@
+[33mea2eaac[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{0}: reset: moving to HEAD~2
+[33m92a1e05[m[33m ([m[1;31morigin/main[m[33m)[m HEAD@{1}: commit: sliding toggle animation
+[33m917a3ec[m HEAD@{2}: commit: adding toggle for building only complaints
+[33mea2eaac[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{3}: commit: Fixing button click
+[33m522a76f[m HEAD@{4}: commit: Making My Account button clickable
+[33m90cd1e5[m HEAD@{5}: commit: Adding profile page
+[33m541bb39[m HEAD@{6}: commit: simplifying profile button further
+[33m285c401[m HEAD@{7}: commit: Fixing Profile Button
+[33m63e5f5b[m HEAD@{8}: commit: Using Clerk as log-in tool
+[33m65b1ccb[m HEAD@{9}: commit: fix: upgrade Next.js to 16.2.0, fix flatted security vulnerabilities
+[33m1df9a72[m HEAD@{10}: commit: Tweaking password auth
+[33maa559ea[m HEAD@{11}: commit: Fixing password auth
+[33m04e909e[m HEAD@{12}: commit: Proofing email log-in and adding profile page
+[33md02ff2e[m HEAD@{13}: commit: Major changes, property families
+[33m4600ab0[m HEAD@{14}: commit: Adding commercial and exempt char
+[33m046b47a[m HEAD@{15}: commit: Added lib/class-codes.ts
+[33m1cd0a0a[m HEAD@{16}: commit: Changing permits and violations back to normalized address match
+[33m74c0470[m HEAD@{17}: commit: debugging
+[33m3cb174f[m HEAD@{18}: commit: search change
+[33mb8f243a[m HEAD@{19}: commit: fix: remove stale resolve-address API route referencing deleted function
+[33m78cb4c9[m HEAD@{20}: commit: fix: PIN resolution working, assessed values, property chars, parcel universe all rendering
+[33m32904ed[m HEAD@{21}: reset: moving to HEAD
+[33m32904ed[m HEAD@{22}: commit: fixing js hydratoin error
+[33mf50265d[m HEAD@{23}: commit: Correcting last code for false boolean
+[33me7ce52d[m HEAD@{24}: commit: Pushing thru a host of changes--pulling all parcel universe & parcel characteristic data available for prpoerty profile card
+[33mdbf1f76[m HEAD@{25}: commit: Rewriting PIN pulls to pull on parcel universe, not 311
+[33m1fef99f[m HEAD@{26}: commit: Continuing assessed value pull fix
+[33mf7eab76[m HEAD@{27}: commit: Twiddling with last assessed value
+[33me161098[m HEAD@{28}: commit: changing assessed value logic
+[33m69e5ca8[m HEAD@{29}: commit: Fixing scorecards and scrollbar
+[33m49ff5d5[m HEAD@{30}: commit: Fixing desktop browser menu hamburger
+[33m7e77fd7[m HEAD@{31}: commit: Refining hamburger nav
+[33m8c8b045[m HEAD@{32}: commit: Editing mobile hamburger nav
+[33m387f1c6[m HEAD@{33}: commit: Correcting click function
+[33m9d0a8a3[m HEAD@{34}: commit: changing mobile design to hamburger nav
+[33m14a9b08[m HEAD@{35}: commit: implicit browser flow and cookie storing
+[33m779d4f4[m HEAD@{36}: commit: adding console log to figure out auth issue
+[33m07dbb8b[m HEAD@{37}: commit: Changing supabase/clients.ts to redirect to email auth page
+[33m1f81230[m HEAD@{38}: commit: Fixing homepage redirect auth issue for email verify
+[33mf36b43b[m HEAD@{39}: commit: Updating lib/supabase/clients.ts to direct new users to /auth/callback
+[33m802967b[m HEAD@{40}: commit: sticky violations problem
+[33m5393a23[m HEAD@{41}: commit: Hopefully final violations fix
+[33mcc07453[m HEAD@{42}: commit: fixing violations
+[33me817576[m HEAD@{43}: commit: Fixes
+[33mb2678c4[m HEAD@{44}: commit: Adding permit info
+[33m0636403[m HEAD@{45}: commit: fixing magic link
+[33m29222c5[m HEAD@{46}: commit: fixing mobile layout
+[33m777509d[m HEAD@{47}: commit: fresh auth
+[33m709aa45[m HEAD@{48}: commit: fixing zip inauthentication
+[33m3e4a9c6[m HEAD@{49}: commit: trigger deploy
+[33m525347e[m HEAD@{50}: commit: fixing multiple errors
+[33m4e71b4d[m HEAD@{51}: commit: Fixing violation logic
+[33m4813bb2[m HEAD@{52}: commit: fixing login look
+[33m4ffde30[m HEAD@{53}: commit: fixing email field errors
+[33m55c8613[m HEAD@{54}: commit: adding email login
+[33ma2c5fe7[m HEAD@{55}: commit: Fixing property details linking issues
+[33m1dac302[m HEAD@{56}: commit: editing details
+[33m6a9a19d[m HEAD@{57}: commit: add address/[slug] property page
+[33me0d596a[m HEAD@{58}: commit: fix subtitle alignment around LiveTimestamp
+[33m6f98d66[m HEAD@{59}: commit: fix subtitle alignment around LiveTimestamp trigger
+[33mb685f50[m HEAD@{60}: commit: fix: add line break for improved layout in LiveTimestamp component
+[33me675eec[m HEAD@{61}: commit: restyling the timestamp once again
+[33m0223b2a[m HEAD@{62}: commit: refactor LiveTimestamp to tooltip on hover/tap
+[33m722aa26[m HEAD@{63}: commit: finally fixing timezone issue
+[33m2a0aea9[m HEAD@{64}: commit: fix: as of text not green, bump timestamp font size
+[33mbfc9ed1[m HEAD@{65}: commit: fix: Chicago timezone, monospace font, slow pulse, 'as of' label
+[33mb2880c6[m HEAD@{66}: commit: feat: add live 311 timestamp to homepage subtitle
+[33mf50203d[m HEAD@{67}: commit: fix: use timestamp from created/modified/closed_date for all date display
+[33m6a85f7e[m HEAD@{68}: commit: fix: rename search-page.tsx to page.tsx
+[33m5dc94e2[m HEAD@{69}: commit: feat: switch 311 search to Supabase with full complaint list
+[33maab7625[m HEAD@{70}: commit: fix search results styling, remove blur
+[33mf765b25[m HEAD@{71}: commit: client-side rendering, loading skeleton
+[33m78ea378[m HEAD@{72}: commit: client-side rendering, loading skeleton
+[33mbef9303[m HEAD@{73}: commit: loading skeleton, API timeouts, Socrata app token
+[33m30d8257[m HEAD@{74}: commit: parallel API calls, fix page title
+[33m3fdd360[m HEAD@{75}: commit: add violations to search results, admin page
+[33m2e5d00c[m HEAD@{76}: commit: add search results page with live 311 data
+[33m94f6b75[m HEAD@{77}: commit (initial): initial commit - schema and homepage

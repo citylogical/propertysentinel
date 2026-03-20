@@ -145,7 +145,7 @@ export default function PropertyFeed({
           311 Complaints{' '}
           <span
             ref={badgeRef}
-            className="tab-badge"
+            className="tab-pill"
             style={{ display: 'inline-block', transformOrigin: 'center' }}
           >
             {filteredComplaints.length}
@@ -170,26 +170,14 @@ export default function PropertyFeed({
       {/* 311 panel */}
       <div className={`tab-panel ${activeTab === '311' ? 'active' : ''}`} id="panel-311">
         <div className="feed-body">
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 12,
-              paddingLeft: 16,
-              paddingRight: 16,
-              fontFamily: 'var(--sans)',
-              fontSize: 13,
-            }}
-          >
-            <span style={{ fontSize: 13, color: 'var(--text-mid)' }}>{filteredOpenCount} Open</span>
+          <div className="feed-meta-bar" style={{ padding: '9px 16px' }}>
             <div
               style={{
                 position: 'relative',
                 display: 'flex',
                 background: 'var(--cream-dark)',
                 borderRadius: 6,
-                height: 36,
+                height: 28,
                 alignItems: 'center',
                 padding: 0,
                 minWidth: 'fit-content',
@@ -198,10 +186,11 @@ export default function PropertyFeed({
               <div
                 style={{
                   position: 'absolute',
-                  top: 4,
-                  bottom: 4,
+                  top: 2,
                   left: 0,
                   width: pillWidth,
+                  height: 24,
+                  lineHeight: '24px',
                   transform: `translateX(${pillLeft}px)`,
                   transition:
                     'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), width 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -233,7 +222,7 @@ export default function PropertyFeed({
                   fontWeight: showAllSRCodes ? 400 : 500,
                   transition: 'color 150ms ease',
                   color: showAllSRCodes ? 'var(--text-dim)' : '#92400e',
-                  padding: '4px 12px',
+                  padding: '2px 10px',
                   whiteSpace: 'nowrap',
                   boxSizing: 'border-box',
                 }}
@@ -263,7 +252,7 @@ export default function PropertyFeed({
                   fontWeight: showAllSRCodes ? 500 : 400,
                   transition: 'color 150ms ease',
                   color: showAllSRCodes ? '#92400e' : 'var(--text-dim)',
-                  padding: '4px 12px',
+                  padding: '2px 10px',
                   whiteSpace: 'nowrap',
                   boxSizing: 'border-box',
                 }}
@@ -272,6 +261,7 @@ export default function PropertyFeed({
                 {complaints.length} Total
               </button>
             </div>
+            <span className="feed-window-note">All time</span>
           </div>
 
           {complaints.length === 0 ? (
@@ -330,7 +320,7 @@ export default function PropertyFeed({
       {/* Violations panel */}
       <div className={`tab-panel ${activeTab === 'violations' ? 'active' : ''}`} id="panel-violations">
         <div className="feed-body">
-          <div className="feed-meta-bar">
+          <div className="feed-meta-bar" style={{ padding: '11px 16px' }}>
             <span className="feed-count">
               <strong>{violationsOpenCount}</strong> open / <strong>{violationsCompliedCount}</strong> complied
             </span>
@@ -408,7 +398,7 @@ export default function PropertyFeed({
       {/* Permits panel */}
       <div className={`tab-panel ${activeTab === 'permits' ? 'active' : ''}`} id="panel-permits">
         <div className="feed-body">
-          <div className="feed-meta-bar">
+          <div className="feed-meta-bar" style={{ padding: '11px 16px' }}>
             <span className="feed-count"><strong>{permits.length}</strong> permits on record</span>
             <span className="feed-window-note">All time</span>
           </div>
