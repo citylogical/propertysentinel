@@ -4,6 +4,7 @@ const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : _supabase
 
 export type ComplaintRow = {
   sr_number: string
+  sr_short_code: string | null
   sr_type: string | null
   status: string | null
   owner_department: string | null
@@ -406,7 +407,7 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
+      .select('sr_number, sr_short_code, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
       .eq('address_normalized', normalizedAddress)
       .order('created_date', { ascending: false })
 
@@ -428,7 +429,7 @@ export async function fetchComplaintsByPin(pin: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
+      .select('sr_number, sr_short_code, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
       .eq('pin', pin)
       .order('created_date', { ascending: false })
 
@@ -450,7 +451,7 @@ export async function fetchComplaintsByAddresses(addresses: string[]): Promise<{
   try {
     const { data, error } = await supabase
       .from('complaints_311')
-      .select('sr_number, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
+      .select('sr_number, sr_short_code, sr_type, status, owner_department, origin, created_date, closed_date, last_modified_date, pin, ward, community_area, address_normalized')
       .in('address_normalized', addresses)
       .order('created_date', { ascending: false })
 

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
+import { isDefaultVisible } from '@/lib/sr-codes'
 
 const PAGE_SIZE = 5
 
@@ -74,7 +75,7 @@ type PropertyFeedProps = {
 
 export default function PropertyFeed({
   complaints,
-  complaintsOpenCount,
+  complaintsOpenCount: _complaintsOpenCount,
   violations,
   violationsOpenCount,
   violationsCompliedCount,
@@ -84,16 +85,54 @@ export default function PropertyFeed({
   serverTime,
 }: PropertyFeedProps) {
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
+  const [showAllSRCodes, setShowAllSRCodes] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
   const [visiblePermits, setVisiblePermits] = useState(PAGE_SIZE)
 
-  const visibleComplaints = complaints.slice(0, visible311)
-  const hasMore311 = complaints.length > visible311
+  const badgeRef = useRef<HTMLSpanElement | null>(null)
+  const buildingBtnRef = useRef<HTMLButtonElement | null>(null)
+  const totalBtnRef = useRef<HTMLButtonElement | null>(null)
+  const [pillWidth, setPillWidth] = useState(0)
+  const [pillLeft, setPillLeft] = useState(0)
+
+  const filteredComplaints = showAllSRCodes
+    ? complaints
+    : complaints.filter((c) => isDefaultVisible(c.sr_short_code ?? null))
+  const buildingComplaintsCount = complaints.filter((c) =>
+    isDefaultVisible(c.sr_short_code ?? null),
+  ).length
+  const filteredOpenCount = filteredComplaints.filter(
+    (c) => (c.status ?? '').toUpperCase() === 'OPEN',
+  ).length
+  const visibleComplaints = filteredComplaints.slice(0, visible311)
+  const hasMore311 = filteredComplaints.length > visible311
   const visibleViolationsList = violations.slice(0, visibleViolations)
   const hasMoreViolations = violations.length > visibleViolations
   const visiblePermitsList = permits.slice(0, visiblePermits)
   const hasMorePermits = permits.length > visiblePermits
+
+  const activeBtnRef = showAllSRCodes ? totalBtnRef : buildingBtnRef
+
+  useEffect(() => {
+    const btn = activeBtnRef.current
+    if (!btn) return
+    setPillWidth(btn.offsetWidth)
+    setPillLeft(btn.offsetLeft)
+  }, [showAllSRCodes, buildingComplaintsCount])
+
+  useEffect(() => {
+    const el = badgeRef.current
+    if (!el) return
+    el.animate(
+      [
+        { transform: 'scale(1)' },
+        { transform: 'scale(1.15)' },
+        { transform: 'scale(1)' },
+      ],
+      { duration: 200, easing: 'ease-in-out' },
+    )
+  }, [filteredComplaints.length])
 
   return (
     <div className="feed">
@@ -103,7 +142,14 @@ export default function PropertyFeed({
           className={`tab ${activeTab === '311' ? 'active' : ''}`}
           onClick={() => setActiveTab('311')}
         >
-          311 Complaints <span className="tab-pill red">{complaints.length}</span>
+          311 Complaints{' '}
+          <span
+            ref={badgeRef}
+            className="tab-badge"
+            style={{ display: 'inline-block', transformOrigin: 'center' }}
+          >
+            {filteredComplaints.length}
+          </span>
         </button>
         <button
           type="button"
@@ -124,16 +170,117 @@ export default function PropertyFeed({
       {/* 311 panel */}
       <div className={`tab-panel ${activeTab === '311' ? 'active' : ''}`} id="panel-311">
         <div className="feed-body">
-          <div className="feed-meta-bar">
-            <span className="feed-count">
-              <strong>{complaints.length}</strong> complaints · <strong>{complaintsOpenCount}</strong> open
-            </span>
-            <span className="feed-window-note">All time</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+              paddingLeft: 16,
+              paddingRight: 16,
+              fontFamily: 'var(--sans)',
+              fontSize: 13,
+            }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--text-mid)' }}>{filteredOpenCount} Open</span>
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                background: 'var(--cream-dark)',
+                borderRadius: 6,
+                height: 36,
+                alignItems: 'center',
+                padding: 0,
+                minWidth: 'fit-content',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  bottom: 4,
+                  left: 0,
+                  width: pillWidth,
+                  transform: `translateX(${pillLeft}px)`,
+                  transition:
+                    'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), width 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  background: '#fef3c7',
+                  border: '0.5px solid #d97706',
+                  borderRadius: 4,
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAllSRCodes(false)
+                  setVisible311(PAGE_SIZE)
+                }}
+                style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 12,
+                  fontWeight: showAllSRCodes ? 400 : 500,
+                  transition: 'color 150ms ease',
+                  color: showAllSRCodes ? 'var(--text-dim)' : '#92400e',
+                  padding: '4px 12px',
+                  whiteSpace: 'nowrap',
+                  boxSizing: 'border-box',
+                }}
+                ref={buildingBtnRef}
+              >
+                {buildingComplaintsCount} Building
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAllSRCodes(true)
+                  setVisible311(PAGE_SIZE)
+                }}
+                style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 12,
+                  fontWeight: showAllSRCodes ? 500 : 400,
+                  transition: 'color 150ms ease',
+                  color: showAllSRCodes ? '#92400e' : 'var(--text-dim)',
+                  padding: '4px 12px',
+                  whiteSpace: 'nowrap',
+                  boxSizing: 'border-box',
+                }}
+                ref={totalBtnRef}
+              >
+                {complaints.length} Total
+              </button>
+            </div>
           </div>
 
           {complaints.length === 0 ? (
             <div className="empty-state">
               No 311 complaints on record for this address.
+            </div>
+          ) : filteredComplaints.length === 0 ? (
+            <div className="empty-state">
+              No complaints match the current filter. Try &quot;Total&quot; to see every type.
             </div>
           ) : (
             <>
