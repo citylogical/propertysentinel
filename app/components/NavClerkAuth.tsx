@@ -2,7 +2,6 @@
 
 import { SignInButton, useAuth, useClerk } from '@clerk/nextjs'
 import Link from 'next/link'
-import { useState, useRef, useEffect } from 'react'
 
 type Props = {
   /** e.g. dropdown row vs drawer row */
@@ -13,53 +12,50 @@ type Props = {
 export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
   const { isSignedIn } = useAuth()
   const { signOut } = useClerk()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   if (isSignedIn) {
-    return (
-      <div
-        className={
-          variant === 'dropdown' ? 'flex min-h-[48px] items-center pl-5 pr-5' : 'flex min-h-[56px] items-center pl-[36px] pr-4'
-        }
-      >
-        <div
-          ref={ref}
-          style={{ position: 'relative', zIndex: 150 }}
-          className={variant === 'drawer' ? 'nav-account-wrap--drawer' : undefined}
-        >
+    if (variant === 'drawer') {
+      return (
+        <>
+          <Link
+            href="/profile"
+            className="flex w-full items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-white border-0 border-b border-gray-200 bg-transparent cursor-pointer text-left hover:bg-gray-50 nav-drawer-item"
+            onClick={onAfterAuthAction}
+          >
+            <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
+            My Account
+          </Link>
           <button
             type="button"
-            onClick={() => {
-              console.log('My Account clicked')
-              setOpen((v) => !v)
-            }}
-            className="nav-account-btn"
+            className="flex w-full items-center min-h-[56px] pl-[36px] pr-0 py-4 text-base font-normal text-[#c0392b] border-0 border-b border-gray-200 bg-transparent cursor-pointer text-left hover:bg-gray-50 nav-drawer-item"
+            onClick={() => signOut({ redirectUrl: '/' })}
           >
-            My Account
+            <span className="text-[14px] text-[#9ca3af] select-none mr-[19px]">&gt;</span>
+            Sign Out
           </button>
-          {open && (
-            <div className="nav-account-dropdown">
-              <Link href="/profile" onClick={() => setOpen(false)}>
-                My Profile
-              </Link>
-              <button type="button" onClick={() => signOut({ redirectUrl: '/' })}>
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <Link
+          href="/profile"
+          className="nav-login-btn flex w-full items-center min-h-[48px] pl-5 pr-5 gap-[10px] text-[15px] font-normal text-white border-0 border-b border-[#f0f0f0] bg-transparent cursor-pointer text-left hover:bg-gray-50 nav-menu-dropdown-item"
+          onClick={onAfterAuthAction}
+        >
+          <span className="text-[16px] text-[#9ca3af] select-none" aria-hidden>&#8250;</span>
+          My Account
+        </Link>
+        <button
+          type="button"
+          className="nav-login-btn flex w-full items-center min-h-[48px] pl-5 pr-5 gap-[10px] text-[15px] font-normal text-[#c0392b] border-0 border-b border-[#f0f0f0] bg-transparent cursor-pointer text-left hover:bg-gray-50 nav-menu-dropdown-item"
+          onClick={() => signOut({ redirectUrl: '/' })}
+        >
+          <span className="text-[16px] text-[#9ca3af] select-none" aria-hidden>&#8250;</span>
+          Sign Out
+        </button>
+      </>
     )
   }
 
