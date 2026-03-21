@@ -1,7 +1,7 @@
 // app/status/page.tsx
 import { createClient } from '@supabase/supabase-js'
 
-export const revalidate = 60 // revalidate every 60 seconds
+export const dynamic = 'force-dynamic'
 
 function getSupabaseAdmin() {
   return createClient(
@@ -21,11 +21,13 @@ type RunRow = {
 }
 
 type DaySummary = {
-  date: string // YYYY-MM-DD
+  date: string
   total: number
   failures: number
   status: 'success' | 'partial' | 'failure' | 'no_data'
 }
+
+type Incident = RunRow & { isResolved: boolean }
 
 function formatCT(isoStr: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -57,7 +59,6 @@ function formatTimeCT(isoStr: string) {
 }
 
 function getDayCT(isoStr: string) {
-  // Returns YYYY-MM-DD in Chicago time
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
     year: 'numeric',
@@ -66,8 +67,13 @@ function getDayCT(isoStr: string) {
   }).format(new Date(isoStr))
 }
 
+function truncateError(msg: string | null): string | null {
+  if (!msg) return null
+  const clean = msg.replace(/for url: https?:\/\/\S+/gi, '').trim()
+  return clean.length > 120 ? clean.slice(0, 120) + '…' : clean
+}
+
 function buildDaySummaries(runs: RunRow[]): DaySummary[] {
-  const today = getDayCT(new Date().toISOString())
   const days: DaySummary[] = []
 
   for (let i = 89; i >= 0; i--) {
@@ -87,7 +93,7 @@ function buildDaySummaries(runs: RunRow[]): DaySummary[] {
 
   for (const entry of days) {
     if (entry.total === 0) {
-      entry.status = entry.date === today ? 'no_data' : 'no_data'
+      entry.status = 'no_data'
     } else if (entry.failures === 0) {
       entry.status = 'success'
     } else if (entry.failures < entry.total) {
@@ -103,7 +109,6 @@ function buildDaySummaries(runs: RunRow[]): DaySummary[] {
 export default async function StatusPage() {
   const supabase = getSupabaseAdmin()
 
-  // Fetch last 90 days of runs
   const ninetyDaysAgo = new Date()
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
@@ -116,7 +121,7 @@ export default async function StatusPage() {
 
   const allRuns: RunRow[] = runs ?? []
 
-  // Compute stats
+  // Stats
   const totalRuns = allRuns.length
   const failedRuns = allRuns.filter(r => r.status === 'failure').length
   const uptimePct = totalRuns > 0
@@ -126,20 +131,29 @@ export default async function StatusPage() {
   const lastSuccess = allRuns.find(r => r.status === 'success' || r.status === 'no_new_records')
   const totalRecords = allRuns.reduce((sum, r) => sum + (r.records_fetched ?? 0), 0)
 
-  const avgDuration = allRuns.filter(r => r.duration_ms).length > 0
-    ? Math.round(allRuns.filter(r => r.duration_ms).reduce((s, r) => s + r.duration_ms!, 0) / allRuns.filter(r => r.duration_ms).length / 1000)
+  const runsWithDuration = allRuns.filter(r => r.duration_ms)
+  const avgDuration = runsWithDuration.length > 0
+    ? Math.round(runsWithDuration.reduce((s, r) => s + r.duration_ms!, 0) / runsWithDuration.length / 1000)
     : null
 
   const isCurrentlyOperational = !allRuns[0] || allRuns[0].status !== 'failure'
 
-  // 90-day chart data
+  // 90-day chart
   const daySummaries = buildDaySummaries([...allRuns].reverse())
 
-  // Incidents (runs with failures)
-  const incidents = allRuns.filter(r => r.status === 'failure')
+  // Incidents with resolved logic
+  const incidents: Incident[] = allRuns
+    .filter(r => r.status === 'failure')
+    .map(inc => ({
+      ...inc,
+      isResolved: allRuns.some(
+        r => (r.status === 'success' || r.status === 'no_new_records') && r.ran_at > inc.ran_at
+      ),
+    }))
 
-  // Recent runs (last 48 entries)
-  const recentRuns = allRuns.slice(0, 48)
+  // Recent runs — last 24 hours only
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const recentRuns = allRuns.filter(r => r.ran_at >= oneDayAgo)
 
   const barColor = (s: DaySummary['status']) => {
     if (s === 'success') return '#2d6a4f'
@@ -158,7 +172,6 @@ export default async function StatusPage() {
   return (
     <div style={{ fontFamily: '"DM Sans", system-ui, sans-serif', background: '#f0f0ed', minHeight: '100vh', color: '#1a1a1a' }}>
 
-      {/* Nav */}
       <nav className="landing-nav">
         <a className="nav-brand" href="/">Property Sentinel</a>
         <a href="/" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textDecoration: 'none' }}>← Back to search</a>
@@ -223,7 +236,7 @@ export default async function StatusPage() {
           </div>
           <div style={{ padding: '20px 20px 14px' }}>
             <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 48, marginBottom: 8 }}>
-              {daySummaries.map((day, i) => (
+              {daySummaries.map((day) => (
                 <div
                   key={day.date}
                   title={`${day.date}: ${day.total} runs, ${day.failures} failures`}
@@ -286,38 +299,43 @@ export default async function StatusPage() {
                   Chicago Data Portal — 503 Service Unavailable
                 </div>
                 <div style={{ fontSize: 11, color: '#8a94a0', lineHeight: 1.5 }}>
-                  {inc.error_message ?? 'Socrata API unavailable. Worker A exited gracefully. Resume cursor preserved — no records lost.'}
+                  {truncateError(inc.error_message) ?? 'Socrata API unavailable. Worker A exited gracefully. Resume cursor preserved — no records lost.'}
                 </div>
               </div>
               <div style={{
                 fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
                 padding: '2px 8px', borderRadius: 3, whiteSpace: 'nowrap' as const,
                 textTransform: 'uppercase' as const, letterSpacing: '0.06em',
-                background: 'rgba(45,106,79,0.1)', border: '1px solid rgba(45,106,79,0.3)', color: '#2d6a4f',
+                background: inc.isResolved ? 'rgba(45,106,79,0.1)' : 'rgba(192,57,43,0.08)',
+                border: `1px solid ${inc.isResolved ? 'rgba(45,106,79,0.3)' : 'rgba(192,57,43,0.2)'}`,
+                color: inc.isResolved ? '#2d6a4f' : '#c0392b',
               }}>
-                Resolved
+                {inc.isResolved ? 'Resolved' : 'Ongoing'}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Recent run log */}
+        {/* Recent run log — last 24 hours */}
         <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 32 }}>
           <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
               Recent Sync Log
             </span>
-            <span style={{ fontSize: 11, color: '#8a94a0' }}>Last 48 runs · All times CT</span>
+            <span style={{ fontSize: 11, color: '#8a94a0' }}>Last 24 hours · All times CT</span>
           </div>
 
-          {/* Header row */}
           <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 90px 90px 1fr', gap: 12 }}>
             {['Time (CT)', 'Status', 'Records', 'Note'].map(h => (
               <span key={h} style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>{h}</span>
             ))}
           </div>
 
-          {recentRuns.map(run => {
+          {recentRuns.length === 0 ? (
+            <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
+              No runs in the last 24 hours.
+            </div>
+          ) : recentRuns.map(run => {
             const statusStyle = run.status === 'success'
               ? { background: 'rgba(45,106,79,0.1)', color: '#2d6a4f' }
               : run.status === 'failure'
@@ -329,7 +347,7 @@ export default async function StatusPage() {
               : 'No new'
 
             const note = run.status === 'failure'
-              ? (run.error_message ?? '503 — Socrata unavailable')
+              ? (truncateError(run.error_message) ?? '503 — Socrata unavailable')
               : run.status === 'no_new_records'
               ? 'No new complaints in window'
               : ''
