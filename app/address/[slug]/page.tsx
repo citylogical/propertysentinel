@@ -295,19 +295,24 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         )
       : null
 
-  const assessedValueFormatted =
-    impliedMarketValueTotal != null
-      ? currencyZero.format(impliedMarketValueTotal)
-      : assessed != null && Number.isFinite(assessed.displayValue)
-        ? currencyZero.format(assessed.displayValue)
+      const singleImpliedValue =
+      assessed != null && Number.isFinite(assessed.displayValue) && assessed.class != null
+        ? assessed.displayValue / getAssessmentLevelForImplied(assessed.class)
         : null
-
-  const assessedSubtext =
-    impliedMarketValueTotal != null && buildingParcelCountForAv > 1
-      ? `Est. market value · ${buildingParcelCountForAv} ${buildingParcelCountForAv === 1 ? 'parcel' : 'parcels'}`
-      : assessed != null
-        ? `${assessed.taxYear} · ${assessed.valueType}`
-        : null
+  
+    const assessedValueFormatted =
+      impliedMarketValueTotal != null
+        ? currencyZero.format(impliedMarketValueTotal)
+        : singleImpliedValue != null
+          ? currencyZero.format(singleImpliedValue)
+          : null
+  
+    const assessedSubtext =
+      impliedMarketValueTotal != null && buildingParcelCountForAv > 1
+        ? `Est. market value · ${buildingParcelCountForAv} ${buildingParcelCountForAv === 1 ? 'parcel' : 'parcels'}`
+        : singleImpliedValue != null
+          ? `Est. market value · ${assessed!.taxYear}`
+          : null
 
   const displayWard =
     firstComplaint?.ward != null && firstComplaint.ward !== ''
@@ -488,9 +493,9 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                 </div>
 
                 <details>
-                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.7, borderBottom: '1px solid var(--border)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' }}>
-                    <span>Assessment</span>
-                    <span style={{ fontSize: '10px', opacity: 0.6 }}>▾</span>
+                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--text-dim)', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const }}>
+                    {'Assessment'}
+                    <span style={{ fontSize: '16px' }}>{'▾'}</span>
                   </summary>
                   <div className="detail-row">
                     <span className="detail-key">AV Tax Year</span>
@@ -512,6 +517,24 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                     <span className="detail-key">AV Value Source</span>
                     <span className={detailVal(assessed?.valueType ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.valueType ?? null).text}</span>
                   </div>
+                  {assessed?.displayValue != null && (
+                    <div className="detail-row">
+                      <span className="detail-key">Assessed Value</span>
+                      <span className="detail-val">{currencyZero.format(assessed.displayValue)}</span>
+                    </div>
+                  )}
+                  {assessed?.class != null && (
+                    <div className="detail-row">
+                      <span className="detail-key">Assessment Level</span>
+                      <span className="detail-val">{getAssessmentLevelForImplied(assessed.class) === 0.25 ? '25%' : '10%'}</span>
+                    </div>
+                  )}
+                  {assessed?.displayValue != null && assessed?.class != null && (
+                    <div className="detail-row">
+                      <span className="detail-key">Implied Market Value</span>
+                      <span className="detail-val">{currencyZero.format(assessed.displayValue / getAssessmentLevelForImplied(assessed.class))}</span>
+                    </div>
+                  )}
                 </details>
 
                 {exemptChars && (
