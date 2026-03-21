@@ -71,6 +71,7 @@ type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [searchFocused, setSearchFocused] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
 
@@ -152,6 +153,12 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
                 name="address"
                 placeholder="New Chicago search…"
                 autoComplete="off"
+                style={{
+                  width: searchFocused ? 360 : 320,
+                  transition: 'background 0.15s, border-color 0.15s, width 0.2s',
+                }}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
               />
             </form>
           </div>

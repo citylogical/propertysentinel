@@ -1,4 +1,5 @@
 import { supabase as _supabase, getSupabaseAdmin } from './supabase'
+import { findManualBuilding } from './manual-building-addresses'
 
 const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : _supabase
 
@@ -224,6 +225,47 @@ export async function fetchSiblingPins(
   }
 
   try {
+    // PATH D — manual building address range (checked first)
+    // Handles large address-range buildings and multi-street-entrance buildings.
+    // Two things Path C alone can't do:
+    //   (a) Cross-street entrances (La Salle St + Elm St) — Path C only searches one street
+    //   (b) Single-PIN parcels — Path C finds nothing if there's only one PIN
+    // Path D uses allAddresses for fan-out queries and ALSO does the mailing name lookup
+    // to collect all sibling PINs (e.g. all condo unit PINs under "1120 N LASALLE LLC").
+    // Uses displayAddresses for the banner to avoid showing all spelling variants.
+    const manualBuilding = findManualBuilding(addressNormalized)
+    if (manualBuilding) {
+      console.log('fetchSiblingPins Path D manual match for:', addressNormalized)
+
+      // Also collect sibling PINs via mailing name (catches all condo unit PINs)
+      let allPins: string[] = [pin]
+      const { data: subject } = await supabaseAdmin
+        .from('properties')
+        .select('mailing_name')
+        .eq('pin', pin)
+        .maybeSingle()
+
+      if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
+        const { data: mailingMatches } = await supabaseAdmin
+          .from('properties')
+          .select('pin')
+          .eq('mailing_name', subject.mailing_name)
+        if (mailingMatches && mailingMatches.length > 0) {
+          const mailingPins = mailingMatches.map((r: any) => r.pin).filter(Boolean) as string[]
+          allPins = [...new Set([pin, ...mailingPins])]
+          console.log('fetchSiblingPins Path D mailing lookup found', allPins.length, 'PINs')
+        }
+      }
+
+      const displayAddrs = manualBuilding.displayAddresses ?? manualBuilding.allAddresses
+      return {
+        siblingPins: allPins,
+        siblingAddresses: manualBuilding.allAddresses,
+        addressRange: buildAddressRange(displayAddrs),
+        resolvedVia: 'mailing',
+      }
+    }
+
     // PATH A — multiple PINs share exact same address (condo tower)
     console.log('fetchSiblingPins entered, pin:', pin, 'address:', addressNormalized)
     const { data: sameAddress } = await supabaseAdmin
@@ -341,19 +383,25 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
       .limit(1)
       .maybeSingle()
 
-    // Tier 2 — strip street type suffix, prefix LIKE (btree-safe, data is already uppercase)
+    // Tier 2 — try all known street type suffixes as exact matches via .in()
     // Handles slug/data street-type mismatches e.g. slug says "Drive" but data has "Street"
+    // Uses .in() (equality) instead of LIKE — btree index works for equality without text_pattern_ops
     if (!data && !error) {
+      const SUFFIXES = ['ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD', 'WAY', 'PKWY', 'TER', 'CIR']
       const withoutSuffix = normalizedAddress.replace(/\s+(ST|AVE|BLVD|DR|CT|PL|LN|RD|WAY|PKWY|TER|CIR)$/i, '')
-      const fallback = await supabase
-        .from('properties')
-        .select(SELECT_COLS)
-        .like('address', `${withoutSuffix}%`)  // LIKE not ILIKE — ILIKE prevents btree index use
-        .order('pin', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      data = fallback.data
-      error = fallback.error
+      if (withoutSuffix !== normalizedAddress) {
+        // Only run if there was actually a suffix to strip
+        const tier2Candidates = SUFFIXES.map(s => `${withoutSuffix} ${s}`)
+        const fallback = await supabase
+          .from('properties')
+          .select(SELECT_COLS)
+          .in('address', tier2Candidates)
+          .order('pin', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        data = fallback.data
+        error = fallback.error
+      }
     }
 
     if (error) throw new Error(error.message)
@@ -361,6 +409,25 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
     if (data) {
       console.log('fetchProperty result:', JSON.stringify(data))
       return { property: data as PropertyRow, nearestParcel: null, error: null }
+    }
+
+    // Tier 2.5 — manual building range lookup
+    // Handles known buildings where the Assessor stores under a different address than the city uses.
+    // Returns full property data (not just nearestParcel) so the detail panel renders completely.
+    // Add entries to lib/manual-building-addresses.ts for new STR customers and large buildings.
+    const manualEntry = findManualBuilding(normalizedAddress)
+    if (manualEntry) {
+      console.log('fetchProperty Tier 2.5 manual match:', manualEntry.canonicalAddress)
+      const manualResult = await supabase
+        .from('properties')
+        .select(SELECT_COLS)
+        .eq('address', manualEntry.canonicalAddress)
+        .order('pin', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (manualResult.data) {
+        return { property: manualResult.data as PropertyRow, nearestParcel: null, error: null }
+      }
     }
 
     // Tier 3 — direction-agnostic nearest-number search
@@ -390,12 +457,30 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
       // Offset 0 first (same number, different direction), then step outward by 2s up to ±10
       const stepOffsets = [0, -2, 2, -4, 4, -6, 6, -8, 8, -10, 10]
 
+      // Generate street suffix variants to handle compound name differences between datasets:
+      //   "LASALLE DR"    → also try "LA SALLE DR"    (Assessor: two words)
+      //   "DESPLAINES ST" → also try "DES PLAINES ST" (Assessor: two words)
+      // If the street name (before type like DR/ST/AVE) is a single unspaced word ≥5 chars,
+      // also try splitting after positions 2 and 3.
+      const suffixVariants: string[] = [streetSuffix]
+      const suffixWords = streetSuffix.split(' ')
+      const streetType = suffixWords[suffixWords.length - 1]
+      const streetName = suffixWords.slice(0, -1).join(' ')
+      if (!streetName.includes(' ') && streetName.length >= 5) {
+        suffixVariants.push(`${streetName.slice(0, 2)} ${streetName.slice(2)} ${streetType}`)
+        if (streetName.length >= 6) {
+          suffixVariants.push(`${streetName.slice(0, 3)} ${streetName.slice(3)} ${streetType}`)
+        }
+      }
+
       const candidates: string[] = []
       for (const offset of stepOffsets) {
         const num = streetNum + offset
         if (num <= 0) continue
         for (const dir of directions) {
-          candidates.push(`${num} ${dir} ${streetSuffix}`)
+          for (const suffix of suffixVariants) {
+            candidates.push(`${num} ${dir} ${suffix}`)
+          }
         }
       }
 

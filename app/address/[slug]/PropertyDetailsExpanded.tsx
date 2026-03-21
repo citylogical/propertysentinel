@@ -102,8 +102,13 @@ export default function PropertyDetailsExpanded({ siblings, commercialCharsByPin
               <span className="property-details-expanded-chevron" style={{ width: 'auto', marginTop: 0 }}>
                 {open ? '▼' : '▶'}
               </span>
-              <span className="property-details-expanded-address" style={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                {formatTitleCaseAddress(s.address)}
+              <span className="property-details-expanded-title">
+                <span className="property-details-expanded-address" style={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                  {formatTitleCaseAddress(s.address)}
+                </span>
+                <span className="property-details-expanded-pin">
+                  {pinKey}
+                </span>
               </span>
             </button>
 

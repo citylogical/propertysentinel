@@ -27,8 +27,7 @@ import PropertyNav from './PropertyNav'
 import PropertyFeed from './PropertyFeed'
 import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
-import BuildingBanner from '../../components/BuildingBanner'
-import AddressAlertsButton from './AddressAlertsButton'
+import AddressBarButtons from './AddressBarButtons'
 import React from 'react'
 
 type PageProps = {
@@ -66,13 +65,42 @@ function displayVal(val: string | number | boolean | null | undefined): string |
   return val
 }
 
-/** Matches PropertyDetailsExpanded implied market level (10% vs 25%). */
 function getAssessmentLevelForImplied(assessedClass: string | null): number {
   if (!assessedClass) return 0.1
   const major = parseInt(assessedClass.toString()[0], 10)
   if (Number.isNaN(major)) return 0.1
   if (major === 4 || major === 5) return 0.25
   return 0.1
+}
+
+function formatRangeForDisplay(range: string): string {
+  const DIRS = new Set(['N', 'S', 'E', 'W'])
+  return range
+    .split(' & ')
+    .map(part =>
+      part.split(' ').map((word, i) => {
+        if (i === 0) return word
+        if (DIRS.has(word)) return word
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      }).join(' ')
+    )
+    .join(' & ')
+}
+
+const SECTION_LABEL: React.CSSProperties = {
+  fontFamily: 'var(--mono)',
+  fontSize: '8px',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase' as const,
+  color: 'var(--text-dim)',
+  padding: '8px 14px 3px',
+  display: 'block',
+  opacity: 0.7,
+  borderBottom: '1px solid var(--border)',
+}
+
+const SECTION_SHADED: React.CSSProperties = {
+  background: 'var(--cream-dark)',
 }
 
 export default async function AddressPage({ params, searchParams }: PageProps) {
@@ -83,10 +111,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  // STEP 1 — Address resolution
   const propertyResult = await fetchProperty(normalizedAddress)
-  console.log('DEBUG normalizedAddress:', JSON.stringify(normalizedAddress))
-  console.log('DEBUG propertyResult:', JSON.stringify(propertyResult))
   const property = propertyResult.property
   const nearestParcel = propertyResult.nearestParcel
   const pin: string | null =
@@ -193,7 +218,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         }
       }
 
-      // Pre-fetch commercial chars for all commercial sibling PINs (expanded building view)
       if (isExpanded && expandedSiblings.length > 0) {
         const commercialSiblingPins = expandedSiblings
           .filter((s) => {
@@ -202,7 +226,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
             return !Number.isNaN(major) && [5, 6, 7, 8].includes(major)
           })
           .map((s) => s.pin)
-
         await Promise.all(
           commercialSiblingPins.map(async (p) => {
             const { chars } = await fetchCommercialChars(p)
@@ -212,7 +235,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       }
 
       const majorClass = parseInt(String(parcel?.class ?? assessed?.class ?? '0').substring(0, 1), 10)
-      const isCommercial = [5, 6, 7, 8].includes(majorClass)
+      const isCommercial = [3, 5, 6, 7, 8].includes(majorClass)
       const isExempt = majorClass === 4
 
       if (isCommercial) {
@@ -253,7 +276,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
   const displayPin = pin
   const propertyChars = (charsResidential ?? charsCondo) as Record<string, unknown> | null
-  const charsSource = charsResidential != null ? 'residential' : charsCondo != null ? 'condo' : 'none'
   const currencyZero = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -272,13 +294,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           0
         )
       : null
-
-  const avHit =
-    impliedMarketValueTotal != null
-      ? 'hit'
-      : assessed != null
-        ? 'hit'
-        : 'miss'
 
   const assessedValueFormatted =
     impliedMarketValueTotal != null
@@ -323,7 +338,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const classDescription = getClassDescription(displayClass)
 
   const addressBarMeta = [
-    propertyTypeUse,
     displayCommunityAreaName ?? property?.community_area ?? null,
     displayWard != null ? `Ward ${displayWard}` : property?.ward != null ? `Ward ${property.ward}` : null,
     displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL',
@@ -331,44 +345,56 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     .filter(Boolean)
     .join(' · ')
 
-    function nearestParcelSlug(addr: string | null, zip: string | null): string {
-      if (!addr) return ''
-      const titleCase = addr
-        .split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join('-')
-      return `${titleCase}-Chicago-${zip ?? ''}`
-    }
-  
-    return (
-      <div className="address-page">
-      <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
+  const addressBarHeadline =
+    isExpanded && addressRange
+      ? formatRangeForDisplay(addressRange)
+      : displayAddress || slug
 
-      {addressRange && (
-        <BuildingBanner
-          addressRange={addressRange}
-          currentSlug={slug}
-          currentAddress={normalizedAddress}
-          isExpanded={isExpanded}
-        />
-      )}
+  // Card logic:
+  // - If open complaints: show Complaints, Violations, Assessed Value
+  // - If no open complaints: show Violations, Last Permit, Assessed Value
+  const showComplaintsCard = complaintsOpenCount > 0
+  const showLastPermitCard = !showComplaintsCard
+
+  function nearestParcelSlug(addr: string | null, zip: string | null): string {
+    if (!addr) return ''
+    const titleCase = addr
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join('-')
+    return `${titleCase}-Chicago-${zip ?? ''}`
+  }
+
+  return (
+    <div className="address-page">
+      <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       <div className="address-bar">
         <div>
-          <div className="address-bar-street">{displayAddress || slug}</div>
+          <div
+            className="address-bar-street"
+            style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: '22px', fontWeight: 700, lineHeight: 1.1 }}
+          >
+            {addressBarHeadline}
+          </div>
           <div className="address-bar-meta">{addressBarMeta || 'Chicago'}</div>
         </div>
-        <AddressAlertsButton />
+        <AddressBarButtons addressRange={addressRange} slug={slug} isExpanded={isExpanded} />
       </div>
 
+      {/* Wide left column: 420px */}
       <div className="prop-page">
         <div className="profile">
+
+          {/* 4-card horizontal row — conditional logic kept dormant */}
           <div className="stat-row">
+
             <div className="stat stat-sub-bottom">
               <div className="stat-label">Complaints</div>
               <div className={`stat-val ${complaintsOpenCount > 0 ? 'red' : ''}`}>{complaintsOpenCount}</div>
               <div className="stat-fraction">open</div>
             </div>
+
             <div className="stat stat-sub-bottom">
               <div className="stat-label">Violations</div>
               <div className={`stat-val ${violationsOpenCount > 0 ? 'amber' : ''}`}>{violationsOpenCount}</div>
@@ -377,179 +403,126 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                 <span className="block">{violationsCompliedCount} complied</span>
               </div>
             </div>
+
             <div className="stat">
               <div className="stat-label">Last Permit</div>
               <span className="stat-val stat-val-muted">{lastPermitDisplay}</span>
             </div>
+
             <div className="stat">
               <div className="stat-label">Assessed Value</div>
               <div className="stat-val-wrap">
-                <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`}>
-                  {assessedValueFormatted ?? 'Not available'}
+                <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`} style={{ fontSize: '11px' }}>
+                  {assessedValueFormatted ?? 'N/A'}
                 </span>
                 {assessedSubtext != null && (
                   <span className="stat-val-sub">{assessedSubtext}</span>
                 )}
               </div>
             </div>
+
           </div>
 
           <div className="profile-card">
-          <div className="profile-card-header">Property Details</div>
+            <div className="profile-card-header">Property Details</div>
 
-{!property && nearestParcel && (
-  <div className="nearest-parcel-note">
-    <div className="nearest-parcel-heading">
-      No Assessor record at this address
-    </div>
-    <div className="nearest-parcel-sub">
-      The Cook County Assessor does not have a parcel at this exact address —
-      likely part of a building range. Nearest parcel on record:{' '}
-      <Link
-        href={`/address/${nearestParcelSlug(nearestParcel.address_normalized, nearestParcel.zip)}`}
-        className="nearest-parcel-link"
-      >
-        {nearestParcel.address_normalized ?? nearestParcel.address}
-        {nearestParcel.pin ? ` · PIN ${nearestParcel.pin}` : ''}
-        {' →'}
-      </Link>
-    </div>
-  </div>
-)}
+            {!property && nearestParcel && (
+              <div className="nearest-parcel-note">
+                <div className="nearest-parcel-heading">No Assessor record at this address</div>
+                <div className="nearest-parcel-sub">
+                  The Cook County Assessor does not have a parcel at this exact address —
+                  likely part of a building range. Nearest parcel on record:{' '}
+                  <Link
+                    href={`/address/${nearestParcelSlug(nearestParcel.address_normalized, nearestParcel.zip)}`}
+                    className="nearest-parcel-link"
+                  >
+                    {nearestParcel.address_normalized ?? nearestParcel.address}
+                    {nearestParcel.pin ? ` · PIN ${nearestParcel.pin}` : ''}
+                    {' →'}
+                  </Link>
+                </div>
+              </div>
+            )}
 
-{isExpanded && expandedSiblings.length > 0 ? (
+            {isExpanded && expandedSiblings.length > 0 ? (
               <PropertyDetailsExpanded
                 key={expandedSiblings.map((s) => s.pin).join(',')}
                 siblings={expandedSiblings}
                 commercialCharsByPin={commercialCharsByPin}
               />
             ) : (
-            <div className="detail-list">
-              <div className="detail-row">
-                <span className="detail-key">PIN</span>
-                <span className={detailVal(displayPin ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayPin ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Class (property)</span>
-                <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{displayClass ?? 'N/A'}{classDescription ? ` — ${classDescription}` : ''}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Zip</span>
-                <span className={detailVal(property?.zip ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.zip ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Address (normalized)</span>
-                <span className={detailVal(property?.address_normalized ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(property?.address_normalized ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Community Area</span>
-                <span className={detailVal(displayCommunityAreaName ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayCommunityAreaName ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Ward</span>
-                <span className={detailVal(displayWard ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayWard ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">AV Tax Year</span>
-                <span className={detailVal(assessed?.taxYear ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.taxYear ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">AV Class</span>
-                <span className={detailVal(assessed?.class ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.class ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Township</span>
-                <span className={detailVal(assessed?.township_name ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.township_name ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">Neighborhood Code</span>
-                <span className={detailVal(assessed?.neighborhood_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.neighborhood_code ?? null).text}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-key">AV Value Source</span>
-                <span className={detailVal(assessed?.valueType ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.valueType ?? null).text}</span>
-              </div>
+              <div className="detail-list">
 
-              {charsSource !== 'none' && (charsResidential != null ? (
-                <>
-                  <div className="detail-row"><span className="detail-key">Year Built</span><span className={detailVal(charsResidential.year_built ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.year_built ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Building Sqft</span><span className={detailVal(charsResidential.building_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.building_sqft ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Land Sqft</span><span className={detailVal(charsResidential.land_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.land_sqft ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Bedrooms</span><span className={detailVal(charsResidential.num_bedrooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_bedrooms ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Rooms</span><span className={detailVal(charsResidential.num_rooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_rooms ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Full Baths</span><span className={detailVal(charsResidential.num_full_baths ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_full_baths ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Half Baths</span><span className={detailVal(charsResidential.num_half_baths ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_half_baths ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Fireplaces</span><span className={detailVal(charsResidential.num_fireplaces ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_fireplaces ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Type of Residence</span><span className={detailVal(charsResidential.type_of_residence ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.type_of_residence ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Apartments</span><span className={detailVal(charsResidential.num_apartments ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.num_apartments ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Garage Size</span><span className={detailVal(charsResidential.garage_size ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.garage_size ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Garage Attached</span><span className={detailVal(displayVal(charsResidential.garage_attached ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsResidential.garage_attached ?? null)).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Basement Type</span><span className={detailVal(charsResidential.basement_type ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.basement_type ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Ext Wall Material</span><span className={detailVal(charsResidential.ext_wall_material ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.ext_wall_material ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Central Heating</span><span className={detailVal(charsResidential.central_heating ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.central_heating ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Central Air</span><span className={detailVal(displayVal(charsResidential.central_air ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsResidential.central_air ?? null)).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Attic Type</span><span className={detailVal(charsResidential.attic_type ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.attic_type ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Roof Material</span><span className={detailVal(charsResidential.roof_material ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.roof_material ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Construction Quality</span><span className={detailVal(charsResidential.construction_quality ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.construction_quality ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Single vs Multi Family</span><span className={detailVal(charsResidential.single_v_multi_family ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsResidential.single_v_multi_family ?? null).text}</span></div>
-                </>
-              ) : charsCondo != null ? (
-                <>
-                  <div className="detail-row"><span className="detail-key">Year Built</span><span className={detailVal(charsCondo.year_built ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.year_built ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Building Sqft</span><span className={detailVal(charsCondo.building_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_sqft ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Unit Sqft</span><span className={detailVal(charsCondo.unit_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.unit_sqft ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Bedrooms</span><span className={detailVal(charsCondo.num_bedrooms ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.num_bedrooms ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Building Pins</span><span className={detailVal(charsCondo.building_pins ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_pins ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Building Non-Units</span><span className={detailVal(charsCondo.building_non_units ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.building_non_units ?? null).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Bldg Mixed Use</span><span className={detailVal(displayVal(charsCondo.bldg_is_mixed_use ?? null)).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayVal(charsCondo.bldg_is_mixed_use ?? null)).text}</span></div>
-                  <div className="detail-row"><span className="detail-key">Land Sqft</span><span className={detailVal(charsCondo.land_sqft ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(charsCondo.land_sqft ?? null).text}</span></div>
-                </>
-              ) : null)}
+                {/* Flat row order: Year Built, Building Sqft, Land Sqft, Property Type, Class, PIN */}
+                {charsResidential != null ? (
+                  <>
+                    {detailVal(charsResidential.year_built ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{detailVal(charsResidential.year_built ?? null).text}</span></div>}
+                    {detailVal(charsResidential.building_sqft ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Building Sqft</span><span className="detail-val">{detailVal(charsResidential.building_sqft ?? null).text}</span></div>}
+                    {detailVal(charsResidential.land_sqft ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Land Sqft</span><span className="detail-val">{detailVal(charsResidential.land_sqft ?? null).text}</span></div>}
+                    {detailVal(charsResidential.type_of_residence ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Property Type</span><span className="detail-val">{detailVal(charsResidential.type_of_residence ?? null).text}</span></div>}
+                  </>
+                ) : charsCondo != null ? (
+                  <>
+                    {detailVal(charsCondo.year_built ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{detailVal(charsCondo.year_built ?? null).text}</span></div>}
+                    {detailVal(charsCondo.building_sqft ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Building Sqft</span><span className="detail-val">{detailVal(charsCondo.building_sqft ?? null).text}</span></div>}
+                    {detailVal(charsCondo.unit_sqft ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Unit Sqft</span><span className="detail-val">{detailVal(charsCondo.unit_sqft ?? null).text}</span></div>}
+                    {detailVal(charsCondo.land_sqft ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Land Sqft</span><span className="detail-val">{detailVal(charsCondo.land_sqft ?? null).text}</span></div>}
+                  </>
+                ) : commercialChars.length > 0 ? (
+                  <>
+                    {commercialChars[0].year_built && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{commercialChars[0].year_built}</span></div>}
+                    {commercialChars[0].building_sqft && <div className="detail-row"><span className="detail-key">Building Sqft</span><span className="detail-val">{Number(commercialChars[0].building_sqft).toLocaleString()}</span></div>}
+                    {commercialChars[0].land_sqft && <div className="detail-row"><span className="detail-key">Land Sqft</span><span className="detail-val">{Number(commercialChars[0].land_sqft).toLocaleString()}</span></div>}
+                    {commercialChars[0].property_type_use && <div className="detail-row"><span className="detail-key">Property Type</span><span className="detail-val">{commercialChars[0].property_type_use}</span></div>}
+                  </>
+                ) : null}
 
-              {commercialChars.length > 0 && (
-                <>
-                  <div className="detail-row section-header">
-                    <span className="detail-key" style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', opacity: 0.5 }}>Commercial Valuation</span>
-                  </div>
-                  {commercialChars.map((row, i) => (
-                    <React.Fragment key={`comm-${i}`}>
-                      <div className="detail-row"><span className="detail-key">Tax Year</span><span className="detail-val">{row.tax_year}</span></div>
-                      {row.property_type_use && <div className="detail-row"><span className="detail-key">Property Type</span><span className="detail-val">{row.property_type_use}</span></div>}
-                      {row.sheet && <div className="detail-row"><span className="detail-key">Sheet</span><span className="detail-val">{row.sheet}</span></div>}
-                      {row.building_sqft && <div className="detail-row"><span className="detail-key">Building Sqft</span><span className="detail-val">{Number(row.building_sqft).toLocaleString()}</span></div>}
-                      {row.noi && <div className="detail-row"><span className="detail-key">NOI</span><span className="detail-val">${Number(row.noi).toLocaleString()}</span></div>}
-                      {row.caprate && <div className="detail-row"><span className="detail-key">Cap Rate</span><span className="detail-val">{(Number(row.caprate) * 100).toFixed(2)}%</span></div>}
-                      {row.final_market_value && <div className="detail-row"><span className="detail-key">Final Market Value</span><span className="detail-val">${Number(row.final_market_value).toLocaleString()}</span></div>}
-                      {i < commercialChars.length - 1 && <div className="detail-row" style={{ borderTop: '1px solid rgba(0,0,0,0.06)', margin: '4px 0' }} />}
-                    </React.Fragment>
-                  ))}
-                </>
-              )}
-
-              {exemptChars && (
-                <>
-                  <div className="detail-row">
-                    <span className="detail-key" style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em', opacity: 0.5 }}>Tax Exempt</span>
-                  </div>
-                  <div className="detail-row"><span className="detail-key">Owner</span><span className="detail-val">{exemptChars.owner_name}</span></div>
-                  <div className="detail-row"><span className="detail-key">Township</span><span className="detail-val">{exemptChars.township_name}</span></div>
-                </>
-              )}
-
-              {charsSource === 'none' && (
+                {/* Class and PIN always last */}
                 <div className="detail-row">
-                  <span className="detail-key">Property Chars (residential/condo)</span>
-                  <span className="detail-val na">Not available</span>
+                  <span className="detail-key">Class</span>
+                  <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{displayClass ?? 'N/A'}{classDescription ? ` — ${classDescription}` : ''}</span>
                 </div>
-              )}
+                <div className="detail-row">
+                  <span className="detail-key">PIN</span>
+                  <span className={detailVal(displayPin ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayPin ?? null).text}</span>
+                </div>
 
-              {process.env.NODE_ENV === 'development' && (
-                <div className="detail-row" style={{ marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--muted)' }}>
-                  <span className="detail-key">Debug</span>
-                  <span className="detail-val">PIN: {detailVal(displayPin ?? null).text} | AV: {avHit} | Chars: {charsSource} | Range: {addressRange ?? 'none'}</span>
-                </div>
-              )}
-            </div>
+                <details>
+                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.7, borderBottom: '1px solid var(--border)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' }}>
+                    <span>Assessment</span>
+                    <span style={{ fontSize: '10px', opacity: 0.6 }}>▾</span>
+                  </summary>
+                  <div className="detail-row">
+                    <span className="detail-key">AV Tax Year</span>
+                    <span className={detailVal(assessed?.taxYear ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.taxYear ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">AV Class</span>
+                    <span className={detailVal(assessed?.class ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.class ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Township</span>
+                    <span className={detailVal(assessed?.township_name ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.township_name ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">Neighborhood Code</span>
+                    <span className={detailVal(assessed?.neighborhood_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.neighborhood_code ?? null).text}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-key">AV Value Source</span>
+                    <span className={detailVal(assessed?.valueType ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.valueType ?? null).text}</span>
+                  </div>
+                </details>
+
+                {exemptChars && (
+                  <>
+                    <span style={SECTION_LABEL}>Tax Exempt</span>
+                    <div className="detail-row"><span className="detail-key">Owner</span><span className="detail-val">{exemptChars.owner_name}</span></div>
+                    <div className="detail-row"><span className="detail-key">Township</span><span className="detail-val">{exemptChars.township_name}</span></div>
+                  </>
+                )}
+
+              </div>
             )}
           </div>
         </div>

@@ -30,6 +30,11 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'SCB',     label: 'Sanitation Code Violation',                   category: 'building',           defaultVisible: true },
   { code: 'SHVR',    label: 'Shared Housing/Vacation Rental Complaint',    category: 'building',           defaultVisible: true },
   { code: 'CAFE',    label: 'Sidewalk Café/Outdoor Dining Complaint',      category: 'building',           defaultVisible: true },
+  { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'building',           defaultVisible: true },
+  { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'building',           defaultVisible: true },
+  { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'building',           defaultVisible: true },
+  { code: 'WM3',     label: 'Check for Leak',                              category: 'building',           defaultVisible: true },
+
 
   // ── BUSINESS / CONSUMER ────────────────────────────────────────────────────
   { code: 'HFB',     label: 'Restaurant Complaint',                        category: 'business',           defaultVisible: true },
@@ -95,7 +100,6 @@ export const SR_CODES: SRCodeEntry[] = [
   // ── STREET INFRASTRUCTURE — hidden by default ──────────────────────────────
   { code: 'AAD',     label: 'Sewer Cave-In Inspection Request',            category: 'street_infrastructure', defaultVisible: false },
   { code: 'AAE',     label: 'Water On Street Complaint',                   category: 'street_infrastructure', defaultVisible: false },
-  { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'street_infrastructure', defaultVisible: false },
   { code: 'AAI',     label: 'Alley Sewer Inspection Request',              category: 'street_infrastructure', defaultVisible: false },
   { code: 'PHB',     label: 'Alley Pothole Complaint',                     category: 'street_infrastructure', defaultVisible: false },
   { code: 'PHF',     label: 'Pothole in Street Complaint',                 category: 'street_infrastructure', defaultVisible: false },
@@ -124,9 +128,6 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'street_infrastructure', defaultVisible: false },
   { code: 'WBT',     label: 'Open Fire Hydrant Complaint',                 category: 'street_infrastructure', defaultVisible: false },
   { code: 'WCA',     label: 'Water Quality Concern',                       category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WM3',     label: 'Check for Leak',                              category: 'street_infrastructure', defaultVisible: false },
   { code: 'SEC',     label: 'Tree Emergency',                              category: 'street_infrastructure', defaultVisible: false },
   { code: 'SED',     label: 'Tree Planting Request',                       category: 'street_infrastructure', defaultVisible: false },
   { code: 'SEE',     label: 'Tree Removal Inspection',                     category: 'street_infrastructure', defaultVisible: false },
