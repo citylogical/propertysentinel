@@ -26,6 +26,7 @@ export default function LiveTimestamp() {
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(false)
   const wrapRef = useRef<HTMLSpanElement>(null)
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     fetch('/api/latest-complaint')
@@ -56,9 +57,14 @@ export default function LiveTimestamp() {
   return (
     <span
       ref={wrapRef}
-      style={{ position: 'relative', display: 'inline' }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', display: 'inline', zIndex: 1000 }}
+      onMouseEnter={() => {
+        if (leaveTimer.current) clearTimeout(leaveTimer.current)
+        setHover(true)
+      }}
+      onMouseLeave={() => {
+        leaveTimer.current = setTimeout(() => setHover(false), 1500)
+      }}
     >
       <button
         type="button"
@@ -85,10 +91,10 @@ export default function LiveTimestamp() {
         <span
           style={{
             position: 'absolute',
-            top: 'calc(100% + 10px)',
+            bottom: 'calc(100% + 10px)',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 50,
+            zIndex: 1000,
             background: '#ffffff',
             border: '1px solid #ddd9d0',
             borderRadius: 6,
@@ -106,7 +112,9 @@ export default function LiveTimestamp() {
           {/* Line 1: Last updated */}
           <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
             Last updated:{' '}
-            {timestamp
+            {statusData?.lastRanAt
+              ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{formatDateTime(statusData.lastRanAt)} CT</span>
+              : timestamp
               ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{timestamp} CT</span>
               : <span style={{ color: '#8a94a0' }}>—</span>
             }
