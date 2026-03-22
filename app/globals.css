@@ -44,7 +44,7 @@ body {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
-  background: var(--navy-deep);
+  background: #001f3f;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -53,13 +53,15 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.nav-brand {
-  font-family: var(--serif);
-  font-weight: 700;
+/* Wordmark: identical on landing + property nav (Merriweather; scoped vars differ on .address-page) */
+.nav-brand,
+.address-page .prop-nav .nav-brand {
+  font-family: "Merriweather", Georgia, serif;
   font-size: 20px;
-  color: var(--white);
+  font-weight: 700;
+  color: #ffffff;
   text-decoration: none;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
 }
 
 .nav-menu-btn {
@@ -449,16 +451,6 @@ body {
   font-weight: 500;
 }
 .nearest-parcel-link:hover { opacity: 0.8; }
-
-/* Nav brand */
-.address-page .prop-nav .nav-brand {
-  font-family: "Merriweather", Georgia, serif;
-  font-size: 20px;
-  font-weight: 700;
-  color: white;
-  text-decoration: none;
-  letter-spacing: -0.01em;
-}
 
 .address-page .nav-right { align-items: center; gap: 12px; }
 

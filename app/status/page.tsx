@@ -259,7 +259,7 @@ export default async function StatusPage() {
           </div>
         </div>
 
-        {/* Most recent record lag line */}
+        {/* Latest 311 record lag line */}
         {lastModifiedStr && lastSuccessRun && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 20,
@@ -268,7 +268,7 @@ export default async function StatusPage() {
             fontFamily: '"DM Mono", monospace', fontSize: 11,
           }}>
             <span style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
-              Most recent 311 record:{' '}
+              Latest:{' '}
               <span style={{ color: '#1a1a1a' }}>
                 {formatSocrataTimeCT(lastModifiedStr)} CT
               </span>

@@ -94,70 +94,127 @@ export default function LiveTimestamp() {
             position: 'absolute',
             bottom: 'calc(100% + 10px)',
             left: '50%',
-            transform: 'translateX(-50%)',
+            transformOrigin: 'bottom center',
             zIndex: 1000,
             background: '#ffffff',
             border: '1px solid #ddd9d0',
             borderRadius: 6,
-            boxShadow: '0 4px 16px rgba(0,51,102,0.12)',
-            padding: '12px 16px',
-            minWidth: 260,
+            boxSizing: 'border-box',
+            padding: '14px 16px 0',
+            minWidth: 220,
+            maxWidth: 280,
+            width: 'max-content',
             display: 'flex',
             flexDirection: 'column',
-            gap: 6,
-            animation: 'popoverIn 0.18s ease-out',
-            whiteSpace: 'nowrap',
+            gap: 0,
+            alignItems: 'stretch',
+            overflow: 'hidden',
+            textAlign: 'center',
+            animation:
+              'popoverIn 220ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
           }}
           role="status"
         >
-          {/* Line 1: Most recent record */}
-          <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
-            Most recent record:{' '}
+          {/* Status — centered */}
+          <span
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 8,
+              fontFamily: '"DM Mono", monospace',
+              fontSize: 14,
+              fontWeight: 600,
+              color: isOperational ? '#2d6a4f' : '#c0392b',
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: 'currentColor',
+                flexShrink: 0,
+                animation: 'statusPulse 2s infinite',
+              }}
+            />
+            {isOperational ? 'Operational' : 'Degraded'}
+          </span>
+
+          {/* Latest — one line, centered, DM Mono 11px */}
+          <span
+            style={{
+              marginTop: 6,
+              marginBottom: 14,
+              fontFamily: '"DM Mono", monospace',
+              fontSize: 11,
+              color: '#4a5568',
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Latest:{' '}
             {recordTime
               ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{recordTime} CT</span>
               : <span style={{ color: '#8a94a0' }}>—</span>
             }
           </span>
 
-          {/* Line 2: Status */}
-          <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568', display: 'flex', alignItems: 'center', gap: 6 }}>
-            Status:{' '}
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              color: isOperational ? '#2d6a4f' : '#c0392b',
-              fontWeight: 500,
-            }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: 'currentColor', flexShrink: 0,
-                animation: 'statusPulse 2s infinite',
-              }} />
-              {isOperational ? 'Operational' : 'Degraded'}
-            </span>
-          </span>
+          <span
+            style={{
+              margin: '0 -16px',
+              width: 'calc(100% + 32px)',
+              height: 0,
+              border: 0,
+              borderTop: '1px solid #ddd9d0',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+            }}
+            role="separator"
+          />
 
-          {/* Line 3: Link */}
           <a
             href="/status"
             style={{
+              display: 'block',
+              width: 'calc(100% + 32px)',
+              boxSizing: 'border-box',
+              margin: '0 -16px',
+              padding: '9px 0',
+              background: '#003366',
+              color: '#ffffff',
               fontFamily: '"DM Mono", monospace',
-              fontSize: 11,
-              color: '#0a4080',
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              textAlign: 'center',
               textDecoration: 'none',
-              marginTop: 2,
+              borderRadius: '0 0 6px 6px',
             }}
-            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#0a4080'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#003366'
+            }}
           >
-            See full status →
+            See uptime stats
           </a>
         </span>
       )}
 
       <style>{`
         @keyframes popoverIn {
-          from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+          from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(4px) scaleY(0.92);
+            box-shadow: 0 2px 8px rgba(0, 51, 102, 0.08);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0) scaleY(1);
+            box-shadow: 0 4px 16px rgba(0, 51, 102, 0.12);
+          }
         }
         @keyframes statusPulse {
           0%, 100% { opacity: 1; transform: scale(1); }
