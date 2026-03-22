@@ -43,6 +43,7 @@ export type ManualBuildingEntry = {
      * buildAddressRange() will group these into "1112–1134 N LA SALLE ST & 153–163 W ELM ST".
      */
     displayAddresses: string[]
+    pins?: string[]
     note?: string
   }
   
@@ -71,7 +72,34 @@ export type ManualBuildingEntry = {
       ],
       note: '5532-5540 S Hyde Park Blvd — Assessor uses E direction; DOB uses S; single parcel',
     },
-  
+    // ─── 1402–1408 W Belden Ave / 2300 N Southport Ave ───────────────────────
+    // Condo building, Lincoln Park. Multiple unit PINs all under 2300 N SOUTHPORT AVE.
+    // Belden Ave entrances have no independent Assessor records — resolved via Southport.
+    // Building records: 1402-1408 W BELDEN AVE | 2300 N SOUTHPORT AVE
+    {
+      canonicalAddress: '2300 N SOUTHPORT AVE',
+      allAddresses: [
+        '2300 N SOUTHPORT AVE',
+        '1402 W BELDEN AVE',
+        '1404 W BELDEN AVE',
+        '1406 W BELDEN AVE',
+        '1408 W BELDEN AVE',
+      ],
+      displayAddresses: [
+        '1402 W BELDEN AVE',
+        '1404 W BELDEN AVE',
+        '1406 W BELDEN AVE',
+        '1408 W BELDEN AVE',
+        '2300 N SOUTHPORT AVE',
+      ],
+      pins: [
+        '14321030461001', '14321030461002', '14321030461003',
+        '14321030461004', '14321030461005', '14321030461006',
+        '14321030461007', '14321030461008', '14321030461009',
+        '14321030461010',
+      ],
+      note: '1402-1408 W Belden Ave / 2300 N Southport Ave — condo building; Assessor stores all units under Southport address',
+    },
     // ─── 1112–1134 N La Salle St / 153–163 W Elm St ──────────────────────────
     // Large condo building, Near North Side. Multiple unit PINs all under mailing
     // name "1120 N LASALLE LLC" — Path D also does mailing name lookup to collect

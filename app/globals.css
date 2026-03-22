@@ -48,7 +48,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 40px;
+  padding: 0 32px;
   height: 54px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
@@ -331,6 +331,8 @@ body {
   --serif: "Playfair Display", Georgia, serif;
   --sans: "Inter", system-ui, sans-serif;
   --mono: "DM Mono", monospace;
+  --color-background-primary: #f0f4f8;
+  --color-border-secondary: #cfd6de;
 }
 
 .address-page body,
@@ -396,6 +398,11 @@ body {
 .address-page .property-details-expanded-body { padding: 0 0 0.75rem 1.75rem; }
 .address-page .property-details-expanded-loading { color: var(--text-dim); font-style: italic; }
 
+/* Expanded PIN accordions + condo shared block: align with property card typography; tighter row padding */
+.address-page .property-details-expanded .detail-row {
+  padding: 5px 14px;
+}
+
 /* Nav (property page) */
 .address-page .prop-nav {
   background: var(--navy);
@@ -407,6 +414,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
+}
+
+/* Match .landing-nav mobile padding (max-width: 600px) */
+@media (max-width: 600px) {
+  .address-page .prop-nav { padding: 0 20px; }
 }
 
 .address-page .address-bar-buttons {
@@ -455,7 +467,7 @@ body {
 .address-page .nav-right { align-items: center; gap: 12px; }
 
 @media (max-width: 768px) {
-  .address-page .prop-nav { flex-wrap: nowrap; padding: 0 16px; }
+  .address-page .prop-nav { flex-wrap: nowrap; }
 }
 @media (min-width: 769px) {
   .address-page .nav-right { display: flex; }
@@ -644,6 +656,13 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.45);
+}
+
+.address-page .profile-card-header--with-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
 
 .address-page .stat-row {
@@ -989,7 +1008,6 @@ body {
 .address-page .rail-link-arrow { font-size: 10px; opacity: 0.4; flex-shrink: 0; }
 
 @media (max-width: 900px) {
-  .address-page .prop-nav { padding: 0 16px; }
   .address-page .address-bar { padding: 12px 16px; flex-direction: column; align-items: flex-start; gap: 10px; }
   .address-page .alert-btn { align-self: stretch; justify-content: center; }
   .address-page .prop-page { grid-template-columns: 1fr; padding: 16px 12px 48px; gap: 14px; }
@@ -1019,7 +1037,10 @@ body {
 }
 
 .profile-page__topnav { background: #0f2744; border-bottom: 1px solid rgba(255,255,255,0.08); height: 54px; display: flex; align-items: center; }
-.profile-page__topnav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; }
+.profile-page__topnav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 32px; display: flex; align-items: center; }
+@media (max-width: 600px) {
+  .profile-page__topnav-inner { padding: 0 20px; }
+}
 .profile-page__brand { font-family: var(--profile-serif); font-weight: 700; font-size: 1.125rem; color: #fff; text-decoration: none; letter-spacing: 0.01em; }
 .profile-page__brand:hover { color: rgba(255,255,255,0.9); }
 

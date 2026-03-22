@@ -92,6 +92,7 @@ export type PropertyCharsResidentialRow = {
 }
 
 export type PropertyCharsCondoRow = {
+  pin?: string | null
   year_built?: number | string | null
   building_sqft?: number | null
   unit_sqft?: number | null
@@ -237,23 +238,28 @@ export async function fetchSiblingPins(
     if (manualBuilding) {
       console.log('fetchSiblingPins Path D manual match for:', addressNormalized)
 
-      // Also collect sibling PINs via mailing name (catches all condo unit PINs)
+      // Use explicit pins array if provided, otherwise fall back to mailing name lookup
       let allPins: string[] = [pin]
-      const { data: subject } = await supabaseAdmin
-        .from('properties')
-        .select('mailing_name')
-        .eq('pin', pin)
-        .maybeSingle()
-
-      if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
-        const { data: mailingMatches } = await supabaseAdmin
+      if (manualBuilding.pins && manualBuilding.pins.length > 0) {
+        allPins = manualBuilding.pins
+        console.log('fetchSiblingPins Path D using explicit pins array:', allPins.length, 'PINs')
+      } else {
+        const { data: subject } = await supabaseAdmin
           .from('properties')
-          .select('pin')
-          .eq('mailing_name', subject.mailing_name)
-        if (mailingMatches && mailingMatches.length > 0) {
-          const mailingPins = mailingMatches.map((r: any) => r.pin).filter(Boolean) as string[]
-          allPins = [...new Set([pin, ...mailingPins])]
-          console.log('fetchSiblingPins Path D mailing lookup found', allPins.length, 'PINs')
+          .select('mailing_name')
+          .eq('pin', pin)
+          .maybeSingle()
+
+        if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
+          const { data: mailingMatches } = await supabaseAdmin
+            .from('properties')
+            .select('pin')
+            .eq('mailing_name', subject.mailing_name)
+          if (mailingMatches && mailingMatches.length > 0) {
+            const mailingPins = mailingMatches.map((r: any) => r.pin).filter(Boolean) as string[]
+            allPins = [...new Set([pin, ...mailingPins])]
+            console.log('fetchSiblingPins Path D mailing lookup found', allPins.length, 'PINs')
+          }
         }
       }
 
@@ -775,7 +781,7 @@ export async function fetchPermitsByAddresses(addresses: string[]): Promise<{
 const RESIDENTIAL_COLS =
   'year_built,building_sqft,land_sqft,num_bedrooms,num_rooms,num_full_baths,num_half_baths,num_fireplaces,type_of_residence,num_apartments,garage_size,garage_attached,basement_type,ext_wall_material,central_heating,central_air,attic_type,roof_material,construction_quality,single_v_multi_family,tax_year'
 const CONDO_COLS =
-  'year_built,building_sqft,unit_sqft,num_bedrooms,building_pins,building_non_units,bldg_is_mixed_use,is_parking_space,is_common_area,land_sqft,tax_year'
+  'pin,year_built,building_sqft,unit_sqft,num_bedrooms,building_pins,building_non_units,bldg_is_mixed_use,is_parking_space,is_common_area,land_sqft,tax_year'
 
 export async function fetchPropertyCharsResidential(pin: string): Promise<{
   chars: PropertyCharsResidentialRow | null

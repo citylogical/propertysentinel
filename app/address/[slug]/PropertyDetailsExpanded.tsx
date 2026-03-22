@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { getClassDescription } from '@/lib/class-codes'
+import type { PropertyCharsCondoRow, PropertyCharsResidentialRow } from '@/lib/supabase-search'
 
 export type SiblingPin = {
   pin: string
@@ -14,14 +15,21 @@ export type SiblingPin = {
 
 type Props = {
   siblings: SiblingPin[]
-  commercialCharsByPin: Record<string, any[]>
 }
 
-function getAssessmentLevel(assessedClass: string | null): number {
-  if (!assessedClass) return 0.10
-  const major = parseInt(assessedClass.toString()[0])
+const currencyZero = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+})
+
+function getAssessmentLevelForImplied(assessedClass: string | null): number {
+  if (!assessedClass) return 0.1
+  const major = parseInt(assessedClass.toString()[0], 10)
+  if (Number.isNaN(major)) return 0.1
   if (major === 4 || major === 5) return 0.25
-  return 0.10
+  return 0.1
 }
 
 function formatTitleCaseAddress(address: string): string {
@@ -32,262 +40,491 @@ function formatTitleCaseAddress(address: string): string {
     .join(' ')
 }
 
-const currencyFmt = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-  minimumFractionDigits: 0,
-})
-
-function isCommercialAssessedClass(assessedClass: string | null): boolean {
+/** Cook County class 299 (condo). */
+function isCondo299Class(assessedClass: string | null): boolean {
   if (!assessedClass) return false
-  const d = String(assessedClass).replace(/\D/g, '')
-  const f = d.charAt(0)
-  return f === '5' || f === '6' || f === '7' || f === '8'
+  const t = String(assessedClass).trim()
+  if (!t.startsWith('2')) return false
+  const digits = t.replace(/\D/g, '').replace(/^0+/, '') || '0'
+  return digits === '299' || digits.startsWith('299')
 }
 
-function levelNote(level: number): string {
-  return level >= 0.25 ? '(25% level)' : '(10% level)'
+function numericGtZero(val: unknown): boolean {
+  if (val === null || val === undefined) return false
+  const n = Number(val)
+  return Number.isFinite(n) && n > 0
 }
 
-export default function PropertyDetailsExpanded({ siblings, commercialCharsByPin }: Props) {
-  const [openPins, setOpenPins] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(siblings.map((s) => [s.pin, false]))
-  )
-  const [openYears, setOpenYears] = useState<Record<string, boolean>>({})
+type SharedNumeric = {
+  year_built?: unknown
+  building_sqft?: unknown
+  land_sqft?: unknown
+}
 
-  const togglePin = (pinKey: string) => {
-    setOpenPins((prev) => ({ ...prev, [pinKey]: !prev[pinKey] }))
+function extractSharedFromCondoOrResidential(row: PropertyCharsCondoRow | PropertyCharsResidentialRow): SharedNumeric {
+  return {
+    year_built: row.year_built,
+    building_sqft: row.building_sqft,
+    land_sqft: row.land_sqft,
   }
+}
 
-  const toggleYear = (yearKey: string) => {
-    setOpenYears((prev) => ({ ...prev, [yearKey]: !prev[yearKey] }))
+function extractSharedFromCommercialRow(row: Record<string, unknown>): SharedNumeric {
+  return {
+    year_built: row.year_built,
+    building_sqft: row.building_sqft,
+    land_sqft: row.land_sqft,
   }
+}
 
-  const nestedWrap: CSSProperties = {
-    marginLeft: '0.5rem',
-    paddingLeft: '0.75rem',
-    borderLeft: '2px solid var(--border)',
-  }
+const SECTION_LABEL_STYLE: CSSProperties = {
+  padding: '7px 14px 3px 29px',
+  fontFamily: 'var(--mono)',
+  fontSize: '8px',
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: '#2d6a4f',
+  borderBottom: '0.5px solid rgba(45,106,79,0.15)',
+  display: 'block',
+}
 
+type BodyRowDef = { key: string; label: string; value: string }
+
+function ExpandedDataRows({
+  rows,
+  globalOffset,
+  isTerminal,
+}: {
+  rows: BodyRowDef[]
+  globalOffset: number
+  /** If true, the last row in this block is the last row before the next PIN (secondary border). */
+  isTerminal: boolean
+}) {
+  if (rows.length === 0) return null
+  const lastIdx = rows.length - 1
   return (
-    <div className="property-details-expanded">
-      {siblings.map((s) => {
-        const pinKey = s.pin
-        const open = !!openPins[pinKey]
-        const level = getAssessmentLevel(s.assessedClass)
-        const implied =
-          s.assessedValue != null && Number.isFinite(s.assessedValue) && level > 0
-            ? s.assessedValue / level
-            : null
-        const desc = getClassDescription(s.assessedClass)
-        const classLine =
-          s.assessedClass != null && String(s.assessedClass).trim() !== ''
-            ? desc
-              ? `${s.assessedClass} — ${desc}`
-              : String(s.assessedClass)
-            : null
-        const isCommercial = isCommercialAssessedClass(s.assessedClass)
-        const commercialRows = commercialCharsByPin[pinKey] ?? []
-
+    <>
+      {rows.map((r, i) => {
+        const isLast = i === lastIdx
         return (
-          <div key={pinKey} className="property-details-expanded-section">
-            <button
-              type="button"
-              className="property-details-expanded-header"
-              onClick={() => togglePin(pinKey)}
-              aria-expanded={open}
-              style={{ alignItems: 'center' }}
+          <div
+            key={r.key}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
+              padding: '6px 14px 6px 29px',
+              borderBottom:
+                isLast && isTerminal
+                  ? '0.5px solid var(--color-border-secondary)'
+                  : '0.5px solid var(--border)',
+              background: (globalOffset + i) % 2 === 0 ? '#ffffff' : '#f7f9fb',
+            }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{r.label}</span>
+            <span
+              style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                color: 'var(--text)',
+                textAlign: 'right',
+                wordBreak: 'break-word',
+              }}
             >
-              <span className="property-details-expanded-chevron" style={{ width: 'auto', marginTop: 0 }}>
-                {open ? '▼' : '▶'}
-              </span>
-              <span className="property-details-expanded-title">
-                <span className="property-details-expanded-address" style={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                  {formatTitleCaseAddress(s.address)}
-                </span>
-                <span className="property-details-expanded-pin">
-                  {pinKey}
-                </span>
-              </span>
-            </button>
-
-            {open && (
-              <div className="detail-list property-details-expanded-body">
-                <div className="detail-row">
-                  <span className="detail-key">PIN</span>
-                  <span className="detail-val">{pinKey}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">Class (property)</span>
-                  <span className={classLine ? 'detail-val' : 'detail-val na'}>{classLine ?? 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">AV Class</span>
-                  <span className={s.assessedClass ? 'detail-val' : 'detail-val na'}>
-                    {s.assessedClass ?? 'N/A'}
-                  </span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">AV Tax Year</span>
-                  <span
-                    className={
-                      s.taxYear != null && Number.isFinite(s.taxYear) ? 'detail-val' : 'detail-val na'
-                    }
-                  >
-                    {s.taxYear != null && Number.isFinite(s.taxYear) ? String(s.taxYear) : 'N/A'}
-                  </span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">AV Value Source</span>
-                  <span className={s.valueType ? 'detail-val' : 'detail-val na'}>
-                    {s.valueType ?? 'N/A'}
-                  </span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">Assessed Value</span>
-                  <span
-                    className={
-                      s.assessedValue != null && Number.isFinite(s.assessedValue) ? 'detail-val' : 'detail-val na'
-                    }
-                  >
-                    {s.assessedValue != null && Number.isFinite(s.assessedValue)
-                      ? currencyFmt.format(s.assessedValue)
-                      : 'N/A'}
-                  </span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-key">Implied Market Value</span>
-                  <span
-                    className={implied != null ? 'detail-val' : 'detail-val na'}
-                    style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.35rem' }}
-                  >
-                    {implied != null ? currencyFmt.format(implied) : 'N/A'}
-                    {implied != null && (
-                      <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontStyle: 'italic' }}>
-                        {levelNote(level)}
-                      </span>
-                    )}
-                  </span>
-                </div>
-
-                {isCommercial && (
-                  <>
-                    <div className="profile-card-header" style={{ margin: '0.75rem 0 0.5rem' }}>
-                      Commercial Valuation
-                    </div>
-                    {commercialRows.length === 0 ? (
-                      <div className="detail-row">
-                        <span className="detail-key">Commercial data</span>
-                        <span className="detail-val na">Not available</span>
-                      </div>
-                    ) : (
-                      <div style={nestedWrap}>
-                        {commercialRows.map((row: any, idx: number) => {
-                          const ty = row.tax_year
-                          const yearLabel =
-                            ty != null && ty !== '' ? String(ty) : `Year ${idx}`
-                          const yearKey =
-                            ty != null && ty !== '' ? `${pinKey}-${ty}` : `${pinKey}-row-${idx}`
-                          const yearOpen = !!openYears[yearKey]
-                          const bsq = row.building_sqft
-                          const noi = row.noi
-                          const cap = row.caprate
-                          const fmv = row.final_market_value
-
-                          return (
-                            <div key={`${yearKey}-r-${idx}`} style={{ marginBottom: '0.5rem' }}>
-                              <button
-                                type="button"
-                                className="property-details-expanded-header"
-                                onClick={() => toggleYear(yearKey)}
-                                aria-expanded={yearOpen}
-                                style={{ alignItems: 'center', padding: '0.4rem 0' }}
-                              >
-                                <span
-                                  className="property-details-expanded-chevron"
-                                  style={{ width: 'auto', marginTop: 0 }}
-                                >
-                                  {yearOpen ? '▼' : '▶'}
-                                </span>
-                                <span style={{ fontWeight: 600, fontSize: '0.75rem' }}>{yearLabel}</span>
-                              </button>
-                              {yearOpen && (
-                                <div className="detail-list" style={{ paddingLeft: '0.25rem' }}>
-                                  <div className="detail-row">
-                                    <span className="detail-key">Property Type</span>
-                                    <span className={row.property_type_use ? 'detail-val' : 'detail-val na'}>
-                                      {row.property_type_use ?? 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div className="detail-row">
-                                    <span className="detail-key">Sheet</span>
-                                    <span className={row.sheet ? 'detail-val' : 'detail-val na'}>
-                                      {row.sheet ?? 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div className="detail-row">
-                                    <span className="detail-key">Building Sqft</span>
-                                    <span
-                                      className={
-                                        bsq != null && Number.isFinite(Number(bsq)) ? 'detail-val' : 'detail-val na'
-                                      }
-                                    >
-                                      {bsq != null && Number.isFinite(Number(bsq))
-                                        ? Number(bsq).toLocaleString('en-US')
-                                        : 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div className="detail-row">
-                                    <span className="detail-key">NOI</span>
-                                    <span
-                                      className={
-                                        noi != null && Number.isFinite(Number(noi)) ? 'detail-val' : 'detail-val na'
-                                      }
-                                    >
-                                      {noi != null && Number.isFinite(Number(noi))
-                                        ? currencyFmt.format(Number(noi))
-                                        : 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div className="detail-row">
-                                    <span className="detail-key">Cap Rate</span>
-                                    <span
-                                      className={
-                                        cap != null && Number.isFinite(Number(cap)) ? 'detail-val' : 'detail-val na'
-                                      }
-                                    >
-                                      {cap != null && Number.isFinite(Number(cap))
-                                        ? `${(Number(cap) * 100).toFixed(2)}%`
-                                        : 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div className="detail-row">
-                                    <span className="detail-key">CCAO Market Value (income approach)</span>
-                                    <span
-                                      className={
-                                        fmv != null && Number.isFinite(Number(fmv)) ? 'detail-val' : 'detail-val na'
-                                      }
-                                    >
-                                      {fmv != null && Number.isFinite(Number(fmv))
-                                        ? currencyFmt.format(Number(fmv))
-                                        : 'N/A'}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+              {r.value}
+            </span>
           </div>
         )
       })}
-    </div>
+    </>
+  )
+}
+
+export default function PropertyDetailsExpanded({ siblings }: Props) {
+  const [openPins, setOpenPins] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(siblings.map((s) => [s.pin, false]))
+  )
+
+  const siblingPinsKey = siblings.map((s) => s.pin).join('|')
+
+  const [sharedChars, setSharedChars] = useState<SharedNumeric | null>(null)
+  const [sharedReady, setSharedReady] = useState(false)
+
+  const [condoByPin, setCondoByPin] = useState<Record<string, PropertyCharsCondoRow | null | 'loading'>>({})
+  const condoFetchedRef = useRef<Set<string>>(new Set())
+
+  const anyExpanded = siblings.some((s) => openPins[s.pin])
+
+  useEffect(() => {
+    const pinList = siblingPinsKey.split('|').filter(Boolean)
+    if (pinList.length === 0) {
+      setSharedChars(null)
+      setSharedReady(true)
+      return
+    }
+
+    let cancelled = false
+    setSharedReady(false)
+    setSharedChars(null)
+
+    ;(async () => {
+      const tryPinWaterfall = async (pin: string): Promise<SharedNumeric | null> => {
+        const condoRes = await fetch(`/api/property-chars-condo?pin=${encodeURIComponent(pin)}`)
+        const condoJson = (await condoRes.json()) as { chars: PropertyCharsCondoRow | null }
+        if (cancelled) return null
+        if (condoJson.chars) return extractSharedFromCondoOrResidential(condoJson.chars)
+
+        const resRes = await fetch(`/api/property-chars-residential?pin=${encodeURIComponent(pin)}`)
+        const resJson = (await resRes.json()) as { chars: PropertyCharsResidentialRow | null }
+        if (cancelled) return null
+        if (resJson.chars) return extractSharedFromCondoOrResidential(resJson.chars)
+
+        const commRes = await fetch(`/api/property-chars-commercial?pin=${encodeURIComponent(pin)}`)
+        const commJson = (await commRes.json()) as { row: Record<string, unknown> | null }
+        if (cancelled) return null
+        if (commJson.row) return extractSharedFromCommercialRow(commJson.row)
+
+        return null
+      }
+
+      try {
+        for (const pin of pinList) {
+          const picked = await tryPinWaterfall(pin)
+          if (cancelled) return
+          if (picked) {
+            setSharedChars(picked)
+            return
+          }
+        }
+        if (!cancelled) setSharedChars(null)
+      } finally {
+        if (!cancelled) setSharedReady(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [siblingPinsKey])
+
+  const loadLazyCondoForPin = useCallback((pinKey: string) => {
+    if (condoFetchedRef.current.has(pinKey)) return
+    condoFetchedRef.current.add(pinKey)
+    setCondoByPin((p) => ({ ...p, [pinKey]: 'loading' }))
+    void fetch(`/api/property-chars-condo?pin=${encodeURIComponent(pinKey)}`)
+      .then((r) => r.json())
+      .then((j: { chars: PropertyCharsCondoRow | null }) => {
+        setCondoByPin((p) => ({ ...p, [pinKey]: j.chars ?? null }))
+      })
+      .catch(() => {
+        setCondoByPin((p) => ({ ...p, [pinKey]: null }))
+      })
+  }, [])
+
+  const togglePin = (pinKey: string, assessedClass: string | null) => {
+    setOpenPins((prev) => {
+      const nextOpen = !prev[pinKey]
+      if (nextOpen && isCondo299Class(assessedClass)) {
+        loadLazyCondoForPin(pinKey)
+      }
+      return { ...prev, [pinKey]: nextOpen }
+    })
+  }
+
+  const expandAll = () => {
+    setOpenPins(Object.fromEntries(siblings.map((s) => [s.pin, true])))
+    siblings.forEach((s) => {
+      if (isCondo299Class(s.assessedClass)) {
+        loadLazyCondoForPin(s.pin)
+      }
+    })
+  }
+
+  const collapseAll = () => {
+    setOpenPins(Object.fromEntries(siblings.map((s) => [s.pin, false])))
+  }
+
+  const firstSiblingWithClass = siblings.find(
+    (s) => s.assessedClass != null && String(s.assessedClass).trim() !== ''
+  )
+  const sharedClassLine =
+    firstSiblingWithClass != null
+      ? (() => {
+          const c = firstSiblingWithClass.assessedClass
+          const desc = getClassDescription(c)
+          return desc && c != null ? `${c} — ${desc}` : String(c)
+        })()
+      : null
+  const showSharedClass = sharedClassLine != null && sharedClassLine.trim() !== ''
+
+  const showSharedYear =
+    sharedChars != null &&
+    sharedChars.year_built != null &&
+    String(sharedChars.year_built).trim() !== '' &&
+    numericGtZero(sharedChars.year_built)
+  const showSharedBsq =
+    sharedChars != null && sharedChars.building_sqft != null && numericGtZero(sharedChars.building_sqft)
+  const showSharedLand =
+    sharedChars != null && sharedChars.land_sqft != null && numericGtZero(sharedChars.land_sqft)
+
+  const sharedDetailRows: { key: string; label: string; value: string }[] = []
+  if (showSharedYear) {
+    sharedDetailRows.push({
+      key: 'yb',
+      label: 'Year Built',
+      value: String(sharedChars!.year_built),
+    })
+  }
+  if (showSharedBsq) {
+    sharedDetailRows.push({
+      key: 'bsq',
+      label: 'Building Sqft',
+      value: Number(sharedChars!.building_sqft).toLocaleString('en-US'),
+    })
+  }
+  if (showSharedLand) {
+    sharedDetailRows.push({
+      key: 'lsq',
+      label: 'Land Sqft',
+      value: Number(sharedChars!.land_sqft).toLocaleString('en-US'),
+    })
+  }
+  if (showSharedClass) {
+    sharedDetailRows.push({ key: 'cls', label: 'Class', value: sharedClassLine! })
+  }
+
+  const showSharedSection = sharedReady && sharedDetailRows.length > 0
+  const lastSharedIdx = sharedDetailRows.length - 1
+
+  return (
+    <>
+      <div className="profile-card-header profile-card-header--with-toggle">
+        <span style={{ flex: 1 }}>Property Details</span>
+        {siblings.length > 0 && (
+          <button
+            type="button"
+            aria-label={anyExpanded ? 'Collapse all units' : 'Expand all units'}
+            onClick={anyExpanded ? collapseAll : expandAll}
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 14,
+              color: 'rgba(255,255,255,0.45)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              marginLeft: 'auto',
+              padding: '0 0 0 8px',
+              lineHeight: 1,
+            }}
+          >
+            {anyExpanded ? '−' : '+'}
+          </button>
+        )}
+      </div>
+
+      <div className="property-details-expanded">
+        {showSharedSection && (
+          <div className="detail-list property-details-expanded-condo-shared">
+            {sharedDetailRows.map((row, i) => (
+              <div
+                key={row.key}
+                className="detail-row"
+                style={
+                  i === lastSharedIdx ? { borderBottom: '1px solid var(--border)' } : undefined
+                }
+              >
+                <span className="detail-key">{row.label}</span>
+                <span className="detail-val">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!showSharedSection && sharedReady && (
+          <div style={{ borderTop: '1px solid var(--border)' }} aria-hidden />
+        )}
+
+        {siblings.map((s, index) => {
+          const pinKey = s.pin
+          const open = !!openPins[pinKey]
+          const implied =
+            s.assessedValue != null &&
+            Number.isFinite(s.assessedValue) &&
+            s.assessedClass != null &&
+            getAssessmentLevelForImplied(s.assessedClass) > 0
+              ? s.assessedValue! / getAssessmentLevelForImplied(s.assessedClass)
+              : null
+
+          const unitChars = condoByPin[pinKey]
+          const showUnitLoading =
+            open && isCondo299Class(s.assessedClass) && (unitChars === undefined || unitChars === 'loading')
+          const showBedrooms =
+            unitChars != null && unitChars !== 'loading' && unitChars.num_bedrooms != null
+          const showUnitSqft =
+            unitChars != null &&
+            unitChars !== 'loading' &&
+            unitChars.unit_sqft != null &&
+            numericGtZero(unitChars.unit_sqft)
+          const showUnitSection =
+            isCondo299Class(s.assessedClass) &&
+            (showUnitLoading || showBedrooms || showUnitSqft)
+
+          const showTaxYear = s.taxYear != null && Number.isFinite(s.taxYear)
+          const showValueSource = s.valueType != null && String(s.valueType).trim() !== ''
+          const showAssessedVal = s.assessedValue != null && Number.isFinite(s.assessedValue)
+          const showLevel = s.assessedClass != null && String(s.assessedClass).trim() !== ''
+          const showImplied = implied != null && Number.isFinite(implied)
+
+          const unitRows: BodyRowDef[] = []
+          if (showUnitLoading) {
+            unitRows.push({ key: 'ul', label: 'Unit details', value: 'Loading…' })
+          }
+          if (showBedrooms) {
+            unitRows.push({
+              key: 'br',
+              label: 'Bedrooms',
+              value: String((unitChars as PropertyCharsCondoRow).num_bedrooms),
+            })
+          }
+          if (showUnitSqft) {
+            unitRows.push({
+              key: 'usq',
+              label: 'Unit Sqft',
+              value: Number((unitChars as PropertyCharsCondoRow).unit_sqft).toLocaleString('en-US'),
+            })
+          }
+
+          const assessmentRows: BodyRowDef[] = []
+          if (showTaxYear) {
+            assessmentRows.push({ key: 'ty', label: 'AV Tax Year', value: String(s.taxYear) })
+          }
+          if (showValueSource) {
+            assessmentRows.push({ key: 'vs', label: 'AV Value Source', value: String(s.valueType) })
+          }
+          if (showAssessedVal) {
+            assessmentRows.push({
+              key: 'av',
+              label: 'Assessed Value',
+              value: currencyZero.format(s.assessedValue!),
+            })
+          }
+          if (showLevel) {
+            assessmentRows.push({
+              key: 'al',
+              label: 'Assessment Level',
+              value: getAssessmentLevelForImplied(s.assessedClass) === 0.25 ? '25%' : '10%',
+            })
+          }
+          if (showImplied) {
+            assessmentRows.push({
+              key: 'imv',
+              label: 'Implied Market Value',
+              value: currencyZero.format(implied!),
+            })
+          }
+
+          const hasAssessmentBlock =
+            showTaxYear || showValueSource || showAssessedVal || showLevel || showImplied
+          const unitRowCount = unitRows.length
+
+          const headerBg = index % 2 === 0 ? '#ffffff' : '#f7f9fb'
+
+          return (
+            <div key={pinKey} className="property-details-expanded-section" style={{ borderBottom: 'none' }}>
+              <button
+                type="button"
+                onClick={() => togglePin(pinKey, s.assessedClass)}
+                aria-expanded={open}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 0,
+                  padding: '10px 0',
+                  margin: 0,
+                  border: 'none',
+                  borderLeft: open ? '3px solid #2d6a4f' : '3px solid transparent',
+                  borderBottom: open ? 'none' : '0.5px solid var(--border)',
+                  background: headerBg,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span
+                  style={{
+                    paddingLeft: 10,
+                    paddingRight: 6,
+                    flexShrink: 0,
+                    fontSize: 9,
+                    lineHeight: 1.2,
+                    color: 'var(--text-dim)',
+                  }}
+                  aria-hidden
+                >
+                  {open ? '▼' : '▶'}
+                </span>
+                <span style={{ flex: 1, paddingRight: 14, minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontWeight: 600,
+                      fontSize: 12,
+                      lineHeight: 1.25,
+                      color: 'var(--text)',
+                    }}
+                  >
+                    {formatTitleCaseAddress(s.address)}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontFamily: 'var(--mono)',
+                      fontSize: 10,
+                      color: 'var(--text-dim)',
+                      marginTop: 2,
+                    }}
+                  >
+                    {pinKey}
+                  </span>
+                </span>
+              </button>
+
+              {open && (
+                <div
+                  style={{
+                    background: 'var(--color-background-primary)',
+                    borderLeft: '3px solid #2d6a4f',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  {showUnitSection && (
+                    <>
+                      <span style={SECTION_LABEL_STYLE}>Unit</span>
+                      <ExpandedDataRows
+                        rows={unitRows}
+                        globalOffset={0}
+                        isTerminal={!hasAssessmentBlock}
+                      />
+                    </>
+                  )}
+
+                  {hasAssessmentBlock && (
+                    <>
+                      <span style={SECTION_LABEL_STYLE}>Assessment</span>
+                      <ExpandedDataRows
+                        rows={assessmentRows}
+                        globalOffset={unitRowCount}
+                        isTerminal
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </>
   )
 }
