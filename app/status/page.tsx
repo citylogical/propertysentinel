@@ -17,6 +17,7 @@ type RunRow = {
   records_fetched: number
   error_message: string | null
   duration_ms: number | null
+  lag_seconds: number | null
   source: string
 }
 
@@ -67,6 +68,15 @@ function getDayCT(isoStr: string) {
   }).format(new Date(isoStr))
 }
 
+function formatLag(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const mins = Math.round(seconds / 60)
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  const rem = mins % 60
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`
+}
+
 function truncateError(msg: string | null): string | null {
   if (!msg) return null
   const clean = msg.replace(/for url: https?:\/\/\S+/gi, '').trim()
@@ -75,34 +85,23 @@ function truncateError(msg: string | null): string | null {
 
 function buildDaySummaries(runs: RunRow[]): DaySummary[] {
   const days: DaySummary[] = []
-
   for (let i = 89; i >= 0; i--) {
     const d = new Date()
     d.setDate(d.getDate() - i)
-    const dateStr = getDayCT(d.toISOString())
-    days.push({ date: dateStr, total: 0, failures: 0, status: 'no_data' })
+    days.push({ date: getDayCT(d.toISOString()), total: 0, failures: 0, status: 'no_data' })
   }
-
   for (const run of runs) {
-    const day = getDayCT(run.ran_at)
-    const entry = days.find(d => d.date === day)
+    const entry = days.find(d => d.date === getDayCT(run.ran_at))
     if (!entry) continue
     entry.total++
     if (run.status === 'failure') entry.failures++
   }
-
   for (const entry of days) {
-    if (entry.total === 0) {
-      entry.status = 'no_data'
-    } else if (entry.failures === 0) {
-      entry.status = 'success'
-    } else if (entry.failures < entry.total) {
-      entry.status = 'partial'
-    } else {
-      entry.status = 'failure'
-    }
+    if (entry.total === 0) entry.status = 'no_data'
+    else if (entry.failures === 0) entry.status = 'success'
+    else if (entry.failures < entry.total) entry.status = 'partial'
+    else entry.status = 'failure'
   }
-
   return days
 }
 
@@ -128,12 +127,13 @@ export default async function StatusPage() {
     ? (((totalRuns - failedRuns) / totalRuns) * 100).toFixed(1)
     : '100.0'
 
-  const lastSuccess = allRuns.find(r => r.status === 'success' || r.status === 'no_new_records')
+  const lastSuccessRun = allRuns.find(r => r.status === 'success' || r.status === 'no_new_records')
+  const lastSyncWithLag = allRuns.find(r => r.status === 'success' && r.lag_seconds != null)
   const totalRecords = allRuns.reduce((sum, r) => sum + (r.records_fetched ?? 0), 0)
 
-  const runsWithDuration = allRuns.filter(r => r.duration_ms)
-  const avgDuration = runsWithDuration.length > 0
-    ? Math.round(runsWithDuration.reduce((s, r) => s + r.duration_ms!, 0) / runsWithDuration.length / 1000)
+  const runsWithLag = allRuns.filter(r => r.lag_seconds != null && r.status === 'success')
+  const avgLagSeconds = runsWithLag.length > 0
+    ? Math.round(runsWithLag.reduce((s, r) => s + r.lag_seconds!, 0) / runsWithLag.length)
     : null
 
   const isCurrentlyOperational = !allRuns[0] || allRuns[0].status !== 'failure'
@@ -180,12 +180,12 @@ export default async function StatusPage() {
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '80px 24px 80px' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 40, gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 24 }}>
           <div>
             <h1 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 28, fontWeight: 700, color: '#001f3f', marginBottom: 8, letterSpacing: '-0.02em' }}>
               Chicago 311 Data Status
             </h1>
-            <p style={{ fontSize: 13, color: '#8a94a0', lineHeight: 1.6, maxWidth: 480 }}>
+            <p style={{ fontSize: 13, color: '#8a94a0', lineHeight: 1.6, maxWidth: 520 }}>
               Live sync status for the Chicago Open Data Portal 311 feed. Property Sentinel ingests new complaints every 30 minutes.
             </p>
           </div>
@@ -206,13 +206,59 @@ export default async function StatusPage() {
           </div>
         </div>
 
+        {/* Lag line */}
+        {lastSyncWithLag && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 20,
+            padding: '10px 16px', marginBottom: 24,
+            background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6,
+            fontFamily: '"DM Mono", monospace', fontSize: 11,
+          }}>
+            <span style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
+              Most recent record:{' '}
+              <span style={{ color: '#1a1a1a' }}>
+                last modified {formatCT(
+                  new Date(
+                    new Date(lastSyncWithLag.ran_at).getTime() - lastSyncWithLag.lag_seconds! * 1000
+                  ).toISOString()
+                )} CT
+              </span>
+            </span>
+            <span style={{ color: '#ddd9d0' }}>·</span>
+            <span style={{ color: '#8a94a0' }}>
+              Synced{' '}
+              <span style={{ color: '#2d6a4f' }}>{formatLag(lastSyncWithLag.lag_seconds!)} after modification</span>
+            </span>
+          </div>
+        )}
+
         {/* Stat cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
           {[
-            { label: 'Uptime (90 days)', value: `${uptimePct}%`, sub: `${failedRuns} incident${failedRuns !== 1 ? 's' : ''}`, color: '#2d6a4f' },
-            { label: 'Last Sync', value: lastSuccess ? formatTimeCT(lastSuccess.ran_at) : '—', sub: lastSuccess ? formatDateCT(lastSuccess.ran_at) : '—', color: '#1a1a1a' },
-            { label: 'Records (90d)', value: totalRecords.toLocaleString(), sub: 'complaints synced', color: '#1a1a1a' },
-            { label: 'Avg Run Time', value: avgDuration ? `${avgDuration}s` : '—', sub: 'per sync cycle', color: '#1a1a1a' },
+            {
+              label: 'Uptime (90 days)',
+              value: `${uptimePct}%`,
+              sub: `${failedRuns} incident${failedRuns !== 1 ? 's' : ''}`,
+              color: '#2d6a4f',
+            },
+            {
+              label: 'Last Sync',
+              value: lastSuccessRun ? formatTimeCT(lastSuccessRun.ran_at) : '—',
+              sub: lastSuccessRun ? formatDateCT(lastSuccessRun.ran_at) : '—',
+              color: '#1a1a1a',
+            },
+            {
+              label: 'Records (90d)',
+              value: totalRecords.toLocaleString(),
+              sub: 'complaints synced',
+              color: '#1a1a1a',
+            },
+            {
+              label: 'Avg Lag Time',
+              value: avgLagSeconds != null ? formatLag(avgLagSeconds) : '—',
+              sub: 'modification → database',
+              color: avgLagSeconds != null && avgLagSeconds < 1800 ? '#2d6a4f' : '#b7791f',
+            },
           ].map(card => (
             <div key={card.label} style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, padding: '14px 14px 12px' }}>
               <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#8a94a0', marginBottom: 8 }}>
@@ -284,7 +330,6 @@ export default async function StatusPage() {
             </span>
             <span style={{ fontSize: 11, color: '#8a94a0' }}>All times CT</span>
           </div>
-
           {incidents.length === 0 ? (
             <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
               No incidents in the last 90 days.
@@ -324,13 +369,11 @@ export default async function StatusPage() {
             </span>
             <span style={{ fontSize: 11, color: '#8a94a0' }}>Last 24 hours · All times CT</span>
           </div>
-
-          <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 90px 90px 1fr', gap: 12 }}>
-            {['Time (CT)', 'Status', 'Records', 'Note'].map(h => (
+          <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12 }}>
+            {['Time (CT)', 'Status', 'Records', 'Lag', 'Note'].map(h => (
               <span key={h} style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>{h}</span>
             ))}
           </div>
-
           {recentRuns.length === 0 ? (
             <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
               No runs in the last 24 hours.
@@ -353,7 +396,7 @@ export default async function StatusPage() {
               : ''
 
             return (
-              <div key={run.id} style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 90px 90px 1fr', gap: 12, alignItems: 'center' }}>
+              <div key={run.id} style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12, alignItems: 'center' }}>
                 <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0' }}>
                   {formatCT(run.ran_at)}
                 </div>
@@ -367,6 +410,9 @@ export default async function StatusPage() {
                 </div>
                 <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
                   {run.records_fetched > 0 ? run.records_fetched.toLocaleString() : '—'}
+                </div>
+                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
+                  {run.lag_seconds != null ? formatLag(run.lag_seconds) : '—'}
                 </div>
                 <div style={{ fontSize: 11, color: '#8a94a0' }}>{note}</div>
               </div>
