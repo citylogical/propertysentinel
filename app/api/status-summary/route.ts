@@ -12,25 +12,23 @@ function getSupabaseAdmin() {
 export async function GET() {
   const supabase = getSupabaseAdmin()
 
-  const [runResult, modResult] = await Promise.all([
-    supabase
-      .from('worker_a_runs')
-      .select('status, ran_at')
-      .order('ran_at', { ascending: false })
-      .limit(1)
-      .single(),
-    supabase
-      .from('complaints_311')
-      .select('last_modified_date')
-      .order('last_modified_date', { ascending: false })
-      .limit(1)
-      .single(),
-  ])
+  const runResult = await supabase
+    .from('worker_a_runs')
+    .select('status, ran_at')
+    .order('ran_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  const modResult = await supabase
+    .from('complaints_311')
+    .select('last_modified_date')
+    .order('last_modified_date', { ascending: false })
+    .limit(1)
+    .single()
 
   return NextResponse.json({
     status: runResult.data?.status === 'failure' ? 'degraded' : 'operational',
     lastRanAt: runResult.data?.ran_at ?? null,
-    // Socrata CT-local time stored with false +00:00 — slice to 19 chars for correct display
     mostRecentModified: modResult.data?.last_modified_date
       ? modResult.data.last_modified_date.slice(0, 19)
       : null,
