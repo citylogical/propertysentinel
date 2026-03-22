@@ -22,6 +22,7 @@ function formatDateTime(isoLike: string): string {
 
 export default function LiveTimestamp() {
   const [timestamp, setTimestamp] = useState<string | null>(null)
+  const [statusData, setStatusData] = useState<{ status: 'operational' | 'degraded'; lastRanAt: string | null } | null>(null)
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(false)
   const wrapRef = useRef<HTMLSpanElement>(null)
@@ -33,6 +34,11 @@ export default function LiveTimestamp() {
         if (data.timestamp) setTimestamp(formatDateTime(data.timestamp))
       })
       .catch(() => {})
+
+    fetch('/api/status-summary')
+      .then((r) => r.json())
+      .then((data) => setStatusData(data))
+      .catch(() => setStatusData({ status: 'operational', lastRanAt: null }))
   }, [])
 
   useEffect(() => {
@@ -44,45 +50,113 @@ export default function LiveTimestamp() {
     return () => document.removeEventListener('click', close)
   }, [open])
 
-  const showInline = open || hover
+  const showPopover = open || hover
+  const isOperational = !statusData || statusData.status !== 'degraded'
 
   return (
     <span
       ref={wrapRef}
-      className="group relative inline"
+      style={{ position: 'relative', display: 'inline' }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-[#6b6b6b] underline decoration-dashed decoration-from-font underline-offset-2 hover:text-[#3d3d3d] focus:outline-none focus:ring-2 focus:ring-[#0a4080] focus:ring-offset-1 focus:ring-offset-[#f0f0ed] rounded"
+        style={{
+          cursor: 'pointer',
+          border: 0,
+          background: 'transparent',
+          padding: 0,
+          font: 'inherit',
+          color: '#6b6b6b',
+          textDecoration: 'underline',
+          textDecorationStyle: 'dotted',
+          textUnderlineOffset: '3px',
+          fontSize: 'inherit',
+        }}
         aria-expanded={open}
-        aria-label="Show when this data was last updated"
+        aria-label="Show data status"
       >
         live 311 data
       </button>
-      {showInline && (
-        <>
-          <br />
-          <span
-            className="block text-center"
-            style={{ animation: 'fadeIn 0.15s ease-out' }}
-            aria-hidden={false}
-          >
-            <span className="text-[#6b6b6b]">(last updated </span>
-            {timestamp ? (
-              <span className="text-green-600 font-mono text-[0.925em] font-medium tracking-tight">
-                {timestamp}
-              </span>
-            ) : (
-              <span className="text-[#6b6b6b]">—</span>
-            )}
-            <span className="text-[#6b6b6b]"> CT)</span>
+
+      {showPopover && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 10px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 50,
+            background: '#ffffff',
+            border: '1px solid #ddd9d0',
+            borderRadius: 6,
+            boxShadow: '0 4px 16px rgba(0,51,102,0.12)',
+            padding: '12px 16px',
+            minWidth: 240,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+            animation: 'popoverIn 0.18s ease-out',
+            whiteSpace: 'nowrap',
+          }}
+          role="status"
+        >
+          {/* Line 1: Last updated */}
+          <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
+            Last updated:{' '}
+            {timestamp
+              ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{timestamp} CT</span>
+              : <span style={{ color: '#8a94a0' }}>—</span>
+            }
           </span>
-        </>
+
+          {/* Line 2: Status */}
+          <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568', display: 'flex', alignItems: 'center', gap: 6 }}>
+            Status:{' '}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              color: isOperational ? '#2d6a4f' : '#c0392b',
+              fontWeight: 500,
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'currentColor', flexShrink: 0,
+                animation: 'statusPulse 2s infinite',
+              }} />
+              {isOperational ? 'Operational' : 'Degraded'}
+            </span>
+          </span>
+
+          {/* Line 3: Link */}
+          <a
+            href="/status"
+            style={{
+              fontFamily: '"DM Mono", monospace',
+              fontSize: 11,
+              color: '#0a4080',
+              textDecoration: 'none',
+              marginTop: 2,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+          >
+            See full status →
+          </a>
+        </span>
       )}
-      <br />
+
+      <style>{`
+        @keyframes popoverIn {
+          from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes statusPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.7); }
+        }
+      `}</style>
     </span>
   )
 }
