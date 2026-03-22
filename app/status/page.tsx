@@ -215,9 +215,9 @@ export default async function StatusPage() {
             fontFamily: '"DM Mono", monospace', fontSize: 11,
           }}>
             <span style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
-              Most recent record:{' '}
+              Most recent 311 record:{' '}
               <span style={{ color: '#1a1a1a' }}>
-                last modified {formatCT(
+                {formatTimeCT(
                   new Date(
                     new Date(lastSyncWithLag.ran_at).getTime() - lastSyncWithLag.lag_seconds! * 1000
                   ).toISOString()

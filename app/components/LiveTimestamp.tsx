@@ -111,7 +111,7 @@ export default function LiveTimestamp() {
         >
           {/* Line 1: Last updated */}
           <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
-            Last updated:{' '}
+            Most recent 311 record:{' '}
             {statusData?.lastRanAt
               ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{formatDateTime(statusData.lastRanAt)} CT</span>
               : timestamp
