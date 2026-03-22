@@ -12,7 +12,7 @@
   --background: #ffffff;
   --foreground: #171717;
   --navy: #003366;
-  --navy-deep: #001f3f;
+  --navy-deep: #0f2744;
   --navy-mid: #0a4080;
   --red: #c8102e;
   --grey-hero: #f0f0ed;
@@ -44,7 +44,7 @@ body {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
-  background: #001f3f;
+  background: #0f2744;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1018,7 +1018,7 @@ body {
   font-family: var(--profile-sans);
 }
 
-.profile-page__topnav { background: var(--profile-navy); border-bottom: 1px solid rgba(255,255,255,0.08); height: 54px; display: flex; align-items: center; }
+.profile-page__topnav { background: #0f2744; border-bottom: 1px solid rgba(255,255,255,0.08); height: 54px; display: flex; align-items: center; }
 .profile-page__topnav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; }
 .profile-page__brand { font-family: var(--profile-serif); font-weight: 700; font-size: 1.125rem; color: #fff; text-decoration: none; letter-spacing: 0.01em; }
 .profile-page__brand:hover { color: rgba(255,255,255,0.9); }
