@@ -17,7 +17,7 @@ export default function Home() {
           </h1>
 
           <p className="hero-sub text-center leading-tight">
-            Public property records and <LiveTimestamp /> …finally combined into real-time alerts and analytics for every Chicago property.
+            Property records, public listings, and <LiveTimestamp />…finally combined into real-time alerts and analytics for every Chicago address
           </p>
 
           <HomeSearch apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />

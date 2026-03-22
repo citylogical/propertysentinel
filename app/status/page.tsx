@@ -146,19 +146,25 @@ export default async function StatusPage() {
   const ninetyDaysAgo = new Date()
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
-  const runsResult = await supabase
-    .from('worker_a_runs')
-    .select('*')
-    .gte('ran_at', ninetyDaysAgo.toISOString())
-    .order('ran_at', { ascending: false })
-    .limit(2000)
+  async function fetchRuns() {
+    return supabase
+      .from('worker_a_runs')
+      .select('*')
+      .gte('ran_at', ninetyDaysAgo.toISOString())
+      .order('ran_at', { ascending: false })
+      .limit(2000)
+  }
 
-  const latestModResult = await supabase
-    .from('complaints_311')
-    .select('last_modified_date')
-    .order('last_modified_date', { ascending: false })
-    .limit(1)
-    .single()
+  async function fetchLatestMod() {
+    return supabase
+      .from('complaints_311')
+      .select('last_modified_date')
+      .order('last_modified_date', { ascending: false })
+      .limit(1)
+      .single()
+  }
+
+  const [runsResult, latestModResult] = await Promise.all([fetchRuns(), fetchLatestMod()])
 
   const allRuns: RunRow[] = runsResult.data ?? []
   const lastModifiedStr: string | null = latestModResult.data?.last_modified_date ?? null
