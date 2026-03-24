@@ -153,7 +153,7 @@ export default function LiveTimestamp() {
               whiteSpace: 'nowrap',
             }}
           >
-            Latest:{' '}
+            Last Sync:{' '}
             {recordTime
               ? <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{recordTime} CT</span>
               : <span style={{ color: '#8a94a0' }}>—</span>

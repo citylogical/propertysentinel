@@ -18,6 +18,8 @@ type RunRow = {
   error_message: string | null
   duration_ms: number | null
   lag_seconds: number | null
+  min_modified: string | null
+  max_modified: string | null
   source: string
 }
 
@@ -112,6 +114,19 @@ function formatLag(seconds: number): string {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`
 }
 
+// Display a stored min_modified / max_modified value as HH:MM:SS.
+// These are stored as CT local time with false +00:00 UTC marker — display with timeZone: 'UTC'
+// to show the stored value as-is, same pattern as last_modified_date from complaints_311.
+function formatModifiedTime(ts: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(ts))
+}
+
 function truncateError(msg: string | null): string | null {
   if (!msg) return null
   const clean = msg.replace(/for url: https?:\/\/\S+/gi, '').trim()
@@ -184,12 +199,13 @@ export default async function StatusPage() {
     ? computeLagSeconds(lastModifiedStr, lastSuccessRun.ran_at)
     : null
 
-  // Average lag: only use stored values under 1 hour to exclude pre-fix corrupted runs
-  const runsWithReasonableLag = allRuns.filter(
-    r => r.lag_seconds != null && r.status === 'success' && r.lag_seconds < 3600
+  // Average lag: exclude only corrupted log_import rows (which have NULL lag anyway).
+  // Includes both success and no_new_records runs — NO NEW lag reflects real staleness.
+  const runsWithLag = allRuns.filter(
+    r => r.lag_seconds != null && r.source !== 'log_import'
   )
-  const avgLagSeconds = runsWithReasonableLag.length > 0
-    ? Math.round(runsWithReasonableLag.reduce((s, r) => s + r.lag_seconds!, 0) / runsWithReasonableLag.length)
+  const avgLagSeconds = runsWithLag.length > 0
+    ? Math.round(runsWithLag.reduce((s, r) => s + r.lag_seconds!, 0) / runsWithLag.length)
     : null
 
   const isCurrentlyOperational = !allRuns[0] || allRuns[0].status !== 'failure'
@@ -423,7 +439,7 @@ export default async function StatusPage() {
             <span style={{ fontSize: 11, color: '#8a94a0' }}>Last 24 hours · All times CT</span>
           </div>
           <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12 }}>
-            {['Time (CT)', 'Status', 'Records', 'Lag', 'Note'].map(h => (
+            {['Time (CT)', 'Status', 'Records', 'Lag', 'Details'].map(h => (
               <span key={h} style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>{h}</span>
             ))}
           </div>
@@ -442,15 +458,19 @@ export default async function StatusPage() {
               : run.status === 'failure' ? 'Failed'
               : 'No new'
 
-            const note = run.status === 'failure'
+            // Details column:
+            // - SUCCESS with time range → "Records recorded HH:MM:SS–HH:MM:SS"
+            // - FAILURE → truncated error message
+            // - NO NEW → "—"
+            const details = run.status === 'success' && run.min_modified && run.max_modified
+              ? `Records recorded ${formatModifiedTime(run.min_modified)}–${formatModifiedTime(run.max_modified)}`
+              : run.status === 'failure'
               ? (truncateError(run.error_message) ?? '503 — Socrata unavailable')
-              : run.status === 'no_new_records'
-              ? 'No new complaints in window'
-              : ''
-
-            const lagDisplay = run.lag_seconds != null && run.lag_seconds < 3600
-              ? formatLag(run.lag_seconds)
               : '—'
+
+            // Show lag for all runs where it's stored — no upper-bound filter.
+            // log_import rows have NULL lag so they show '—' naturally.
+            const lagDisplay = run.lag_seconds != null ? formatLag(run.lag_seconds) : '—'
 
             return (
               <div key={run.id} style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12, alignItems: 'center' }}>
@@ -471,7 +491,9 @@ export default async function StatusPage() {
                 <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
                   {lagDisplay}
                 </div>
-                <div style={{ fontSize: 11, color: '#8a94a0' }}>{note}</div>
+                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0' }}>
+                  {details}
+                </div>
               </div>
             )
           })}
