@@ -351,10 +351,12 @@ const str_activity_summary: TableDef = {
     { key: 'is_prohibited_building', label: 'PBL', type: 'boolean', defaultVisible: true },
     { key: 'has_active_registration', label: 'Registered', type: 'boolean', defaultVisible: true },
     { key: 'registration_expiration', label: 'Reg Expires', type: 'date', defaultVisible: true },
-    { key: 'is_restricted_zone', label: 'Restricted Zone', type: 'boolean', defaultVisible: true },
+    { key: 'is_restricted_zone', label: 'Restricted Zone', type: 'boolean', defaultVisible: true }  
     { key: 'nearby_airbnb_count', label: 'Airbnb Nearby', type: 'number', defaultVisible: true },
     { key: 'nearby_airbnb_noncompliant', label: 'Airbnb Noncompliant', type: 'number', defaultVisible: true },
     { key: 'nearby_airbnb_ids', label: 'Airbnb IDs', type: 'text' },
+    { key: 'complaint_lat', label: 'Lat', type: 'number' },
+    { key: 'complaint_lng', label: 'Lng', type: 'number' },
   ],
 }
 
