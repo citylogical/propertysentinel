@@ -7,6 +7,30 @@
     flex-direction: column;
   }
   
+  .address-page:has(.explore-toolbar) {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .address-page:has(.explore-toolbar) .prop-page,
+  .address-page:has(.explore-toolbar) .profile,
+  .address-page:has(.explore-toolbar) .rail {
+    display: none;
+  }
+
+  .explore-layout {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .explore-layout .explore-table-wrap {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: auto;
+  }
+
   .explore-denied {
     display: flex;
     flex-direction: column;
@@ -230,8 +254,10 @@
   
   .explore-table-wrap {
     flex: 1;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
     position: relative;
+    max-width: 100vw;
   }
   
   .explore-table {

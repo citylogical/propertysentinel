@@ -38,13 +38,23 @@ export async function POST(req: Request) {
     const { id, email_addresses } = evt.data
     const email = email_addresses[0]?.email_address
     if (email) {
-      const { error } = await supabaseAdmin.from('subscribers').upsert(
-        { clerk_id: id, email, role: 'default' },
-        { onConflict: 'clerk_id' }
-      )
-      if (error) {
-        console.error('Clerk webhook subscribers upsert:', error.message)
-        return new Response('Database error', { status: 500 })
+      // Insert only — don't overwrite existing rows (preserves role)
+      const { data: existing } = await supabaseAdmin
+        .from('subscribers')
+        .select('id')
+        .eq('clerk_id', id)
+        .single()
+
+      if (!existing) {
+        const { error } = await supabaseAdmin.from('subscribers').insert({
+          clerk_id: id,
+          email,
+          role: 'default',
+        })
+        if (error) {
+          console.error('Clerk webhook subscribers insert:', error.message)
+          return new Response('Database error', { status: 500 })
+        }
       }
     }
   }
