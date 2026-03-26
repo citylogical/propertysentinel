@@ -352,6 +352,9 @@ const str_activity_summary: TableDef = {
     { key: 'has_active_registration', label: 'Registered', type: 'boolean', defaultVisible: true },
     { key: 'registration_expiration', label: 'Reg Expires', type: 'date', defaultVisible: true },
     { key: 'is_restricted_zone', label: 'Restricted Zone', type: 'boolean', defaultVisible: true },
+    { key: 'nearby_airbnb_count', label: 'Airbnb Nearby', type: 'number', defaultVisible: true },
+    { key: 'nearby_airbnb_noncompliant', label: 'Airbnb Noncompliant', type: 'number', defaultVisible: true },
+    { key: 'nearby_airbnb_ids', label: 'Airbnb IDs', type: 'text' },
   ],
 }
 
@@ -418,6 +421,43 @@ const str_restricted_zones: TableDef = {
   ],
 }
 
+const airbnb_listings: TableDef = {
+  name: 'airbnb_listings',
+  label: 'Airbnb Listings',
+  rowEstimate: '~8K',
+  defaultSort: 'number_of_reviews',
+  defaultSortDesc: true,
+  columns: [
+    { key: 'id', label: 'Listing ID', type: 'number', defaultVisible: true, sticky: true },
+    { key: 'host_name', label: 'Host', type: 'text', defaultVisible: true },
+    { key: 'neighbourhood_cleansed', label: 'Neighborhood', type: 'text', defaultVisible: true },
+    { key: 'property_type', label: 'Property Type', type: 'text', defaultVisible: true },
+    { key: 'room_type', label: 'Room Type', type: 'text', defaultVisible: true },
+    { key: 'price', label: 'Price', type: 'text', defaultVisible: true },
+    { key: 'license', label: 'License', type: 'text', defaultVisible: true },
+    { key: 'number_of_reviews', label: 'Reviews', type: 'number', defaultVisible: true },
+    { key: 'last_review', label: 'Last Review', type: 'date', defaultVisible: true },
+    { key: 'minimum_nights', label: 'Min Nights', type: 'number', defaultVisible: true },
+    { key: 'host_listings_count', label: 'Host Listings', type: 'number', defaultVisible: true },
+    { key: 'host_is_superhost', label: 'Superhost', type: 'text', defaultVisible: true },
+    { key: 'is_duplicate_license', label: 'Dup License', type: 'boolean', defaultVisible: true },
+    { key: 'is_potentially_noncompliant', label: 'Noncompliant', type: 'boolean', defaultVisible: true },
+    { key: 'listing_url', label: 'URL', type: 'text' },
+    { key: 'host_id', label: 'Host ID', type: 'number' },
+    { key: 'host_since', label: 'Host Since', type: 'date' },
+    { key: 'host_location', label: 'Host Location', type: 'text' },
+    { key: 'accommodates', label: 'Accommodates', type: 'number' },
+    { key: 'bedrooms', label: 'Bedrooms', type: 'number' },
+    { key: 'beds', label: 'Beds', type: 'number' },
+    { key: 'bathrooms_text', label: 'Bathrooms', type: 'text' },
+    { key: 'review_scores_rating', label: 'Rating', type: 'number' },
+    { key: 'reviews_per_month', label: 'Reviews/Mo', type: 'number' },
+    { key: 'latitude', label: 'Lat', type: 'number' },
+    { key: 'longitude', label: 'Lng', type: 'number' },
+    { key: 'last_scraped', label: 'Scraped', type: 'date' },
+  ],
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -426,6 +466,7 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
   str_activity_summary: str_activity_summary,
   str_prohibited_buildings: str_prohibited_buildings,
   str_registrations: str_registrations,
+  airbnb_listings: airbnb_listings,
   properties: properties,
   complaints_311: complaints_311,
   str_restricted_zones: str_restricted_zones,
@@ -444,6 +485,7 @@ export const EXPLORE_TABLE_LIST: TableDef[] = [
   str_activity_summary,
   str_prohibited_buildings,
   str_registrations,
+  airbnb_listings,
   properties,
   complaints_311,
   str_restricted_zones,
