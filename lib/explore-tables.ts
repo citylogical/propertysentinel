@@ -399,6 +399,25 @@ const str_registrations: TableDef = {
   ],
 }
 
+const str_restricted_zones: TableDef = {
+  name: 'str_restricted_zones',
+  label: 'STR Restricted Zones',
+  rowEstimate: '~60',
+  defaultSort: 'ward',
+  columns: [
+    { key: 'ward', label: 'Ward', type: 'number', defaultVisible: true, sticky: true },
+    { key: 'precinct', label: 'Precinct', type: 'number', defaultVisible: true },
+    { key: 'scope_of_restriction', label: 'Scope', type: 'text', defaultVisible: true },
+    { key: 'ordinance_effective_date', label: 'Effective', type: 'date', defaultVisible: true },
+    { key: 'submission_date', label: 'Submitted', type: 'date', defaultVisible: true },
+    { key: 'enacting_ordinance', label: 'Ordinance Link', type: 'text' },
+    { key: 'repeal_ordinance_effective_date', label: 'Repealed', type: 'date', defaultVisible: true },
+    { key: 'repeal_ordinance', label: 'Repeal Link', type: 'text' },
+    { key: 'comment_period_end_date', label: 'Comment Deadline', type: 'date' },
+    { key: 'ordinance_introduction_date', label: 'Introduced', type: 'date' },
+  ],
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -409,6 +428,7 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
   str_registrations: str_registrations,
   properties: properties,
   complaints_311: complaints_311,
+  str_restricted_zones: str_restricted_zones,
   assessed_values: assessed_values,
   property_chars_residential: property_chars_residential,
   property_chars_condo: property_chars_condo,
@@ -426,6 +446,7 @@ export const EXPLORE_TABLE_LIST: TableDef[] = [
   str_registrations,
   properties,
   complaints_311,
+  str_restricted_zones,
   assessed_values,
   property_chars_residential,
   property_chars_condo,
