@@ -19,18 +19,8 @@ export async function GET() {
     .limit(1)
     .single()
 
-  const modResult = await supabase
-    .from('complaints_311')
-    .select('last_modified_date')
-    .order('last_modified_date', { ascending: false })
-    .limit(1)
-    .single()
-
   return NextResponse.json({
     status: runResult.data?.status === 'failure' ? 'degraded' : 'operational',
     lastRanAt: runResult.data?.ran_at ?? null,
-    mostRecentModified: modResult.data?.last_modified_date
-      ? modResult.data.last_modified_date.slice(0, 19)
-      : null,
   })
 }

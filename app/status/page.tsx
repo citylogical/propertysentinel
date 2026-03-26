@@ -114,17 +114,25 @@ function formatLag(seconds: number): string {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`
 }
 
-// Display a stored min_modified / max_modified value as HH:MM:SS.
-// These are stored as CT local time with false +00:00 UTC marker — display with timeZone: 'UTC'
-// to show the stored value as-is, same pattern as last_modified_date from complaints_311.
-function formatModifiedTime(ts: string): string {
-  return new Intl.DateTimeFormat('en-US', {
+// Format a min/max modified range as "Fetched records from 17:45–18:30 3/25/26".
+// Both timestamps are stored as CT local time with false +00:00 UTC marker —
+// display with timeZone: 'UTC' to show the stored value as-is.
+function formatModifiedRange(minTs: string, maxTs: string): string {
+  const timeOpts: Intl.DateTimeFormatOptions = {
     timeZone: 'UTC',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false,
-  }).format(new Date(ts))
+  }
+  const minTime = new Intl.DateTimeFormat('en-US', timeOpts).format(new Date(minTs))
+  const maxTime = new Intl.DateTimeFormat('en-US', timeOpts).format(new Date(maxTs))
+  const dateStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    month: 'numeric',
+    day: 'numeric',
+    year: '2-digit',
+  }).format(new Date(minTs))
+  return `Fetched records from ${minTime}–${maxTime} ${dateStr}`
 }
 
 function truncateError(msg: string | null): string | null {
@@ -459,14 +467,14 @@ export default async function StatusPage() {
               : 'No new'
 
             // Details column:
-            // - SUCCESS with time range → "Records recorded HH:MM:SS–HH:MM:SS"
+            // - SUCCESS with time range → "Fetched records from 17:45–18:30 3/25/26"
             // - FAILURE → truncated error message
-            // - NO NEW → "—"
+            // - NO NEW → "No records fetched"
             const details = run.status === 'success' && run.min_modified && run.max_modified
-              ? `Records recorded ${formatModifiedTime(run.min_modified)}–${formatModifiedTime(run.max_modified)}`
+              ? formatModifiedRange(run.min_modified, run.max_modified)
               : run.status === 'failure'
               ? (truncateError(run.error_message) ?? '503 — Socrata unavailable')
-              : '—'
+              : 'No records fetched'
 
             // Show lag for all runs where it's stored — no upper-bound filter.
             // log_import rows have NULL lag so they show '—' naturally.

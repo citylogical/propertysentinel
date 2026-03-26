@@ -22,7 +22,6 @@ function formatSocrataTimeCT(raw: string): string {
 type StatusData = {
   status: 'operational' | 'degraded'
   lastRanAt: string | null
-  mostRecentModified: string | null
 }
 
 export default function LiveTimestamp() {
@@ -36,7 +35,7 @@ export default function LiveTimestamp() {
     fetch('/api/status-summary')
       .then((r) => r.json())
       .then((data) => setStatusData(data))
-      .catch(() => setStatusData({ status: 'operational', lastRanAt: null, mostRecentModified: null }))
+      .catch(() => setStatusData({ status: 'operational', lastRanAt: null }))
   }, [])
 
   useEffect(() => {
@@ -51,8 +50,16 @@ export default function LiveTimestamp() {
   const showPopover = open || hover
   const isOperational = !statusData || statusData.status !== 'degraded'
 
-  const recordTime = statusData?.mostRecentModified
-    ? formatSocrataTimeCT(statusData.mostRecentModified)
+  const recordTime = statusData?.lastRanAt
+    ? new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Chicago',
+        month: 'numeric',
+        day: 'numeric',
+        year: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(new Date(statusData.lastRanAt)).replace(' AM', 'am').replace(' PM', 'pm')
     : null
 
   return (
