@@ -349,6 +349,18 @@ const str_activity_summary: TableDef = {
     { key: 'last_permit_date', label: 'Last Permit', type: 'date' },
   ],
 }
+
+const test_table: TableDef = {
+  name: 'test_dummy',
+  label: '🔴 TEST — DELETE ME',
+  rowEstimate: '0',
+  defaultSort: 'id',
+  defaultSortDesc: false,
+  columns: [
+    { key: 'id', label: 'ID', type: 'text', defaultVisible: true },
+  ],
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -369,6 +381,8 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
 
 /** Ordered list for the table selector dropdown */
 export const EXPLORE_TABLE_LIST: TableDef[] = [
+  str_activity_summary,
+  test_table,
   properties,
   complaints_311,
   assessed_values,
