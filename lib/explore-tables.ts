@@ -320,11 +320,41 @@ const property_tax_exempt: TableDef = {
   ],
 }
 
+const str_activity_summary: TableDef = {
+  name: 'str_activity_summary',
+  label: 'STR Activity Summary',
+  rowEstimate: '~5K',
+  defaultSort: 'shvr_open',
+  defaultSortDesc: true,
+  columns: [
+    { key: 'pin', label: 'PIN', type: 'text', defaultVisible: true, sticky: true },
+    { key: 'address', label: 'Address', type: 'text', defaultVisible: true },
+    { key: 'community_area', label: 'Community Area', type: 'text', defaultVisible: true },
+    { key: 'ward', label: 'Ward', type: 'text', defaultVisible: true },
+    { key: 'shvr_open', label: 'SHVR Open', type: 'number', defaultVisible: true },
+    { key: 'shvr_total', label: 'SHVR Total', type: 'number', defaultVisible: true },
+    { key: 'shvr_last_year', label: 'SHVR Last Year', type: 'number', defaultVisible: true },
+    { key: 'latest_shvr_date', label: 'Latest SHVR', type: 'date', defaultVisible: true },
+    { key: 'earliest_shvr_date', label: 'Earliest SHVR', type: 'date' },
+    { key: 'mailing_name', label: 'Mailing Name', type: 'text', defaultVisible: true },
+    { key: 'is_absentee', label: 'Absentee', type: 'boolean', defaultVisible: true },
+    { key: 'mailing_address', label: 'Mailing Addr', type: 'text' },
+    { key: 'mailing_city', label: 'Mailing City', type: 'text' },
+    { key: 'mailing_state', label: 'Mailing State', type: 'text' },
+    { key: 'mailing_zip', label: 'Mailing ZIP', type: 'text' },
+    { key: 'property_class', label: 'Class', type: 'text', defaultVisible: true },
+    { key: 'zip', label: 'ZIP', type: 'text' },
+    { key: 'open_violations_count', label: 'Open Violations', type: 'number', defaultVisible: true },
+    { key: 'open_complaints_count', label: 'Open Complaints', type: 'number' },
+    { key: 'last_permit_date', label: 'Last Permit', type: 'date' },
+  ],
+}
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 export const EXPLORE_TABLES: Record<string, TableDef> = {
+  str_activity_summary: str_activity_summary,
   properties: properties,
   complaints_311: complaints_311,
   assessed_values: assessed_values,
