@@ -347,17 +347,53 @@ const str_activity_summary: TableDef = {
     { key: 'open_violations_count', label: 'Open Violations', type: 'number', defaultVisible: true },
     { key: 'open_complaints_count', label: 'Open Complaints', type: 'number' },
     { key: 'last_permit_date', label: 'Last Permit', type: 'date' },
+    { key: 'is_prohibited_building', label: 'PBL', type: 'boolean', defaultVisible: true },
+    { key: 'has_active_registration', label: 'Registered', type: 'boolean', defaultVisible: true },
+    { key: 'registration_expiration', label: 'Reg Expires', type: 'date', defaultVisible: true },
   ],
 }
 
-const test_table: TableDef = {
-  name: 'test_dummy',
-  label: '🔴 TEST — DELETE ME',
-  rowEstimate: '0',
-  defaultSort: 'id',
-  defaultSortDesc: false,
+const str_prohibited_buildings: TableDef = {
+  name: 'str_prohibited_buildings',
+  label: 'STR Prohibited Buildings',
+  rowEstimate: '~800',
+  defaultSort: 'application_id',
+  defaultSortDesc: true,
   columns: [
-    { key: 'id', label: 'ID', type: 'text', defaultVisible: true },
+    { key: 'application_id', label: 'App ID', type: 'number', defaultVisible: true, sticky: true },
+    { key: 'address_number', label: 'Address #', type: 'text', defaultVisible: true },
+    { key: 'street_direction', label: 'Dir', type: 'text', defaultVisible: true },
+    { key: 'street_name', label: 'Street', type: 'text', defaultVisible: true },
+    { key: 'street_type', label: 'Type', type: 'text', defaultVisible: true },
+    { key: 'address_normalized', label: 'Addr Normalized', type: 'text' },
+    { key: 'number_of_units', label: 'Units', type: 'number', defaultVisible: true },
+    { key: 'pin', label: 'PIN', type: 'text', defaultVisible: true },
+    { key: 'association_cooperative_or_owner', label: 'Owner/Assoc', type: 'text', defaultVisible: true },
+    { key: 'applicant_role', label: 'Applicant Role', type: 'text' },
+    { key: 'vote_date', label: 'Vote Date', type: 'date', defaultVisible: true },
+    { key: 'recorded_date', label: 'Recorded', type: 'date', defaultVisible: true },
+    { key: 'signed_date', label: 'Signed', type: 'date' },
+    { key: 'lat', label: 'Lat', type: 'number' },
+    { key: 'lng', label: 'Lng', type: 'number' },
+  ],
+}
+
+const str_registrations: TableDef = {
+  name: 'str_registrations',
+  label: 'STR Registrations',
+  rowEstimate: '~3K',
+  defaultSort: 'expiration_date',
+  defaultSortDesc: true,
+  columns: [
+    { key: 'registration_number', label: 'Reg #', type: 'text', defaultVisible: true, sticky: true },
+    { key: 'host_name', label: 'Host Name', type: 'text', defaultVisible: true },
+    { key: 'street_address', label: 'Address', type: 'text', defaultVisible: true },
+    { key: 'address_normalized', label: 'Addr Normalized', type: 'text' },
+    { key: 'current_status', label: 'Status', type: 'text', defaultVisible: true },
+    { key: 'current_status_date', label: 'Status Date', type: 'date', defaultVisible: true },
+    { key: 'expiration_date', label: 'Expires', type: 'date', defaultVisible: true },
+    { key: 'ward', label: 'Ward', type: 'text', defaultVisible: true },
+    { key: 'precinct', label: 'Precinct', type: 'text' },
   ],
 }
 
@@ -367,6 +403,8 @@ const test_table: TableDef = {
 
 export const EXPLORE_TABLES: Record<string, TableDef> = {
   str_activity_summary: str_activity_summary,
+  str_prohibited_buildings: str_prohibited_buildings,
+  str_registrations: str_registrations,
   properties: properties,
   complaints_311: complaints_311,
   assessed_values: assessed_values,
@@ -382,7 +420,8 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
 /** Ordered list for the table selector dropdown */
 export const EXPLORE_TABLE_LIST: TableDef[] = [
   str_activity_summary,
-  test_table,
+  str_prohibited_buildings,
+  str_registrations,
   properties,
   complaints_311,
   assessed_values,
