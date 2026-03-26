@@ -134,59 +134,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // When filters are applied, switch to exact count for accurate pagination
-  if (safeFilters.length > 0) {
-    query = supabase
-      .from(table)
-      .select(selectStr, { count: 'exact' })
-    // Re-apply filters (rebuild for exact count)
-    for (const f of safeFilters) {
-      const col = tableDef.columns.find((c) => c.key === f.id)
-      if (!col) continue
-      const val = f.value.trim()
-      if (col.type === 'text') {
-        query = query.ilike(f.id, `%${val}%`)
-      } else if (col.type === 'number') {
-        if (val.includes('-') && !val.startsWith('-')) {
-          const [lo, hi] = val.split('-').map(Number)
-          if (Number.isFinite(lo) && Number.isFinite(hi)) {
-            query = query.gte(f.id, lo).lte(f.id, hi)
-          }
-        } else if (val.startsWith('>=')) {
-          const n = Number(val.slice(2))
-          if (Number.isFinite(n)) query = query.gte(f.id, n)
-        } else if (val.startsWith('<=')) {
-          const n = Number(val.slice(2))
-          if (Number.isFinite(n)) query = query.lte(f.id, n)
-        } else if (val.startsWith('>')) {
-          const n = Number(val.slice(1))
-          if (Number.isFinite(n)) query = query.gt(f.id, n)
-        } else if (val.startsWith('<')) {
-          const n = Number(val.slice(1))
-          if (Number.isFinite(n)) query = query.lt(f.id, n)
-        } else {
-          const n = Number(val)
-          if (Number.isFinite(n)) query = query.eq(f.id, n)
-        }
-      } else if (col.type === 'date') {
-        if (val.startsWith('>')) {
-          query = query.gte(f.id, val.slice(1).trim())
-        } else if (val.startsWith('<')) {
-          query = query.lte(f.id, val.slice(1).trim())
-        } else {
-          query = query.gte(f.id, val).lt(f.id, val + '\uffff')
-        }
-      } else if (col.type === 'boolean') {
-        const lower = val.toLowerCase()
-        if (lower === 'true' || lower === 'yes' || lower === '1') {
-          query = query.eq(f.id, true)
-        } else if (lower === 'false' || lower === 'no' || lower === '0') {
-          query = query.eq(f.id, false)
-        }
-      }
-    }
-  }
-
   // Apply sorting
   const safeSorting = (sorting ?? []).filter((s) => isValidColumn(table, s.id))
   if (safeSorting.length > 0) {
