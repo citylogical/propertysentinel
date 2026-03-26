@@ -15,6 +15,7 @@ export type SiblingPin = {
 
 type Props = {
   siblings: SiblingPin[]
+  serverSharedChars?: SharedNumeric | null
 }
 
 const currencyZero = new Intl.NumberFormat('en-US', {
@@ -59,13 +60,22 @@ type SharedNumeric = {
   year_built?: unknown
   building_sqft?: unknown
   land_sqft?: unknown
+  property_type?: string | null
 }
 
 function extractSharedFromCondoOrResidential(row: PropertyCharsCondoRow | PropertyCharsResidentialRow): SharedNumeric {
+  const res = row as PropertyCharsResidentialRow
+  const tor = res.type_of_residence ?? null
+  const svmf = res.single_v_multi_family ?? null
+  let propertyType: string | null = null
+  if (tor && svmf) propertyType = `${tor}, ${svmf}`
+  else if (tor) propertyType = String(tor)
+  else if (svmf) propertyType = String(svmf)
   return {
     year_built: row.year_built,
     building_sqft: row.building_sqft,
     land_sqft: row.land_sqft,
+    property_type: propertyType,
   }
 }
 
@@ -74,6 +84,7 @@ function extractSharedFromCommercialRow(row: Record<string, unknown>): SharedNum
     year_built: row.year_built,
     building_sqft: row.building_sqft,
     land_sqft: row.land_sqft,
+    property_type: row.property_type_use != null ? String(row.property_type_use) : null,
   }
 }
 
@@ -141,7 +152,7 @@ function ExpandedDataRows({
   )
 }
 
-export default function PropertyDetailsExpanded({ siblings }: Props) {
+export default function PropertyDetailsExpanded({ siblings, serverSharedChars }: Props) {
   const [openPins, setOpenPins] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(siblings.map((s) => [s.pin, false]))
   )
@@ -157,6 +168,13 @@ export default function PropertyDetailsExpanded({ siblings }: Props) {
   const anyExpanded = siblings.some((s) => openPins[s.pin])
 
   useEffect(() => {
+    // If server already provided shared chars, use them directly — no client fetch needed
+    if (serverSharedChars !== undefined) {
+      setSharedChars(serverSharedChars)
+      setSharedReady(true)
+      return
+    }
+
     const pinList = siblingPinsKey.split('|').filter(Boolean)
     if (pinList.length === 0) {
       setSharedChars(null)
@@ -206,7 +224,7 @@ export default function PropertyDetailsExpanded({ siblings }: Props) {
     return () => {
       cancelled = true
     }
-  }, [siblingPinsKey])
+  }, [siblingPinsKey, serverSharedChars])
 
   const loadLazyCondoForPin = useCallback((pinKey: string) => {
     if (condoFetchedRef.current.has(pinKey)) return
@@ -289,6 +307,13 @@ export default function PropertyDetailsExpanded({ siblings }: Props) {
       label: 'Land Sqft',
       value: Number(sharedChars!.land_sqft).toLocaleString('en-US'),
     })
+  }
+  const showSharedPropertyType =
+    sharedChars != null &&
+    sharedChars.property_type != null &&
+    String(sharedChars.property_type).trim() !== ''
+  if (showSharedPropertyType) {
+    sharedDetailRows.push({ key: 'ptyp', label: 'Property Type', value: String(sharedChars!.property_type) })
   }
   if (showSharedClass) {
     sharedDetailRows.push({ key: 'cls', label: 'Class', value: sharedClassLine! })

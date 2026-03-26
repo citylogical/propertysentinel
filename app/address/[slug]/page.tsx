@@ -540,10 +540,16 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {isExpanded && expandedSiblings.length > 0 ? (
+{isExpanded && expandedSiblings.length > 0 ? (
               <PropertyDetailsExpanded
                 key={expandedSiblings.map((s) => s.pin).join(',')}
                 siblings={expandedSiblings}
+                serverSharedChars={{
+                  year_built: charsResidential?.year_built ?? charsCondo?.year_built ?? (commercialChars.length > 0 ? commercialChars[0].year_built : null),
+                  building_sqft: charsResidential?.building_sqft ?? charsCondo?.building_sqft ?? (commercialChars.length > 0 ? commercialChars[0].building_sqft : null),
+                  land_sqft: charsResidential?.land_sqft ?? charsCondo?.land_sqft ?? (commercialChars.length > 0 ? commercialChars[0].land_sqft : null),
+                  property_type: residentialPropertyTypeLine ?? (commercialChars.length > 0 ? commercialChars[0].property_type_use : null) ?? null,
+                }}
               />
             ) : (
               <div className="detail-list">
@@ -610,10 +616,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                   </details>
                 )}
 
-                <details>
-                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--text-dim)', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const }}>
+                  <details>
+                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '8px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: '#2d6a4f', padding: '7px 14px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid rgba(45,106,79,0.15)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const }}>
                     {'Assessment'}
-                    <span style={{ fontSize: '16px' }}>{'▾'}</span>
+                    <span style={{ fontSize: '14px', color: '#2d6a4f' }}>{'▾'}</span>
                   </summary>
                   <div className="detail-row">
                     <span className="detail-key">AV Tax Year</span>
@@ -622,14 +628,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                   <div className="detail-row">
                     <span className="detail-key">AV Class</span>
                     <span className={detailVal(assessed?.class ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.class ?? null).text}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-key">Township</span>
-                    <span className={detailVal(assessed?.township_name ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.township_name ?? null).text}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-key">Neighborhood Code</span>
-                    <span className={detailVal(assessed?.neighborhood_code ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.neighborhood_code ?? null).text}</span>
                   </div>
                   <div className="detail-row">
                     <span className="detail-key">AV Value Source</span>
