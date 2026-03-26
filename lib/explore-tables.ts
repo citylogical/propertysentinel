@@ -40,7 +40,8 @@ const properties: TableDef = {
     { key: 'city', label: 'City', type: 'text' },
     { key: 'state', label: 'State', type: 'text' },
     { key: 'zip', label: 'ZIP', type: 'text', defaultVisible: true },
-    { key: 'ward', label: 'Ward', type: 'text', defaultVisible: true },
+    { key: 'complaint_ward', label: 'Complaint Ward', type: 'text', defaultVisible: true },
+    { key: 'complaint_precinct', label: 'Precinct', type: 'text', defaultVisible: true },
     { key: 'community_area', label: 'Community Area', type: 'text', defaultVisible: true },
     { key: 'property_class', label: 'Class', type: 'text', defaultVisible: true },
     { key: 'lat', label: 'Lat', type: 'number' },
@@ -350,6 +351,7 @@ const str_activity_summary: TableDef = {
     { key: 'is_prohibited_building', label: 'PBL', type: 'boolean', defaultVisible: true },
     { key: 'has_active_registration', label: 'Registered', type: 'boolean', defaultVisible: true },
     { key: 'registration_expiration', label: 'Reg Expires', type: 'date', defaultVisible: true },
+    { key: 'is_restricted_zone', label: 'Restricted Zone', type: 'boolean', defaultVisible: true },
   ],
 }
 
