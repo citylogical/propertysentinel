@@ -1,5 +1,6 @@
 // app/status/page.tsx
 import { createClient } from '@supabase/supabase-js'
+import PropertySidebar from '@/components/PropertySidebar'
 
 export const dynamic = 'force-dynamic'
 
@@ -247,14 +248,12 @@ export default async function StatusPage() {
   }
 
   return (
-    <div style={{ fontFamily: '"DM Sans", system-ui, sans-serif', background: '#f0f0ed', minHeight: '100vh', color: '#1a1a1a' }}>
-
-      <nav className="landing-nav">
-        <a className="nav-brand" href="/">Property Sentinel</a>
-        <a href="/" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textDecoration: 'none' }}>← Back to search</a>
-      </nav>
-
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '80px 24px 80px' }}>
+    <div className="address-page">
+      <div className="prop-page-shell">
+        <PropertySidebar />
+        <div className="prop-main-content">
+          <div style={{ fontFamily: '"DM Sans", system-ui, sans-serif', background: '#f0f0ed', minHeight: '100vh', color: '#1a1a1a' }}>
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 24px 80px' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 24 }}>
@@ -520,6 +519,9 @@ export default async function StatusPage() {
           50% { opacity: 0.4; transform: scale(0.7); }
         }
       `}</style>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

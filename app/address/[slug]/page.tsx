@@ -23,11 +23,12 @@ import {
 import type { PropertyCharsResidentialRow, PropertyCharsCondoRow } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { getClassDescription } from '@/lib/class-codes'
-import PropertyNav from './PropertyNav'
+import PropertySidebar from '@/components/PropertySidebar'
 import PropertyFeed from './PropertyFeed'
 import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
 import AddressBarButtons from './AddressBarButtons'
+import RecordSearch from './RecordSearch'
 import React from 'react'
 
 type PageProps = {
@@ -471,24 +472,26 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
   return (
     <div className="address-page">
-      <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
-
-      <div className="address-bar">
-        <div>
-          <div
-            className="address-bar-street"
-            style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: '22px', fontWeight: 700, lineHeight: 1.1 }}
-          >
-            {addressBarHeadline}
+      <RecordSearch address={addressBarHeadline} slug={decodedSlug} />
+      <div className="prop-page-shell">
+        <PropertySidebar />
+        <div className="prop-main-content">
+          <div className="address-header">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="address-header-street">{addressBarHeadline}</div>
+              <div className="address-header-meta">{addressBarMeta || 'Chicago'}</div>
+            </div>
+            <AddressBarButtons
+              addressRange={addressRange}
+              slug={slug}
+              isExpanded={isExpanded}
+              apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY}
+            />
           </div>
-          <div className="address-bar-meta">{addressBarMeta || 'Chicago'}</div>
-        </div>
-        <AddressBarButtons addressRange={addressRange} slug={slug} isExpanded={isExpanded} />
-      </div>
 
-      {/* Wide left column: 420px */}
-      <div className="prop-page">
-        <div className="profile">
+          {/* Wide left column: 420px */}
+          <div className="prop-page">
+            <div className="profile">
 
           {/* 4-card horizontal row — conditional logic kept dormant */}
           <div className="stat-row">
@@ -686,17 +689,19 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           </div>
         </div>
 
-        <PropertyFeed
-          complaints={complaints}
-          complaintsOpenCount={complaintsOpenCount}
-          violations={violations}
-          violationsOpenCount={violationsOpenCount}
-          violationsCompliedCount={violationsCompliedCount}
-          permits={permits}
-          propertyZip={displayZip}
-          currentSlug={slug}
-          serverTime={Date.now()}
-        />
+            <PropertyFeed
+              complaints={complaints}
+              complaintsOpenCount={complaintsOpenCount}
+              violations={violations}
+              violationsOpenCount={violationsOpenCount}
+              violationsCompliedCount={violationsCompliedCount}
+              permits={permits}
+              propertyZip={displayZip}
+              currentSlug={slug}
+              serverTime={Date.now()}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )

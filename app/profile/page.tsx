@@ -1,5 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
+import PropertySidebar from '@/components/PropertySidebar'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import ProfileDashboard, { type MonitoredPropertyRow, type SubscriberRow } from './ProfileDashboard'
 
@@ -42,5 +43,14 @@ export default async function ProfilePage() {
     status: r.status ?? 'active',
   }))
 
-  return <ProfileDashboard email={email} initialSubscriber={initialSubscriber} initialProperties={initialProperties} />
+  return (
+    <div className="address-page">
+      <div className="prop-page-shell">
+        <PropertySidebar initialTab="account" />
+        <div className="prop-main-content">
+          <ProfileDashboard email={email} initialSubscriber={initialSubscriber} initialProperties={initialProperties} />
+        </div>
+      </div>
+    </div>
+  )
 }

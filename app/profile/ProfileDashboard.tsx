@@ -1,7 +1,5 @@
 'use client'
 
-import Link from 'next/link'
-import { useClerk } from '@clerk/nextjs'
 import { useCallback, useState } from 'react'
 
 export type SubscriberRow = {
@@ -20,8 +18,6 @@ export type MonitoredPropertyRow = {
   status: string | null
 }
 
-type Tab = 'account' | 'alerts' | 'billing'
-
 type Props = {
   email: string
   initialSubscriber: SubscriberRow | null
@@ -36,8 +32,6 @@ function formatMemberSince(iso: string | null): string {
 }
 
 export default function ProfileDashboard({ email, initialSubscriber, initialProperties }: Props) {
-  const { signOut } = useClerk()
-  const [tab, setTab] = useState<Tab>('account')
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
   const showToast = useCallback((type: 'ok' | 'error', text: string) => {
@@ -193,268 +187,218 @@ export default function ProfileDashboard({ email, initialSubscriber, initialProp
   }
 
   return (
-    <div className="profile-page">
+    <div className="profile-page" style={{ minHeight: '100vh' }}>
       {toast && (
         <div className={`profile-toast profile-toast--${toast.type}`} role="status">
           {toast.text}
         </div>
       )}
 
-      <header className="profile-page__topnav">
-        <div className="profile-page__topnav-inner">
-          <Link href="/" className="profile-page__brand">
-            Property Sentinel
-          </Link>
-        </div>
-      </header>
-
-      <div className="profile-page__layout">
-        <aside className="profile-page__sidebar">
-          <nav className="profile-sidebar-nav" aria-label="Profile sections">
-            <p className="profile-sidebar-nav__label">Menu</p>
-            <button
-              type="button"
-              className={`profile-sidebar-link ${tab === 'account' ? 'is-active' : ''}`}
-              onClick={() => setTab('account')}
-            >
-              Account
-            </button>
-            <button
-              type="button"
-              className={`profile-sidebar-link ${tab === 'alerts' ? 'is-active' : ''}`}
-              onClick={() => setTab('alerts')}
-            >
-              Alerts &amp; Properties
-            </button>
-            <button
-              type="button"
-              className={`profile-sidebar-link ${tab === 'billing' ? 'is-active' : ''}`}
-              onClick={() => setTab('billing')}
-            >
-              Billing
-            </button>
-          </nav>
-          <button
-            type="button"
-            className="profile-sidebar-signout"
-            onClick={() => signOut({ redirectUrl: '/' })}
-          >
-            Sign out
-          </button>
-        </aside>
-
+      <div className="profile-page__layout" style={{ maxWidth: 1200, padding: '28px 24px 64px' }}>
         <main className="profile-page__main">
-          {tab === 'account' && (
-            <>
-              <section className="profile-card">
-                <h2 className="profile-card__title">Account Information</h2>
-                <form className="profile-form" onSubmit={saveAccount}>
-                  <div className="profile-field">
-                    <label className="profile-field__label" htmlFor="profile-email">
-                      Email
-                    </label>
-                    <input id="profile-email" className="profile-field__input profile-field__input--readonly" readOnly value={email} />
-                  </div>
-                  <div className="profile-field-row">
-                    <div className="profile-field">
-                      <label className="profile-field__label" htmlFor="profile-fn">
-                        First name
-                      </label>
-                      <input
-                        id="profile-fn"
-                        className="profile-field__input"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        autoComplete="given-name"
-                      />
-                    </div>
-                    <div className="profile-field">
-                      <label className="profile-field__label" htmlFor="profile-ln">
-                        Last name
-                      </label>
-                      <input
-                        id="profile-ln"
-                        className="profile-field__input"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        autoComplete="family-name"
-                      />
-                    </div>
-                  </div>
-                  <div className="profile-field-row">
-                    <div className="profile-field">
-                      <label className="profile-field__label" htmlFor="profile-phone">
-                        Phone
-                      </label>
-                      <input
-                        id="profile-phone"
-                        className="profile-field__input"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        autoComplete="tel"
-                      />
-                    </div>
-                    <div className="profile-field">
-                      <label className="profile-field__label" htmlFor="profile-zip">
-                        ZIP
-                      </label>
-                      <input
-                        id="profile-zip"
-                        className="profile-field__input"
-                        value={zip}
-                        onChange={(e) => setZip(e.target.value)}
-                        autoComplete="postal-code"
-                      />
-                    </div>
-                  </div>
-                  <div className="profile-form__actions">
-                    <button type="button" className="profile-btn profile-btn--ghost" onClick={resetAccountForm}>
-                      Cancel
-                    </button>
-                    <button type="submit" className="profile-btn profile-btn--primary" disabled={savingAccount}>
-                      {savingAccount ? 'Saving…' : 'Save changes'}
-                    </button>
-                  </div>
-                </form>
-              </section>
-
-              <section className="profile-card">
-                <h2 className="profile-card__title">Password</h2>
-                <form className="profile-form" onSubmit={savePassword}>
-                  <div className="profile-field">
-                    <label className="profile-field__label" htmlFor="profile-pwd">
-                      New password
-                    </label>
-                    <input
-                      id="profile-pwd"
-                      type="password"
-                      className="profile-field__input"
-                      value={pwd}
-                      onChange={(e) => setPwd(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={8}
-                    />
-                  </div>
-                  <div className="profile-field">
-                    <label className="profile-field__label" htmlFor="profile-pwd2">
-                      Confirm password
-                    </label>
-                    <input
-                      id="profile-pwd2"
-                      type="password"
-                      className="profile-field__input"
-                      value={pwdConfirm}
-                      onChange={(e) => setPwdConfirm(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={8}
-                    />
-                  </div>
-                  <div className="profile-form__actions">
-                    <button type="submit" className="profile-btn profile-btn--primary" disabled={savingPwd}>
-                      {savingPwd ? 'Saving…' : 'Save password'}
-                    </button>
-                  </div>
-                </form>
-              </section>
-            </>
-          )}
-
-          {tab === 'alerts' && (
-            <section className="profile-card">
-              <h2 className="profile-card__title">Alert addresses</h2>
-              <p className="profile-card__subtext">First two properties included · $10/mo each thereafter</p>
-
-              {properties.length === 0 ? (
-                <div className="profile-empty">
-                  <p className="profile-empty__text">No properties yet. Add an address to get alerts.</p>
-                  <form className="profile-form profile-form--inline" onSubmit={addAddress}>
-                    <input
-                      className="profile-field__input"
-                      placeholder="Street address"
-                      value={newAddress}
-                      onChange={(e) => setNewAddress(e.target.value)}
-                    />
-                    <input
-                      className="profile-field__input profile-field__input--zip"
-                      placeholder="ZIP"
-                      value={newZip}
-                      onChange={(e) => setNewZip(e.target.value)}
-                    />
-                    <button type="submit" className="profile-btn profile-btn--primary" disabled={addingAddr}>
-                      {addingAddr ? 'Adding…' : 'Add address'}
-                    </button>
-                  </form>
+          <section className="profile-card">
+            <h2 className="profile-card__title">Account Information</h2>
+            <form className="profile-form" onSubmit={saveAccount}>
+              <div className="profile-field">
+                <label className="profile-field__label" htmlFor="profile-email">
+                  Email
+                </label>
+                <input id="profile-email" className="profile-field__input profile-field__input--readonly" readOnly value={email} />
+              </div>
+              <div className="profile-field-row">
+                <div className="profile-field">
+                  <label className="profile-field__label" htmlFor="profile-fn">
+                    First name
+                  </label>
+                  <input
+                    id="profile-fn"
+                    className="profile-field__input"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    autoComplete="given-name"
+                  />
                 </div>
-              ) : (
-                <>
-                  <ul className="profile-address-list">
-                    {properties.map((p) => (
-                      <li key={p.id} className="profile-address-row">
-                        <div className="profile-address-row__text">
-                          <span className="profile-address-row__line">{p.address}</span>
-                          {p.zip && <span className="profile-address-row__zip">{p.zip}</span>}
-                        </div>
-                        <span className={`profile-badge profile-badge--${(p.status ?? 'active').toLowerCase()}`}>
-                          {p.status ?? 'active'}
-                        </span>
-                        <button type="button" className="profile-btn profile-btn--danger-ghost" onClick={() => removeAddress(p.id)}>
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <form className="profile-form profile-form--add-row" onSubmit={addAddress}>
-                    <input
-                      className="profile-field__input"
-                      placeholder="Add another address"
-                      value={newAddress}
-                      onChange={(e) => setNewAddress(e.target.value)}
-                    />
-                    <input
-                      className="profile-field__input profile-field__input--zip"
-                      placeholder="ZIP"
-                      value={newZip}
-                      onChange={(e) => setNewZip(e.target.value)}
-                    />
-                    <button type="submit" className="profile-btn profile-btn--secondary" disabled={addingAddr}>
-                      Add
-                    </button>
-                  </form>
-                </>
-              )}
-            </section>
-          )}
-
-          {tab === 'billing' && (
-            <section className="profile-card">
-              <h2 className="profile-card__title">Plan &amp; Billing</h2>
-              <div className="profile-billing-summary">
-                <div className="profile-billing-row">
-                  <span className="profile-billing-label">Current plan</span>
-                  <span className={`profile-plan-badge profile-plan-badge--${plan === 'free' ? 'free' : 'active'}`}>
-                    {plan === 'free' ? 'Free' : 'Active'}
-                  </span>
-                </div>
-                <div className="profile-billing-row">
-                  <span className="profile-billing-label">Properties monitored</span>
-                  <span className="profile-billing-value">{properties.length}</span>
-                </div>
-                <div className="profile-billing-row">
-                  <span className="profile-billing-label">Member since</span>
-                  <span className="profile-billing-value">{memberSince}</span>
+                <div className="profile-field">
+                  <label className="profile-field__label" htmlFor="profile-ln">
+                    Last name
+                  </label>
+                  <input
+                    id="profile-ln"
+                    className="profile-field__input"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    autoComplete="family-name"
+                  />
                 </div>
               </div>
-              <div className="profile-upgrade-strip">
-                <div>
-                  <p className="profile-upgrade-strip__title">Unlock more coverage</p>
-                  <p className="profile-upgrade-strip__sub">Subscribe for expanded monitoring and alerts.</p>
+              <div className="profile-field-row">
+                <div className="profile-field">
+                  <label className="profile-field__label" htmlFor="profile-phone">
+                    Phone
+                  </label>
+                  <input
+                    id="profile-phone"
+                    className="profile-field__input"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    autoComplete="tel"
+                  />
                 </div>
-                <a href="#" className="profile-btn profile-btn--primary profile-btn--block-sm">
-                  Subscribe — $15/mo
-                </a>
+                <div className="profile-field">
+                  <label className="profile-field__label" htmlFor="profile-zip">
+                    ZIP
+                  </label>
+                  <input
+                    id="profile-zip"
+                    className="profile-field__input"
+                    value={zip}
+                    onChange={(e) => setZip(e.target.value)}
+                    autoComplete="postal-code"
+                  />
+                </div>
               </div>
-            </section>
-          )}
+              <div className="profile-form__actions">
+                <button type="button" className="profile-btn profile-btn--ghost" onClick={resetAccountForm}>
+                  Cancel
+                </button>
+                <button type="submit" className="profile-btn profile-btn--primary" disabled={savingAccount}>
+                  {savingAccount ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="profile-card">
+            <h2 className="profile-card__title">Password</h2>
+            <form className="profile-form" onSubmit={savePassword}>
+              <div className="profile-field">
+                <label className="profile-field__label" htmlFor="profile-pwd">
+                  New password
+                </label>
+                <input
+                  id="profile-pwd"
+                  type="password"
+                  className="profile-field__input"
+                  value={pwd}
+                  onChange={(e) => setPwd(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+              </div>
+              <div className="profile-field">
+                <label className="profile-field__label" htmlFor="profile-pwd2">
+                  Confirm password
+                </label>
+                <input
+                  id="profile-pwd2"
+                  type="password"
+                  className="profile-field__input"
+                  value={pwdConfirm}
+                  onChange={(e) => setPwdConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+              </div>
+              <div className="profile-form__actions">
+                <button type="submit" className="profile-btn profile-btn--primary" disabled={savingPwd}>
+                  {savingPwd ? 'Saving…' : 'Save password'}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="profile-card">
+            <h2 className="profile-card__title">Alert addresses</h2>
+            <p className="profile-card__subtext">First two properties included · $10/mo each thereafter</p>
+
+            {properties.length === 0 ? (
+              <div className="profile-empty">
+                <p className="profile-empty__text">No properties yet. Add an address to get alerts.</p>
+                <form className="profile-form profile-form--inline" onSubmit={addAddress}>
+                  <input
+                    className="profile-field__input"
+                    placeholder="Street address"
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                  />
+                  <input
+                    className="profile-field__input profile-field__input--zip"
+                    placeholder="ZIP"
+                    value={newZip}
+                    onChange={(e) => setNewZip(e.target.value)}
+                  />
+                  <button type="submit" className="profile-btn profile-btn--primary" disabled={addingAddr}>
+                    {addingAddr ? 'Adding…' : 'Add address'}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <>
+                <ul className="profile-address-list">
+                  {properties.map((p) => (
+                    <li key={p.id} className="profile-address-row">
+                      <div className="profile-address-row__text">
+                        <span className="profile-address-row__line">{p.address}</span>
+                        {p.zip && <span className="profile-address-row__zip">{p.zip}</span>}
+                      </div>
+                      <span className={`profile-badge profile-badge--${(p.status ?? 'active').toLowerCase()}`}>
+                        {p.status ?? 'active'}
+                      </span>
+                      <button type="button" className="profile-btn profile-btn--danger-ghost" onClick={() => removeAddress(p.id)}>
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <form className="profile-form profile-form--add-row" onSubmit={addAddress}>
+                  <input
+                    className="profile-field__input"
+                    placeholder="Add another address"
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                  />
+                  <input
+                    className="profile-field__input profile-field__input--zip"
+                    placeholder="ZIP"
+                    value={newZip}
+                    onChange={(e) => setNewZip(e.target.value)}
+                  />
+                  <button type="submit" className="profile-btn profile-btn--secondary" disabled={addingAddr}>
+                    Add
+                  </button>
+                </form>
+              </>
+            )}
+          </section>
+
+          <section className="profile-card">
+            <h2 className="profile-card__title">Plan &amp; Billing</h2>
+            <div className="profile-billing-summary">
+              <div className="profile-billing-row">
+                <span className="profile-billing-label">Current plan</span>
+                <span className={`profile-plan-badge profile-plan-badge--${plan === 'free' ? 'free' : 'active'}`}>
+                  {plan === 'free' ? 'Free' : 'Active'}
+                </span>
+              </div>
+              <div className="profile-billing-row">
+                <span className="profile-billing-label">Properties monitored</span>
+                <span className="profile-billing-value">{properties.length}</span>
+              </div>
+              <div className="profile-billing-row">
+                <span className="profile-billing-label">Member since</span>
+                <span className="profile-billing-value">{memberSince}</span>
+              </div>
+            </div>
+            <div className="profile-upgrade-strip">
+              <div>
+                <p className="profile-upgrade-strip__title">Unlock more coverage</p>
+                <p className="profile-upgrade-strip__sub">Subscribe for expanded monitoring and alerts.</p>
+              </div>
+              <a href="#" className="profile-btn profile-btn--primary profile-btn--block-sm">
+                Subscribe — $15/mo
+              </a>
+            </div>
+          </section>
         </main>
       </div>
     </div>
