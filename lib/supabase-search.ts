@@ -109,6 +109,7 @@ export type PropertyCharsCondoRow = {
 
 export type ViolationRow = {
   address_normalized?: string | null
+  violation_code: string | null
   violation_description: string | null
   violation_status: string | null
   violation_date: string | null
@@ -129,6 +130,10 @@ export type PermitRow = {
   work_description: string | null
   issue_date: string | null
   permit_number: string | null
+  reported_cost: number | string | null
+  total_fee: number | string | null
+  contact_1_type: string | null
+  contact_1_name: string | null
   is_roof_permit: boolean | null
 }
 
@@ -694,7 +699,7 @@ export async function fetchViolations(addressNormalized: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('address_normalized, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
+      .select('address_normalized, violation_code, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .eq('address_normalized', addressNormalized)
       .order('violation_date', { ascending: false })
       .limit(100)
@@ -717,7 +722,7 @@ export async function fetchViolationsByPin(pin: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('address_normalized, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
+      .select('address_normalized, violation_code, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .eq('pin', pin)
       .order('violation_date', { ascending: false })
       .limit(100)
@@ -740,7 +745,7 @@ export async function fetchViolationsByAddresses(addresses: string[]): Promise<{
   try {
     const { data, error } = await supabase
       .from('violations')
-      .select('address_normalized, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
+      .select('address_normalized, violation_code, violation_description, violation_status, violation_date, violation_last_modified_date, inspection_status, inspection_category, department_bureau, violation_inspector_comments, violation_ordinance, inspection_number, is_stop_work_order')
       .in('address_normalized', addresses)
       .order('violation_date', { ascending: false })
       .limit(200)
@@ -768,7 +773,7 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
     const pattern = `${normalizedAddress}%`
     const { data, error } = await supabase
       .from('permits')
-      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, is_roof_permit')
+      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, reported_cost, total_fee, contact_1_type, contact_1_name, is_roof_permit')
       .ilike('address_normalized', pattern)
       .order('issue_date', { ascending: false })
 
@@ -790,7 +795,7 @@ export async function fetchPermitsByPin(pin: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('permits')
-      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, is_roof_permit')
+      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, reported_cost, total_fee, contact_1_type, contact_1_name, is_roof_permit')
       .eq('pin', pin)
       .order('issue_date', { ascending: false })
 
@@ -812,7 +817,7 @@ export async function fetchPermitsByAddresses(addresses: string[]): Promise<{
   try {
     const { data, error } = await supabase
       .from('permits')
-      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, is_roof_permit')
+      .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, reported_cost, total_fee, contact_1_type, contact_1_name, is_roof_permit')
       .in('address_normalized', addresses)
       .order('issue_date', { ascending: false })
 

@@ -100,6 +100,41 @@ export type ManualBuildingEntry = {
       ],
       note: '1402-1408 W Belden Ave / 2300 N Southport Ave — condo building; Assessor stores all units under Southport address',
     },
+    // ─── 609–645 W North Ave ──────────────────────────────────────────────────
+    // Large mixed-use apartment building, Near North/Old Town.
+    // Commercial on ground floor, residential above.
+    // Assessor normalizes NORTH → N AVE. Multiple PINs across odd addresses.
+    // Mailing name on primary PIN: 633 W NORTH OWNER LLC
+    {
+      canonicalAddress: '609 W NORTH AVE',
+      allAddresses: [
+        // Normalized form (NORTH → N)
+        '609 W N AVE', '611 W N AVE', '613 W N AVE', '615 W N AVE',
+        '617 W N AVE', '619 W N AVE', '621 W N AVE', '623 W N AVE',
+        '625 W N AVE', '627 W N AVE', '629 W N AVE', '631 W N AVE',
+        '633 W N AVE', '635 W N AVE', '637 W N AVE', '639 W N AVE',
+        '641 W N AVE', '643 W N AVE', '645 W N AVE',
+        // Full form (in case searched via slug or direct)
+        '609 W NORTH AVE', '611 W NORTH AVE', '613 W NORTH AVE', '615 W NORTH AVE',
+        '617 W NORTH AVE', '619 W NORTH AVE', '621 W NORTH AVE', '623 W NORTH AVE',
+        '625 W NORTH AVE', '627 W NORTH AVE', '629 W NORTH AVE', '631 W NORTH AVE',
+        '633 W NORTH AVE', '635 W NORTH AVE', '637 W NORTH AVE', '639 W NORTH AVE',
+        '641 W NORTH AVE', '643 W NORTH AVE', '645 W NORTH AVE',
+      ],
+      displayAddresses: [
+        '609 W NORTH AVE', '611 W NORTH AVE', '613 W NORTH AVE', '615 W NORTH AVE',
+        '617 W NORTH AVE', '619 W NORTH AVE', '621 W NORTH AVE', '623 W NORTH AVE',
+        '625 W NORTH AVE', '627 W NORTH AVE', '629 W NORTH AVE', '631 W NORTH AVE',
+        '633 W NORTH AVE', '635 W NORTH AVE', '637 W NORTH AVE', '639 W NORTH AVE',
+        '641 W NORTH AVE', '643 W NORTH AVE', '645 W NORTH AVE',
+      ],
+      pins: [
+        '17041040180000', // 609
+        '06344000090000', // 611
+        '06344000080000', // 619
+      ],
+      note: '609-645 W North Ave — mixed-use apartment building; primary mailing: 633 W NORTH OWNER LLC; many addresses have no independent Assessor parcel',
+    },
     // ─── 1112–1134 N La Salle St / 153–163 W Elm St ──────────────────────────
     // Large condo building, Near North Side. Multiple unit PINs all under mailing
     // name "1120 N LASALLE LLC" — Path D also does mailing name lookup to collect

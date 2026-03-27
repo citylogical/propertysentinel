@@ -34,6 +34,9 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'building',           defaultVisible: true },
   { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'building',           defaultVisible: true },
   { code: 'WM3',     label: 'Check for Leak',                              category: 'building',           defaultVisible: true },
+  { code: 'WBJ',     label: 'No Water Complaint',                          category: 'building',           defaultVisible: true },
+  { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'building',           defaultVisible: true },
+  { code: 'WCA',     label: 'Water Quality Concern',                       category: 'building',           defaultVisible: true },
 
 
   // ── BUSINESS / CONSUMER ────────────────────────────────────────────────────
@@ -50,7 +53,6 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'FPC',     label: 'Inaccurate Fuel Pump Complaint',              category: 'business',           defaultVisible: true },
   { code: 'INR',     label: 'Inaccurate Retail Scales Complaint',          category: 'business',           defaultVisible: true },
   { code: 'ODM',     label: 'Outdated Merchandise Complaint',              category: 'business',           defaultVisible: true },
-  { code: 'TNP',     label: 'Ridesharing Complaint',                       category: 'business',           defaultVisible: true },
   { code: 'MWC',     label: 'Wage Complaint',                              category: 'business',           defaultVisible: true },
   { code: 'PSL',     label: 'Paid Sick Leave Violation',                   category: 'business',           defaultVisible: true },
   { code: 'QAC',     label: 'City Vehicle Sticker Violation',              category: 'business',           defaultVisible: true },
@@ -59,6 +61,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'LPRC',    label: 'Licensed Pharmaceutical Representative Complaint', category: 'business',      defaultVisible: true },
   { code: 'PETCO',   label: 'Petcoke Dust Complaint',                      category: 'business',           defaultVisible: true },
   { code: 'RFC',     label: 'Renters and Foreclosure Complaint',           category: 'business',           defaultVisible: true },
+  
 
   // ── OTHER — selected codes included in default view ────────────────────────
   { code: 'EAB',     label: 'Nuisance Animal Complaint',                   category: 'other',              defaultVisible: true },
@@ -75,6 +78,7 @@ export const SR_CODES: SRCodeEntry[] = [
 
   // ── STREET NUISANCE — hidden by default (graffiti, parking, waste) ─────────
   { code: 'GRAF',    label: 'Graffiti Removal Request',                    category: 'street_nuisance',    defaultVisible: false },
+  { code: 'TNP',     label: 'Ridesharing Complaint',                       category: 'street_nuisance',    defaultVisible: false },
   { code: 'FPCE',    label: 'Finance Parking Code Enforcement Review',     category: 'street_nuisance',    defaultVisible: false },
   { code: 'SKA',     label: 'Abandoned Vehicle Complaint',                 category: 'street_nuisance',    defaultVisible: false },
   { code: 'VBL',     label: 'Vehicle Parked in Bike Lane Complaint',       category: 'street_nuisance',    defaultVisible: false },
@@ -124,10 +128,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'PCC',     label: 'Sign Repair Request - One Way Sign',          category: 'street_infrastructure', defaultVisible: false },
   { code: 'PCD',     label: 'Sign Repair Request - Do Not Enter Sign',     category: 'street_infrastructure', defaultVisible: false },
   { code: 'PCE',     label: 'Sign Repair Request - All Other Signs',       category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WBJ',     label: 'No Water Complaint',                          category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'street_infrastructure', defaultVisible: false },
   { code: 'WBT',     label: 'Open Fire Hydrant Complaint',                 category: 'street_infrastructure', defaultVisible: false },
-  { code: 'WCA',     label: 'Water Quality Concern',                       category: 'street_infrastructure', defaultVisible: false },
   { code: 'SEC',     label: 'Tree Emergency',                              category: 'street_infrastructure', defaultVisible: false },
   { code: 'SED',     label: 'Tree Planting Request',                       category: 'street_infrastructure', defaultVisible: false },
   { code: 'SEE',     label: 'Tree Removal Inspection',                     category: 'street_infrastructure', defaultVisible: false },

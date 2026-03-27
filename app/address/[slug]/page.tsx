@@ -341,6 +341,16 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     const vs = (v.violation_status ?? v.inspection_status ?? '').toUpperCase()
     return vs === 'COMPLIED' || vs === 'PASSED' || vs === 'CLOSED'
   }).length
+  const lastViolation = violations.length > 0 ? violations[0] : null
+  const lastViolationDate = lastViolation?.violation_date
+    ? (() => {
+        const d = new Date(lastViolation.violation_date)
+        if (Number.isNaN(d.getTime())) return 'Unknown'
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        return `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+      })()
+    : 'None'
+  const lastViolationCategory = lastViolation?.department_bureau ?? null
   const firstComplaint = complaints[0] ?? null
 
   const lastPermitDisplay =
@@ -357,6 +367,16 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     minimumFractionDigits: 0,
   })
 
+  const lastPermitCost = (() => {
+    if (permits.length === 0) return null
+    const p = permits[0]
+    const cost = Number(p.reported_cost) || 0
+    const fee = Number(p.total_fee) || 0
+    const total = cost + fee
+    if (total <= 0) return null
+    return currencyZero.format(total)
+  })()
+
   const impliedMarketValueTotal: number | null =
     assessedByPins &&
     !assessedByPins.error &&
@@ -369,24 +389,17 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         )
       : null
 
-      const singleImpliedValue =
-      assessed != null && Number.isFinite(assessed.displayValue) && assessed.class != null
-        ? assessed.displayValue / getAssessmentLevelForImplied(assessed.class)
+  const singleImpliedValue =
+    assessed != null && Number.isFinite(assessed.displayValue) && assessed.class != null
+      ? assessed.displayValue / getAssessmentLevelForImplied(assessed.class)
+      : null
+
+  const assessedValueFormatted =
+    impliedMarketValueTotal != null
+      ? currencyZero.format(impliedMarketValueTotal)
+      : singleImpliedValue != null
+        ? currencyZero.format(singleImpliedValue)
         : null
-  
-    const assessedValueFormatted =
-      impliedMarketValueTotal != null
-        ? currencyZero.format(impliedMarketValueTotal)
-        : singleImpliedValue != null
-          ? currencyZero.format(singleImpliedValue)
-          : null
-  
-    const assessedSubtext =
-      impliedMarketValueTotal != null && buildingParcelCountForAv > 1
-        ? `Est. market value · ${buildingParcelCountForAv} ${buildingParcelCountForAv === 1 ? 'parcel' : 'parcels'}`
-        : singleImpliedValue != null
-          ? `Est. market value · ${assessed!.taxYear}`
-          : null
 
   const displayWard =
     firstComplaint?.ward != null && firstComplaint.ward !== ''
@@ -480,35 +493,37 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           {/* 4-card horizontal row — conditional logic kept dormant */}
           <div className="stat-row">
 
-            <div className="stat stat-sub-bottom">
-              <div className="stat-label">Complaints</div>
-              <div className={`stat-val ${complaintsOpenCount > 0 ? 'red' : ''}`}>{complaintsOpenCount}</div>
-              <div className="stat-fraction">open</div>
-            </div>
+            <div className="stat stat-sub-bottom" id="complaints-stat-slot" />
 
             <div className="stat stat-sub-bottom">
-              <div className="stat-label">Violations</div>
-              <div className={`stat-val ${violationsOpenCount > 0 ? 'amber' : ''}`}>{violationsOpenCount}</div>
-              <div className="stat-fraction">
-                <span className="block">open</span>
-                <span className="block">{violationsCompliedCount} complied</span>
+              <div className="stat-label">Last Violation</div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 4, gap: 1 }}>
+                <span className="stat-val stat-val-muted" style={{ textAlign: 'center' }}>{lastViolationDate}</span>
+                {lastViolationCategory && (
+                  <div className="stat-fraction" style={{ textAlign: 'center' }}>{lastViolationCategory}</div>
+                )}
               </div>
             </div>
 
-            <div className="stat">
+            <div className="stat stat-sub-bottom">
               <div className="stat-label">Last Permit</div>
-              <span className="stat-val stat-val-muted">{lastPermitDisplay}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 4, gap: 1 }}>
+                <span className="stat-val stat-val-muted" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{lastPermitDisplay}</span>
+                <div className="stat-fraction" style={{ textAlign: 'center' }}>{lastPermitCost ?? ''}</div>
+              </div>
             </div>
 
-            <div className="stat">
-              <div className="stat-label">Assessed Value</div>
-              <div className="stat-val-wrap">
-                <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`} style={{ fontSize: '11px' }}>
+            <div className="stat stat-sub-bottom">
+              <div className="stat-label">Implied Value</div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 4, gap: 1 }}>
+                <span className={`stat-val stat-val-muted ${assessedValueFormatted != null ? 'stat-val-amber' : ''}`} style={{ fontSize: '11px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                   {assessedValueFormatted ?? 'N/A'}
                 </span>
-                {assessedSubtext != null && (
-                  <span className="stat-val-sub">{assessedSubtext}</span>
-                )}
+                <div className="stat-fraction" style={{ textAlign: 'center' }}>
+                  {buildingParcelCountForAv > 0
+                    ? `${buildingParcelCountForAv} ${buildingParcelCountForAv === 1 ? 'parcel' : 'parcels'}`
+                    : '1 parcel'}
+                </div>
               </div>
             </div>
 
@@ -682,26 +697,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           currentSlug={slug}
           serverTime={Date.now()}
         />
-
-        <div className="rail">
-          <div className="rail-alert-card">
-            <div className="rail-alert-title">Get alerted instantly</div>
-            <div className="rail-alert-sub">SMS + email within 15 minutes of any new complaint, violation, or permit.</div>
-            <div className="rail-alert-benefits">
-              <div className="rail-alert-benefit"><span className="benefit-check">✓</span> Full complaint &amp; violation detail</div>
-              <div className="rail-alert-benefit"><span className="benefit-check">✓</span> Inspector comments &amp; ordinance text</div>
-              <div className="rail-alert-benefit"><span className="benefit-check">✓</span> First two properties included</div>
-            </div>
-          </div>
-          <div className="rail-link-card">
-            <div className="rail-link-title">Understand what you&apos;re seeing</div>
-            <div className="rail-links">
-              <Link className="rail-link" href="/#how">What happens after a complaint is filed <span className="rail-link-arrow">→</span></Link>
-              <Link className="rail-link" href="/#how">What each SR code means <span className="rail-link-arrow">→</span></Link>
-              <Link className="rail-link" href="/#how">Complaint vs. violation — what&apos;s the difference <span className="rail-link-arrow">→</span></Link>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )

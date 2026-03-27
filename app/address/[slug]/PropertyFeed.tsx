@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
 import { isDefaultVisible } from '@/lib/sr-codes'
 
@@ -60,6 +61,343 @@ function permitStatusClass(status: string | null): 'active' | 'expired' | 'other
   return 'other'
 }
 
+function ViolationGroups({
+  violations,
+  visibleCount,
+  onShowMore,
+}: {
+  violations: ViolationRow[]
+  visibleCount: number
+  onShowMore: () => void
+}) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+
+  const groups: {
+    key: string
+    inspectionNumber: string | null
+    category: string
+    bureau: string
+    date: string
+    closedDate: string | null
+    violations: ViolationRow[]
+    hasStopWork: boolean
+    overallStatus: string
+  }[] = []
+
+  const groupMap = new Map<string, ViolationRow[]>()
+  const order: string[] = []
+
+  for (const v of violations) {
+    const key = v.inspection_number ?? `ungrouped-${Math.random()}`
+    if (!groupMap.has(key)) {
+      groupMap.set(key, [])
+      order.push(key)
+    }
+    groupMap.get(key)!.push(v)
+  }
+
+  for (const key of order) {
+    const vols = groupMap.get(key)!
+    const first = vols[0]
+    const hasOpen = vols.some(v => {
+      const s = (v.violation_status ?? '').toUpperCase()
+      return s === 'OPEN' || s === 'FAILED'
+    })
+    const allComplied = vols.every(v => {
+      const s = (v.violation_status ?? '').toUpperCase()
+      return s === 'COMPLIED' || s === 'PASSED' || s === 'CLOSED'
+    })
+    const closedDate = allComplied ? (first.violation_last_modified_date ?? null) : null
+
+    groups.push({
+      key,
+      inspectionNumber: first.inspection_number,
+      category: first.inspection_category ?? '—',
+      bureau: first.department_bureau ?? '',
+      date: first.violation_date ?? '',
+      closedDate,
+      violations: vols,
+      hasStopWork: vols.some(v => v.is_stop_work_order === true),
+      overallStatus: hasOpen ? 'OPEN' : allComplied ? 'COMPLIED' : (first.violation_status ?? '—'),
+    })
+  }
+
+  const visibleGroups = groups.slice(0, visibleCount)
+  const hasMore = groups.length > visibleCount
+
+  const toggle = (key: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  return (
+    <>
+      {visibleGroups.map((g) => {
+        const isOpen = expandedKeys.has(g.key)
+        const statusClass = violationStatusClass(g.overallStatus)
+
+        return (
+          <div key={g.key} className="complaint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: 0 }}>
+            <button
+              type="button"
+              onClick={() => toggle(g.key)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '14px 16px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="complaint-type-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>
+                    {isOpen ? '▼' : '▶'}
+                  </span>
+                  {g.category}{g.bureau ? ` · ${g.bureau}` : ''}
+                </div>
+                {g.hasStopWork && (
+                  <span className="status-badge status-badge-stop-work" aria-label="Stop work order" style={{ marginTop: 4, marginLeft: 17, display: 'inline-block' }}>
+                    ⚠ STOP WORK ORDER
+                  </span>
+                )}
+                <div className="complaint-dates" style={{ marginTop: 6, marginLeft: 17 }}>
+                  {g.date && (
+                    <span>Issued: <strong>{formatDateShort(g.date)}</strong></span>
+                  )}
+                  {g.closedDate && (
+                    <span>Closed: <strong>{formatDateShort(g.closedDate)}</strong></span>
+                  )}
+                </div>
+                <div className="complaint-sr" style={{ marginLeft: 17 }}>
+                  {g.inspectionNumber ? `Inspection #${g.inspectionNumber}` : '—'}
+                  {' · '}{g.violations.length} violation{g.violations.length !== 1 ? 's' : ''}
+                </div>
+                {g.violations[0]?.violation_ordinance && (
+                  <div style={{ marginTop: 4, marginLeft: 17, fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                    {g.violations[0].violation_ordinance}
+                  </div>
+                )}
+              </div>
+              <div className={`status-badge ${statusClass}`} style={{ flexShrink: 0, marginTop: 2 }}>
+                {g.overallStatus}
+              </div>
+            </button>
+
+            {isOpen && (
+              <div style={{
+                borderTop: '1px solid var(--border, #e5e5e0)',
+                padding: '8px 16px 12px 32px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 0,
+                textAlign: 'left',
+              }}>
+                {g.violations.map((v, vi) => (
+                  <div key={vi} style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 10,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: 'var(--text, #1a2332)',
+                    padding: '6px 0',
+                    borderBottom: vi < g.violations.length - 1 ? '0.5px solid var(--border, #e5e5e0)' : 'none',
+                  }}>
+                    {v.violation_code && (
+                      <span style={{
+                        fontFamily: 'var(--mono)',
+                        fontSize: 9,
+                        color: 'var(--text-dim)',
+                        flexShrink: 0,
+                        minWidth: 48,
+                      }}>
+                        {v.violation_code}
+                      </span>
+                    )}
+                    <span>{v.violation_inspector_comments || v.violation_description || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {hasMore && (
+        <div className="feed-more-wrap">
+          <button
+            type="button"
+            className="feed-more-btn"
+            onClick={onShowMore}
+          >
+            Show 5 more
+          </button>
+        </div>
+      )}
+      <div className="feed-nudge">
+        Subscribe to be alerted the moment a violation is issued at this address.
+      </div>
+    </>
+  )
+}
+
+function computePermitExpiry(issueDate: string | null): { label: string; isExpired: boolean } | null {
+  if (!issueDate) return null
+  const d = new Date(issueDate)
+  if (Number.isNaN(d.getTime())) return null
+  const expiryDate = new Date(d.getTime() + 540 * 24 * 60 * 60 * 1000)
+  const now = new Date()
+  const isExpired = now > expiryDate
+  const label = formatDateISO(expiryDate.toISOString())
+  return { label, isExpired }
+}
+
+function PermitCards({
+  permits,
+  visibleCount,
+  onShowMore,
+}: {
+  permits: PermitRow[]
+  visibleCount: number
+  onShowMore: () => void
+}) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+
+  const visiblePermitsList = permits.slice(0, visibleCount)
+  const hasMore = permits.length > visibleCount
+
+  const toggle = (key: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  return (
+    <>
+      {visiblePermitsList.map((p, i) => {
+        const key = p.permit_number ?? `permit-${i}`
+        const isOpen = expandedKeys.has(key)
+        const statusClass = permitStatusClass(p.permit_status)
+        const workDesc = (p.work_description ?? '').trim()
+        const workDescPreview = workDesc.length > 80 ? `${workDesc.slice(0, 77)}…` : workDesc
+        const expiry = computePermitExpiry(p.issue_date)
+
+        return (
+          <div key={key} className="complaint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: 0 }}>
+            <button
+              type="button"
+              onClick={() => toggle(key)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '14px 16px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="complaint-type-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>
+                    {isOpen ? '▼' : '▶'}
+                  </span>
+                  {p.permit_type ?? '—'}
+                </div>
+                {!isOpen && workDescPreview && (
+                  <div style={{ marginTop: 3, marginLeft: 17, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                    {workDescPreview}
+                  </div>
+                )}
+                <div className="complaint-dates" style={{ marginTop: 6, marginLeft: 17 }}>
+                  {p.issue_date != null && (
+                    <span>Issued: <strong>{formatDateShort(p.issue_date)}</strong></span>
+                  )}
+                  {expiry && (
+                    <span style={{ color: expiry.isExpired ? 'var(--red)' : undefined }}>
+                      {expiry.isExpired ? 'Expired' : 'Expires'}: <strong>{expiry.label}</strong>
+                    </span>
+                  )}
+                </div>
+                {(p.reported_cost || p.total_fee) && (
+                  <div style={{ fontSize: 11, color: 'var(--text-mid)', marginTop: 4, marginLeft: 17, display: 'flex', gap: 12 }}>
+                    {p.reported_cost && Number(p.reported_cost) > 0 && (
+                      <span>Cost: <strong>${Number(p.reported_cost).toLocaleString()}</strong></span>
+                    )}
+                    {p.total_fee && Number(p.total_fee) > 0 && (
+                      <span>Fee: <strong>${Number(p.total_fee).toLocaleString()}</strong></span>
+                    )}
+                  </div>
+                )}
+                <div className="complaint-sr" style={{ marginLeft: 17 }}>
+                  {p.permit_number ? `#${p.permit_number}` : '—'}
+                </div>
+              </div>
+              <div className={`status-badge status-badge-permit-${statusClass}`} style={{ flexShrink: 0, marginTop: 2 }}>
+                {p.permit_status ?? '—'}
+              </div>
+            </button>
+
+            {isOpen && (
+              <div style={{
+                borderTop: '1px solid var(--border, #e5e5e0)',
+                padding: '10px 16px 12px 32px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                textAlign: 'left',
+              }}>
+                {workDesc && (
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
+                    {workDesc}
+                  </div>
+                )}
+                {p.contact_1_name && (
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-dim)', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {p.contact_1_type ?? 'Contact'}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--text-mid)' }}>{p.contact_1_name}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {hasMore && (
+        <div className="feed-more-wrap">
+          <button
+            type="button"
+            className="feed-more-btn"
+            onClick={onShowMore}
+          >
+            Show 5 more
+          </button>
+        </div>
+      )}
+      <div className="feed-nudge">
+        Subscribe to be alerted the moment a permit is pulled at this address.
+      </div>
+    </>
+  )
+}
+
 type PropertyFeedProps = {
   complaints: ComplaintRow[]
   complaintsOpenCount: number
@@ -89,6 +427,7 @@ export default function PropertyFeed({
   const [visible311, setVisible311] = useState(PAGE_SIZE)
   const [visibleViolations, setVisibleViolations] = useState(PAGE_SIZE)
   const [visiblePermits, setVisiblePermits] = useState(PAGE_SIZE)
+  const [statSlot, setStatSlot] = useState<HTMLElement | null>(null)
 
   const badgeRef = useRef<HTMLSpanElement | null>(null)
   const buildingBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -109,10 +448,13 @@ export default function PropertyFeed({
   const hasMore311 = filteredComplaints.length > visible311
   const visibleViolationsList = violations.slice(0, visibleViolations)
   const hasMoreViolations = violations.length > visibleViolations
-  const visiblePermitsList = permits.slice(0, visiblePermits)
-  const hasMorePermits = permits.length > visiblePermits
 
   const activeBtnRef = showAllSRCodes ? totalBtnRef : buildingBtnRef
+
+  useEffect(() => {
+    const el = document.getElementById('complaints-stat-slot')
+    if (el) setStatSlot(el)
+  }, [])
 
   useEffect(() => {
     const btn = activeBtnRef.current
@@ -135,7 +477,23 @@ export default function PropertyFeed({
   }, [filteredComplaints.length])
 
   return (
-    <div className="feed">
+    <>
+      {statSlot && createPortal(
+        <>
+          <div className="stat-label">Complaints</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 4, gap: 1 }}>
+            <span className="stat-val stat-val-muted" style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+              <span style={{ color: filteredOpenCount > 0 ? 'var(--red)' : 'var(--text)' }}>{filteredOpenCount}</span>
+              <span style={{ fontWeight: 400 }}>open</span>
+            </span>
+            <div className="stat-fraction" style={{ textAlign: 'center' }}>
+              {filteredComplaints.length} total
+            </div>
+          </div>
+        </>,
+        statSlot,
+      )}
+      <div className="feed">
       <div className="tabs-bar">
         <button
           type="button"
@@ -317,7 +675,7 @@ export default function PropertyFeed({
         </div>
       </div>
 
-      {/* Violations panel */}
+{/* Violations panel */}
       <div className={`tab-panel ${activeTab === 'violations' ? 'active' : ''}`} id="panel-violations">
         <div className="feed-body">
           <div className="feed-meta-bar" style={{ padding: '11px 16px' }}>
@@ -332,65 +690,11 @@ export default function PropertyFeed({
               No building violations on record for this address.
             </div>
           ) : (
-            <>
-              {visibleViolationsList.map((v, i) => {
-                const statusClass = violationStatusClass(v.violation_status)
-
-                return (
-                  <div key={v.inspection_number ?? i} className="complaint">
-                    <div>
-                      <div className="complaint-type-name">{v.violation_description ?? '—'}</div>
-                      {v.is_stop_work_order === true && (
-                        <span className="status-badge status-badge-stop-work" aria-label="Stop work order">
-                          ⚠ STOP WORK ORDER
-                        </span>
-                      )}
-                      {v.violation_inspector_comments && (
-                        <div className="complaint-comment">{v.violation_inspector_comments}</div>
-                      )}
-                      {v.violation_ordinance && (
-                        <div className="complaint-ordinance">{v.violation_ordinance}</div>
-                      )}
-                      <div className="complaint-dept">{v.inspection_category ?? '—'}</div>
-                      {v.department_bureau && (
-                        <div className="complaint-dept complaint-dept-secondary">{v.department_bureau}</div>
-                      )}
-                      <div className="complaint-dates">
-                        {v.violation_date != null && (
-                          <span>Issued: <strong>{formatDateShort(v.violation_date)}</strong></span>
-                        )}
-                        {isViolationStatusOpen(v.violation_status) && v.violation_last_modified_date != null && (
-                          <span>Last Modified: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
-                        )}
-                        {(v.violation_status ?? '').toUpperCase() === 'COMPLIED' && v.violation_last_modified_date != null && (
-                          <span>Closed: <strong>{formatDateShort(v.violation_last_modified_date)}</strong></span>
-                        )}
-                      </div>
-                      <div className="complaint-sr">
-                        {v.inspection_number ? `Inspection #${v.inspection_number}` : '—'}
-                      </div>
-                    </div>
-                    <div className={`status-badge ${statusClass}`}>
-                      {v.violation_status ?? '—'}
-                    </div>
-                  </div>
-                )
-              })}
-              {hasMoreViolations && (
-                <div className="feed-more-wrap">
-                  <button
-                    type="button"
-                    className="feed-more-btn"
-                    onClick={() => setVisibleViolations((n) => n + PAGE_SIZE)}
-                  >
-                    Show 5 more
-                  </button>
-                </div>
-              )}
-              <div className="feed-nudge">
-                Subscribe to be alerted the moment a violation is issued at this address.
-              </div>
-            </>
+            <ViolationGroups
+              violations={violations}
+              visibleCount={visibleViolations}
+              onShowMore={() => setVisibleViolations((n) => n + PAGE_SIZE)}
+            />
           )}
         </div>
       </div>
@@ -409,51 +713,15 @@ export default function PropertyFeed({
               Permit data is updated weekly.
             </div>
           ) : (
-            <>
-              {visiblePermitsList.map((p, i) => {
-                const statusClass = permitStatusClass(p.permit_status)
-                const workDesc = (p.work_description ?? '').trim()
-                const workDescTruncated = workDesc.length > 120 ? `${workDesc.slice(0, 120)}…` : workDesc
-                return (
-                  <div key={p.permit_number ?? i} className="complaint">
-                    <div>
-                      <div className="complaint-type-name">{p.permit_type ?? '—'}</div>
-                      {workDescTruncated && (
-                        <div className="complaint-comment" style={{ maxWidth: '100%' }}>{workDescTruncated}</div>
-                      )}
-                      {p.issue_date != null && (
-                        <div className="complaint-dates">
-                          <span>Issued: <strong>{formatDateShort(p.issue_date)}</strong></span>
-                        </div>
-                      )}
-                      <div className="complaint-sr">
-                        {p.permit_number ? `#${p.permit_number}` : '—'}
-                      </div>
-                    </div>
-                    <div className={`status-badge status-badge-permit-${statusClass}`}>
-                      {p.permit_status ?? '—'}
-                    </div>
-                  </div>
-                )
-              })}
-              {hasMorePermits && (
-                <div className="feed-more-wrap">
-                  <button
-                    type="button"
-                    className="feed-more-btn"
-                    onClick={() => setVisiblePermits((n) => n + PAGE_SIZE)}
-                  >
-                    Show 5 more
-                  </button>
-                </div>
-              )}
-              <div className="feed-nudge">
-                Subscribe to be alerted the moment a permit is pulled at this address.
-              </div>
-            </>
+            <PermitCards
+              permits={permits}
+              visibleCount={visiblePermits}
+              onShowMore={() => setVisiblePermits((n) => n + PAGE_SIZE)}
+            />
           )}
         </div>
       </div>
     </div>
+    </>
   )
 }

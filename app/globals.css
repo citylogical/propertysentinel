@@ -624,11 +624,11 @@ body {
 
 /* Page layout */
 .address-page .prop-page {
-  max-width: 1160px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px 24px 60px;
   display: grid;
-  grid-template-columns: 420px 1fr 220px;
+  grid-template-columns: 420px 1fr;
   gap: 20px;
   align-items: start;
 }
@@ -683,7 +683,7 @@ body {
   flex-direction: column;
   padding-bottom: 6px;
 }
-.address-page .stat-sub-bottom .stat-fraction { margin-top: auto; padding-top: 2px; }
+.address-page .stat-sub-bottom > .stat-fraction { margin-top: auto; padding-top: 2px; }
 
 .address-page .stat-label {
   font-family: var(--mono);
@@ -692,6 +692,7 @@ body {
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 4px;
+  text-align: center;
 }
 
 .address-page .stat-val {
