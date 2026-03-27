@@ -192,7 +192,7 @@ const SECTION_SHADED: React.CSSProperties = {
 export default async function AddressPage({ params, searchParams }: PageProps) {
   const { slug } = await params
   const { building } = await searchParams
-  const isExpanded = building === 'true'
+  let isExpanded = building === 'true'
   const decodedSlug = decodeURIComponent(slug)
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
@@ -226,6 +226,11 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       const siblings = await fetchSiblingPins(normalizedPin, normalizedAddress)
       addressRange = siblings.addressRange
       siblingAddresses = siblings.siblingAddresses
+
+      // Auto-expand for unit-suffix condos (all PINs share same base address)
+      if (!isExpanded && siblings.siblingPins.length > 1 && siblings.addressRange === normalizedAddress) {
+        isExpanded = true
+      }
 
       const useBuildingAssessedSum = isExpanded && siblings.siblingPins.length > 1
 

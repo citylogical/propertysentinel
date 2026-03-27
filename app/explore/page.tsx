@@ -31,7 +31,7 @@ export default async function ExplorePage() {
   console.log('[explore] clerk user:', user.id, 'subscriber:', subscriber)
   if (!subscriber || !['admin', 'approved'].includes(subscriber.role)) {  
     return (
-        <div className="address-page">
+        <div className="address-page explore-layout">
           <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
           <div className="address-bar">
             <div>
@@ -56,7 +56,7 @@ export default async function ExplorePage() {
   }
 
   return (
-    <div className="address-page">
+    <div className="address-page explore-layout">
       <PropertyNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
       <div className="address-bar">
         <div>

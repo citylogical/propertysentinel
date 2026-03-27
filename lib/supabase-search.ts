@@ -273,15 +273,46 @@ export async function fetchSiblingPins(
     }
 
     // PATH A — multiple PINs share exact same address (condo tower)
+    // Also tries prefix match to catch unit-suffixed condos (943 W 95TH ST → 943 W 95TH ST G, 1W, etc.)
     console.log('fetchSiblingPins entered, pin:', pin, 'address:', addressNormalized)
-    const { data: sameAddress } = await supabaseAdmin
+    let { data: sameAddress } = await supabaseAdmin
       .from('properties')
       .select('pin, address_normalized')
       .eq('address_normalized', addressNormalized)
 
+    if (!sameAddress || sameAddress.length <= 1) {
+      const prefixResult = await supabaseAdmin
+        .from('properties')
+        .select('pin, address_normalized')
+        .like('address_normalized', `${addressNormalized} %`)
+      if (prefixResult.data && prefixResult.data.length > 0) {
+        const combined = [...(sameAddress ?? []), ...prefixResult.data]
+        const uniquePins = new Map<string, any>()
+        for (const r of combined) {
+          if (r.pin) uniquePins.set(r.pin, r)
+        }
+        sameAddress = Array.from(uniquePins.values())
+      }
+    }
+
     if (sameAddress && sameAddress.length > 1) {
       const pins = sameAddress.map((r: any) => r.pin).filter(Boolean) as string[]
       const addresses = [...new Set(sameAddress.map((r: any) => r.address_normalized).filter(Boolean))] as string[]
+
+      // Detect unit-suffix condos: all addresses start with the searched base address
+      const allAreUnitSuffixed = addresses.every(a => a.startsWith(addressNormalized + ' ') || a === addressNormalized)
+
+      if (allAreUnitSuffixed) {
+        // Include base address so complaints/violations/permits get fetched
+        const allAddresses = [...new Set([addressNormalized, ...addresses])]
+        return {
+          siblingPins: pins,
+          siblingAddresses: allAddresses,
+          addressRange: addressNormalized,
+          resolvedVia: 'address',
+        }
+      }
+
       const range = buildAddressRange(addresses) ?? (pins.length > 1 ? `${addresses[0]} (${pins.length} parcels)` : null)
       return {
         siblingPins: pins,
@@ -414,6 +445,28 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
 
     if (data) {
       console.log('fetchProperty result:', JSON.stringify(data))
+      return { property: data as PropertyRow, nearestParcel: null, error: null }
+    }
+
+    // Tier 2.3 — prefix match (condos with unit suffixes)
+    // Handles: search "943 W 95TH ST" → matches "943 W 95TH ST G", "943 W 95TH ST 1W", etc.
+    if (!data && !error) {
+      const prefixPattern = `${normalizedAddress} %`
+      const prefixFallback = await supabase
+        .from('properties')
+        .select(SELECT_COLS)
+        .like('address', prefixPattern)
+        .order('pin', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      data = prefixFallback.data
+      error = prefixFallback.error
+    }
+
+    if (error) throw new Error(error.message)
+
+    if (data) {
+      console.log('fetchProperty result (prefix match):', JSON.stringify(data))
       return { property: data as PropertyRow, nearestParcel: null, error: null }
     }
 
