@@ -1,5 +1,5 @@
 const COOKIE_NAME = 'ps_recent_searches'
-const MAX_RECENT = 5
+const MAX_RECENT = 4
 
 export type RecentSearch = {
   address: string

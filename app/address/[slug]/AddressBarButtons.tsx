@@ -4,10 +4,8 @@ import { SignInButton, useAuth } from '@clerk/nextjs'
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { addressToSlug } from '@/lib/address-slug'
-import MobileNavDrawer from '@/app/components/MobileNavDrawer'
-import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 
 const ADDRESS_HEADER_SEARCH_INPUT_ID = 'address-header-search-input'
 
@@ -78,20 +76,7 @@ type Props = {
 export default function AddressBarButtons({ addressRange, slug, isExpanded, apiKey }: Props) {
   const { isSignedIn } = useAuth()
   const router = useRouter()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const registeredRef = useRef(false)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [menuOpen])
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -111,38 +96,6 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
     const nextSlug = addressToSlug(address, zip || undefined)
     window.location.href = `/address/${encodeURIComponent(nextSlug)}`
   }
-
-  const buildingBtnStyle = (bg: string, border: string): React.CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '5px 10px',
-    borderRadius: 4,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    color: 'white',
-    fontFamily: 'var(--sans)',
-    flexShrink: 0,
-    background: bg,
-    border: `1px solid ${border}`,
-  })
-
-  const leftArrowIcon = (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <line x1="19" y1="12" x2="5" y2="12" />
-      <polyline points="12 19 5 12 12 5" />
-    </svg>
-  )
-
-  const warningIcon = (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  )
 
   return (
     <>
@@ -171,32 +124,21 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
           </form>
         </div>
 
-        {addressRange &&
-          (isExpanded ? (
-            <button
-              type="button"
-              style={buildingBtnStyle('#6b7280', '#4b5563')}
-              onClick={() => router.push(`/address/${slug}`)}
-            >
-              {leftArrowIcon}
-              View Prior Address
-            </button>
-          ) : (
-            <button
-              type="button"
-              style={buildingBtnStyle('#d97706', '#92400e')}
-              onClick={() => router.push(`/address/${slug}?building=true`)}
-            >
-              {warningIcon}
-              View Full Building
-            </button>
-          ))}
-
-        <button type="button" className="address-header-icon-btn address-header-icon-btn-save" title="Save">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" strokeWidth="2">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
+        {addressRange && (
+          <button
+            type="button"
+            className={`address-header-icon-btn ${!isExpanded ? 'address-header-icon-btn-building' : ''}`}
+            title={isExpanded ? 'View Prior Address' : 'View Full Building'}
+            onClick={() =>
+              isExpanded ? router.push(`/address/${slug}`) : router.push(`/address/${slug}?building=true`)
+            }
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isExpanded ? '#0f2744' : '#92400e'} strokeWidth="2">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+          </button>
+        )}
 
         {!isSignedIn ? (
           <SignInButton mode="modal">
@@ -220,35 +162,7 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
             </svg>
           </button>
         )}
-
-        <div
-          ref={menuRef}
-          className="relative flex items-center"
-          onMouseEnter={() => {
-            if (typeof window !== 'undefined' && window.innerWidth >= 901) setMenuOpen(true)
-          }}
-          onMouseLeave={() => {
-            if (typeof window !== 'undefined' && window.innerWidth >= 901) setMenuOpen(false)
-          }}
-        >
-          <button
-            type="button"
-            className="address-header-hamburger"
-            aria-label="Menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-          {menuOpen && (
-            <NavMenuDropdown onClose={() => setMenuOpen(false)} apiKey={apiKey} skipMapsScript />
-          )}
-        </div>
       </div>
-
-      <MobileNavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} apiKey={apiKey} skipMapsScript />
     </>
   )
 }

@@ -29,6 +29,7 @@ import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
+import PropertyDetailsSaveButton from './PropertyDetailsSaveButton'
 import React from 'react'
 
 type PageProps = {
@@ -472,7 +473,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
   return (
     <div className="address-page">
-      <RecordSearch address={addressBarHeadline} slug={decodedSlug} />
+      <RecordSearch address={displayAddress || addressBarHeadline} slug={decodedSlug} />
       <div className="prop-page-shell">
         <PropertySidebar />
         <div className="prop-main-content">
@@ -534,7 +535,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
           <div className="profile-card">
             {!(isExpanded && expandedSiblings.length > 0) && (
-              <div className="profile-card-header">Property Details</div>
+              <div className="profile-card-header profile-card-header--with-toggle">
+                <span style={{ flex: 1 }}>Property Details</span>
+                <PropertyDetailsSaveButton />
+              </div>
             )}
 
             {!property && nearestParcel && (
