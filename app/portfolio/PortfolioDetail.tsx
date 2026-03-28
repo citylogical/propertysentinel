@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PortfolioProperty } from './types'
 
 type Props = {
@@ -8,16 +8,39 @@ type Props = {
   onClose: () => void
 }
 
+type DetailPayload = {
+  recent_complaints?: Record<string, unknown>[]
+  recent_violations?: Record<string, unknown>[]
+  recent_permits?: Record<string, unknown>[]
+  latest_violation_date?: string | null
+  latest_permit_date?: string | null
+}
+
 export default function PortfolioDetail({ property: p, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const [detailData, setDetailData] = useState<DetailPayload | null>(null)
+  const [detailLoading, setDetailLoading] = useState(true)
 
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [p.id])
 
+  useEffect(() => {
+    setDetailLoading(true)
+    setDetailData(null)
+    fetch(`/api/portfolio/detail?id=${encodeURIComponent(p.id)}`)
+      .then((res) => res.json())
+      .then((data: DetailPayload & { error?: string }) => {
+        if (data.error) setDetailData(null)
+        else setDetailData(data)
+      })
+      .catch(() => setDetailData(null))
+      .finally(() => setDetailLoading(false))
+  }, [p.id])
+
   const na = (val: unknown) => (val != null && String(val).trim() !== '' ? String(val) : 'N/A')
   const money = (val: number | null) => (val != null && Number.isFinite(val) ? `$${val.toLocaleString()}` : 'N/A')
-  const date = (val: string | null) => {
+  const date = (val: string | null | undefined) => {
     if (!val) return 'N/A'
     const d = new Date(val)
     if (Number.isNaN(d.getTime())) return 'N/A'
@@ -26,61 +49,63 @@ export default function PortfolioDetail({ property: p, onClose }: Props) {
 
   const chars = (p.building_chars ?? {}) as Record<string, unknown>
 
-  const activity = [
-    ...(p.recent_complaints ?? []).map((c) => {
-      const row = c as { sr_type?: string | null; created_date?: string | null; sr_number?: string | null; status?: string | null }
-      return {
-        type: 'complaint' as const,
-        label: row.sr_type ?? 'Complaint',
-        date: row.created_date ?? '',
-        detail: row.sr_number ? `#${row.sr_number}` : '',
-        color: String(row.status ?? '').toLowerCase() === 'open' ? 'var(--amber)' : 'var(--text-dim)',
-      }
-    }),
-    ...(p.recent_violations ?? []).map((v) => {
-      const row = v as {
-        inspection_category?: string | null
-        department_bureau?: string | null
-        violation_date?: string | null
-        violation_status?: string | null
-        inspection_status?: string | null
-      }
-      const cat = row.inspection_category || 'Violation'
-      const dept = row.department_bureau || ''
-      return {
-        type: 'violation' as const,
-        label: `${cat}${dept ? ` · ${dept}` : ''}`.trim(),
-        date: row.violation_date ?? '',
-        detail: String(row.violation_status ?? row.inspection_status ?? ''),
-        color:
-          String(row.violation_status ?? row.inspection_status ?? '')
-            .toUpperCase()
-            .includes('OPEN') || String(row.violation_status ?? '').toUpperCase() === 'FAILED'
-            ? 'var(--red)'
-            : 'var(--text-dim)',
-      }
-    }),
-    ...(p.recent_permits ?? []).map((pr) => {
-      const row = pr as {
-        permit_type?: string | null
-        issue_date?: string | null
-        reported_cost?: number | string | null
-      }
-      return {
-        type: 'permit' as const,
-        label: row.permit_type ?? 'Permit',
-        date: row.issue_date ?? '',
-        detail:
-          row.reported_cost != null && Number(row.reported_cost) > 0
-            ? `$${Number(row.reported_cost).toLocaleString()}`
-            : '',
-        color: 'var(--green)',
-      }
-    }),
-  ]
-    .filter((a) => a.date)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 8)
+  const activity = detailLoading
+    ? []
+    : [
+        ...(detailData?.recent_complaints ?? []).map((c) => {
+          const row = c as { sr_type?: string | null; created_date?: string | null; sr_number?: string | null; status?: string | null }
+          return {
+            type: 'complaint' as const,
+            label: row.sr_type ?? 'Complaint',
+            date: row.created_date ?? '',
+            detail: row.sr_number ? `#${row.sr_number}` : '',
+            color: String(row.status ?? '').toLowerCase() === 'open' ? 'var(--amber)' : 'var(--text-dim)',
+          }
+        }),
+        ...(detailData?.recent_violations ?? []).map((v) => {
+          const row = v as {
+            inspection_category?: string | null
+            department_bureau?: string | null
+            violation_date?: string | null
+            violation_status?: string | null
+            inspection_status?: string | null
+          }
+          const cat = row.inspection_category || 'Violation'
+          const dept = row.department_bureau || ''
+          return {
+            type: 'violation' as const,
+            label: `${cat}${dept ? ` · ${dept}` : ''}`.trim(),
+            date: row.violation_date ?? '',
+            detail: String(row.violation_status ?? row.inspection_status ?? ''),
+            color:
+              String(row.violation_status ?? row.inspection_status ?? '')
+                .toUpperCase()
+                .includes('OPEN') || String(row.violation_status ?? '').toUpperCase() === 'FAILED'
+                ? 'var(--red)'
+                : 'var(--text-dim)',
+          }
+        }),
+        ...(detailData?.recent_permits ?? []).map((pr) => {
+          const row = pr as {
+            permit_type?: string | null
+            issue_date?: string | null
+            reported_cost?: number | string | null
+          }
+          return {
+            type: 'permit' as const,
+            label: row.permit_type ?? 'Permit',
+            date: row.issue_date ?? '',
+            detail:
+              row.reported_cost != null && Number(row.reported_cost) > 0
+                ? `$${Number(row.reported_cost).toLocaleString()}`
+                : '',
+            color: 'var(--green)',
+          }
+        }),
+      ]
+        .filter((a) => a.date)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 8)
 
   const additional = p.additional_streets ?? []
 
@@ -128,11 +153,11 @@ export default function PortfolioDetail({ property: p, onClose }: Props) {
           </div>
           <div className="portfolio-detail-row">
             <span>Last violation</span>
-            <span>{date(p.latest_violation_date)}</span>
+            <span>{detailLoading ? '…' : date(detailData?.latest_violation_date)}</span>
           </div>
           <div className="portfolio-detail-row">
             <span>Last permit</span>
-            <span>{date(p.latest_permit_date)}</span>
+            <span>{detailLoading ? '…' : date(detailData?.latest_permit_date)}</span>
           </div>
         </div>
 
@@ -237,7 +262,9 @@ export default function PortfolioDetail({ property: p, onClose }: Props) {
                 <div className="portfolio-deadline-label">
                   {p.open_violations} open violation{p.open_violations !== 1 ? 's' : ''}
                 </div>
-                <div className="portfolio-deadline-sub">Last violation: {date(p.latest_violation_date)}</div>
+                <div className="portfolio-deadline-sub">
+                  Last violation: {detailLoading ? '…' : date(detailData?.latest_violation_date)}
+                </div>
               </div>
             </div>
           )}
@@ -248,7 +275,9 @@ export default function PortfolioDetail({ property: p, onClose }: Props) {
 
         <div className="portfolio-detail-section">
           <h3>Recent activity</h3>
-          {activity.length === 0 ? (
+          {detailLoading ? (
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', padding: '8px 0' }}>Loading…</div>
+          ) : activity.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-dim)', padding: '8px 0' }}>No recent activity</div>
           ) : (
             activity.map((a, i) => (
