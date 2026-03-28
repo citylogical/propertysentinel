@@ -1,13 +1,25 @@
 'use client'
 
-import { SignInButton, useAuth } from '@clerk/nextjs'
+import { useUser } from '@clerk/nextjs'
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import SavePropertyModal from '@/components/SavePropertyModal'
 import { addressToSlug } from '@/lib/address-slug'
 
 const ADDRESS_HEADER_SEARCH_INPUT_ID = 'address-header-search-input'
+
+export type PortfolioSaveData = {
+  currentAddress: string
+  canonicalAddress: string
+  isPartOfBuilding: boolean
+  buildingAddressRange: string | null
+  additionalStreets: string[]
+  allPins: string[]
+  assessorSqft: number | null
+  assessorUnits: number | null
+}
 
 type PlaceResult = {
   address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
@@ -71,12 +83,21 @@ type Props = {
   slug: string
   isExpanded: boolean
   apiKey?: string
+  saveData: PortfolioSaveData
 }
 
-export default function AddressBarButtons({ addressRange, slug, isExpanded, apiKey }: Props) {
-  const { isSignedIn } = useAuth()
+export default function AddressBarButtons({
+  addressRange,
+  slug,
+  isExpanded,
+  apiKey,
+  saveData,
+}: Props) {
+  const { isSignedIn, isLoaded } = useUser()
   const router = useRouter()
   const registeredRef = useRef(false)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -87,6 +108,14 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
     }
   }, [apiKey])
 
+  useEffect(() => {
+    if (!saveData.canonicalAddress) return
+    fetch(`/api/portfolio/save?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`)
+      .then((res) => res.json())
+      .then((data: { saved?: boolean }) => setIsSaved(!!data.saved))
+      .catch(() => {})
+  }, [saveData.canonicalAddress])
+
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
@@ -95,6 +124,15 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
     if (!address) return
     const nextSlug = addressToSlug(address, zip || undefined)
     window.location.href = `/address/${encodeURIComponent(nextSlug)}`
+  }
+
+  const openSaveFlow = () => {
+    if (!isLoaded) return
+    if (!isSignedIn) {
+      window.location.href = '/sign-in'
+      return
+    }
+    setSaveModalOpen(true)
   }
 
   return (
@@ -140,29 +178,34 @@ export default function AddressBarButtons({ addressRange, slug, isExpanded, apiK
           </button>
         )}
 
-        {!isSignedIn ? (
-          <SignInButton mode="modal">
-            <button type="button" className="address-header-icon-btn address-header-icon-btn-alert" title="Alerts">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-              </svg>
-            </button>
-          </SignInButton>
-        ) : (
-          <button
-            type="button"
-            className="address-header-icon-btn address-header-icon-btn-alert"
-            title="Alerts"
-            onClick={() => router.push('/profile')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-          </button>
-        )}
+        <button
+          type="button"
+          className="address-header-icon-btn address-header-icon-btn-alert"
+          title="Save to portfolio"
+          onClick={openSaveFlow}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
       </div>
+
+      <SavePropertyModal
+        isOpen={saveModalOpen}
+        onClose={(saved) => {
+          setSaveModalOpen(false)
+          if (saved) setIsSaved(true)
+        }}
+        currentAddress={saveData.currentAddress}
+        canonicalAddress={saveData.canonicalAddress}
+        slug={slug}
+        isPartOfBuilding={saveData.isPartOfBuilding}
+        buildingAddressRange={saveData.buildingAddressRange}
+        additionalStreets={saveData.additionalStreets}
+        allPins={saveData.allPins}
+        assessorSqft={saveData.assessorSqft}
+        assessorUnits={saveData.assessorUnits}
+      />
     </>
   )
 }

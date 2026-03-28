@@ -1,6 +1,6 @@
 'use client'
 
-import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
+import { useClerk, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -12,13 +12,24 @@ type Props = {
   initialTab?: SidebarTab
 }
 
+type SavedPropertyPreview = {
+  id: string
+  slug: string
+  display_name: string | null
+  address_range: string | null
+  canonical_address: string
+  alerts_enabled: boolean
+}
+
 export default function PropertySidebar({ initialTab = 'search' }: Props) {
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab)
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([])
+  const [savedProperties, setSavedProperties] = useState<SavedPropertyPreview[]>([])
+  const [loadingSaved, setLoadingSaved] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const { user, isSignedIn } = useUser()
+  const { user, isSignedIn, isLoaded } = useUser()
   const { signOut } = useClerk()
 
   useEffect(() => {
@@ -29,11 +40,70 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
     setRecentSearches(getRecentSearches())
   }, [pathname])
 
+  useEffect(() => {
+    if (activeTab !== 'portfolio' || !isLoaded) return
+    if (!isSignedIn) {
+      setSavedProperties([])
+      setLoadingSaved(false)
+      return
+    }
+    setLoadingSaved(true)
+    fetch('/api/portfolio/list')
+      .then((res) => res.json())
+      .then((data: { error?: string; properties?: SavedPropertyPreview[] }) => {
+        if (data.error) {
+          setSavedProperties([])
+          return
+        }
+        setSavedProperties((data.properties ?? []).slice(0, 4))
+      })
+      .catch(() => setSavedProperties([]))
+      .finally(() => setLoadingSaved(false))
+  }, [activeTab, isSignedIn, isLoaded])
+
+  const [profileName, setProfileName] = useState('')
+  const [profileOrg, setProfileOrg] = useState('')
+  const [profileInitials, setProfileInitials] = useState('')
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      setProfileName('')
+      setProfileOrg('')
+      setProfileInitials('')
+      return
+    }
+    fetch('/api/profile/update')
+      .then((res) => res.json())
+      .then((data: { profile?: { first_name?: string | null; last_name?: string | null; email?: string | null; organization?: string | null } | null }) => {
+        if (data.profile) {
+          const p = data.profile
+          const first = p.first_name || ''
+          const last = p.last_name || ''
+          const name = [first, last].filter(Boolean).join(' ') || p.email || 'User'
+          const initials =
+            [first, last]
+              .filter(Boolean)
+              .map((n: string) => n[0]?.toUpperCase())
+              .join('') || 'U'
+          setProfileName(name)
+          setProfileOrg(p.organization || '')
+          setProfileInitials(initials)
+        } else {
+          setProfileName('')
+          setProfileOrg('')
+          setProfileInitials('')
+        }
+      })
+      .catch(() => {})
+  }, [isLoaded, isSignedIn])
+
   const displayName =
     user?.firstName ||
     user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
     'User'
   const avatarLetter = (user?.firstName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0] || 'U').toUpperCase()
+  const footerName = profileName || displayName
+  const footerInitials = profileInitials || avatarLetter
 
   return (
     <div className={`prop-sidebar ${isOpen ? 'prop-sidebar-expanded' : 'prop-sidebar-collapsed'}`}>
@@ -134,70 +204,95 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
 
             {activeTab === 'portfolio' && (
               <div className="prop-sidebar-section">
-                <div className="prop-sidebar-section-label">Saved Properties</div>
-                <div style={{ marginTop: 8 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 60px',
-                      padding: '6px 0',
-                      borderBottom: '1px solid rgba(255,255,255,0.08)',
-                      fontSize: 9,
-                      fontFamily: 'var(--mono)',
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                      color: 'rgba(255,255,255,0.25)',
-                    }}
-                  >
-                    <span>Address</span>
-                    <span style={{ textAlign: 'right' }}>Alerts</span>
-                  </div>
-                  <div
-                    style={{
-                      padding: '24px 0',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-                      Add your first property
+                <div className="prop-sidebar-section-label">Saved properties</div>
+                <div className="prop-sidebar-recent-list">
+                  {!isLoaded ? (
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>Loading...</div>
+                  ) : !isSignedIn ? (
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>
+                      Sign in to see saved properties
                     </div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', lineHeight: 1.4 }}>
-                      Use the{' '}
-                      <span style={{ display: 'inline-flex', verticalAlign: 'middle', margin: '0 2px' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
-                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                        </svg>
-                      </span>{' '}
-                      button on any property
+                  ) : loadingSaved ? (
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>Loading...</div>
+                  ) : savedProperties.length === 0 ? (
+                    <div style={{ padding: '16px 0', textAlign: 'center' }}>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>Add your first property</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', lineHeight: 1.4 }}>
+                        Use the{' '}
+                        <span style={{ display: 'inline-flex', verticalAlign: 'middle', margin: '0 2px' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                          </svg>
+                        </span>{' '}
+                        button on any property
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {savedProperties.map((p) => (
+                        <Link
+                          key={p.id}
+                          href={`/address/${encodeURIComponent(p.slug)}`}
+                          className="prop-sidebar-recent-item"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+                        >
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {p.display_name || p.address_range || p.canonical_address}
+                          </span>
+                          {p.alerts_enabled && (
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                background: '#2d6a4f',
+                                flexShrink: 0,
+                              }}
+                              aria-hidden
+                            />
+                          )}
+                        </Link>
+                      ))}
+                      <Link
+                        href="/portfolio"
+                        style={{
+                          display: 'block',
+                          textAlign: 'center',
+                          fontSize: 11,
+                          color: 'rgba(255,255,255,0.4)',
+                          padding: '10px 0 2px',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: '2px',
+                        }}
+                      >
+                        View all
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
           <div className="prop-sidebar-footer">
-            <div className="prop-sidebar-user">
-              <div className="prop-sidebar-avatar">{isSignedIn ? avatarLetter : '?'}</div>
-              <div>
-                <div className="prop-sidebar-username">{isSignedIn ? displayName : 'Guest'}</div>
-                {isSignedIn ? (
-                  <button
-                    type="button"
-                    className="prop-sidebar-signout"
-                    onClick={() => signOut({ redirectUrl: '/' })}
-                  >
+            {isSignedIn ? (
+              <div className="prop-sidebar-user">
+                <div className="prop-sidebar-avatar">{footerInitials}</div>
+                <div>
+                  <div className="prop-sidebar-username">{footerName}</div>
+                  {profileOrg && (
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{profileOrg}</div>
+                  )}
+                  <button type="button" className="prop-sidebar-signout" onClick={() => signOut({ redirectUrl: '/' })}>
                     Sign out
                   </button>
-                ) : (
-                  <SignInButton mode="modal">
-                    <button type="button" className="prop-sidebar-signout">
-                      Sign in
-                    </button>
-                  </SignInButton>
-                )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <Link href="/sign-in" className="prop-sidebar-signin">
+                Sign in
+              </Link>
+            )}
           </div>
         </>
       ) : null}

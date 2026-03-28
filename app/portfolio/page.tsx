@@ -1,13 +1,13 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import PropertySidebar from '@/components/PropertySidebar'
-import ProfileContent from './ProfileContent'
+import PortfolioTable from './PortfolioTable'
 
 export const metadata = {
-  title: 'Property Sentinel — Account',
+  title: 'Property Sentinel — Portfolio',
 }
 
-export default async function ProfilePage() {
+export default async function PortfolioPage() {
   const { userId } = await auth()
 
   if (!userId) {
@@ -17,14 +17,9 @@ export default async function ProfilePage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="account" />
+        <PropertySidebar initialTab="portfolio" />
         <div className="prop-main-content">
-          <div className="address-header">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="address-header-street">Account</div>
-            </div>
-          </div>
-          <ProfileContent />
+          <PortfolioTable />
         </div>
       </div>
     </div>

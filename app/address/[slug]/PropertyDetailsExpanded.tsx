@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import PropertyDetailsSaveButton from './PropertyDetailsSaveButton'
 import { getClassDescription } from '@/lib/class-codes'
 import type { PropertyCharsCondoRow, PropertyCharsResidentialRow } from '@/lib/supabase-search'
 
@@ -327,7 +326,6 @@ export default function PropertyDetailsExpanded({ siblings, serverSharedChars }:
     <>
       <div className="profile-card-header profile-card-header--with-toggle">
         <span style={{ flex: 1 }}>Property Details</span>
-        <PropertyDetailsSaveButton />
         {siblings.length > 0 && (
           <button
             type="button"

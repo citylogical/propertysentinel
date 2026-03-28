@@ -29,7 +29,6 @@ import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
-import PropertyDetailsSaveButton from './PropertyDetailsSaveButton'
 import React from 'react'
 
 type PageProps = {
@@ -219,6 +218,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   let exemptChars: any | null = null
   let addressRange: string | null = null
   let siblingAddresses: string[] = [normalizedAddress]
+  let siblingPinsForPortfolio: string[] = []
   let expandedSiblings: SiblingPin[] = []
   let buildingParcelCountForAv = 0
 
@@ -228,6 +228,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       const siblings = await fetchSiblingPins(normalizedPin, normalizedAddress)
       addressRange = siblings.addressRange
       siblingAddresses = siblings.siblingAddresses
+      siblingPinsForPortfolio = siblings.siblingPins
 
       // Auto-expand for unit-suffix condos (all PINs share same base address)
       if (!isExpanded && siblings.siblingPins.length > 1 && siblings.addressRange === normalizedAddress) {
@@ -444,6 +445,51 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       ? formatRangeForDisplay(addressRange)
       : displayAddress || slug
 
+  const portfolioPins =
+    expandedSiblings.length > 0
+      ? expandedSiblings.map((s) => s.pin)
+      : pin
+        ? siblingPinsForPortfolio.length > 0
+          ? siblingPinsForPortfolio
+          : [pin]
+        : []
+
+  const assessorBuildingSqft = (() => {
+    const r = charsResidential?.building_sqft
+    if (r != null && Number(r) > 0) return Number(r)
+    const c = charsCondo?.building_sqft
+    if (c != null && Number(c) > 0) return Number(c)
+    const com = commercialChars[0]?.building_sqft
+    if (com != null && Number(com) > 0) return Number(com)
+    return null
+  })()
+
+  const assessorUnitsFromChars = (() => {
+    const na = charsResidential?.num_apartments
+    if (na != null) {
+      const n = Number(na)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    const bnu = charsCondo?.building_non_units
+    if (bnu != null) {
+      const n = Number(bnu)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    return null
+  })()
+
+  const portfolioSaveData = {
+    currentAddress: displayAddress || addressBarHeadline,
+    canonicalAddress: normalizedAddress,
+    isPartOfBuilding: !!(addressRange && addressRange !== displayAddress),
+    buildingAddressRange: addressBarHeadline || null,
+    additionalStreets:
+      addressBarHeadline.includes(' & ') ? addressBarHeadline.split(' & ').slice(1).map((s) => s.trim()).filter(Boolean) : [],
+    allPins: portfolioPins,
+    assessorSqft: assessorBuildingSqft,
+    assessorUnits: assessorUnitsFromChars,
+  }
+
   // Card logic:
   // - If open complaints: show Complaints, Violations, Assessed Value
   // - If no open complaints: show Violations, Last Permit, Assessed Value
@@ -484,9 +530,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
             </div>
             <AddressBarButtons
               addressRange={addressRange}
-              slug={slug}
+              slug={decodedSlug}
               isExpanded={isExpanded}
               apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY}
+              saveData={portfolioSaveData}
             />
           </div>
 
@@ -535,9 +582,8 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
           <div className="profile-card">
             {!(isExpanded && expandedSiblings.length > 0) && (
-              <div className="profile-card-header profile-card-header--with-toggle">
+              <div className="profile-card-header">
                 <span style={{ flex: 1 }}>Property Details</span>
-                <PropertyDetailsSaveButton />
               </div>
             )}
 
