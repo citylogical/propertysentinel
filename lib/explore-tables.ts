@@ -321,42 +321,33 @@ const property_tax_exempt: TableDef = {
   ],
 }
 
-const str_activity_summary: TableDef = {
-  name: 'str_activity_summary',
-  label: 'STR Activity Summary',
-  rowEstimate: '~5K',
-  defaultSort: 'shvr_open',
+const pbl_intelligence: TableDef = {
+  name: 'pbl_intelligence',
+  label: 'PBL Intelligence',
+  rowEstimate: '~800',
+  defaultSort: 'nearby_airbnb_count',
   defaultSortDesc: true,
   columns: [
-    { key: 'pin', label: 'PIN', type: 'text', defaultVisible: true, sticky: true },
-    { key: 'address', label: 'Address', type: 'text', defaultVisible: true },
-    { key: 'community_area', label: 'Community Area', type: 'text', defaultVisible: true },
-    { key: 'ward', label: 'Ward', type: 'text', defaultVisible: true },
-    { key: 'shvr_open', label: 'SHVR Open', type: 'number', defaultVisible: true },
+    { key: 'address_normalized', label: 'Address', type: 'text', defaultVisible: true, sticky: true },
+    { key: 'application_id', label: 'App ID', type: 'number', defaultVisible: true },
+    { key: 'address_number', label: 'Address #', type: 'text', defaultVisible: true },
+    { key: 'street_direction', label: 'Dir', type: 'text' },
+    { key: 'street_name', label: 'Street', type: 'text' },
+    { key: 'street_type', label: 'Type', type: 'text' },
+    { key: 'pin', label: 'PIN', type: 'text', defaultVisible: true },
+    { key: 'number_of_units', label: 'Units', type: 'number', defaultVisible: true },
+    { key: 'association_cooperative_or_owner', label: 'Owner/Assoc', type: 'text', defaultVisible: true },
+    { key: 'applicant_role', label: 'Applicant Role', type: 'text' },
     { key: 'shvr_total', label: 'SHVR Total', type: 'number', defaultVisible: true },
+    { key: 'shvr_open', label: 'SHVR Open', type: 'number', defaultVisible: true },
     { key: 'shvr_last_year', label: 'SHVR Last Year', type: 'number', defaultVisible: true },
-    { key: 'latest_shvr_date', label: 'Latest SHVR', type: 'date', defaultVisible: true },
-    { key: 'earliest_shvr_date', label: 'Earliest SHVR', type: 'date' },
-    { key: 'mailing_name', label: 'Mailing Name', type: 'text', defaultVisible: true },
-    { key: 'is_absentee', label: 'Absentee', type: 'boolean', defaultVisible: true },
-    { key: 'mailing_address', label: 'Mailing Addr', type: 'text' },
-    { key: 'mailing_city', label: 'Mailing City', type: 'text' },
-    { key: 'mailing_state', label: 'Mailing State', type: 'text' },
-    { key: 'mailing_zip', label: 'Mailing ZIP', type: 'text' },
-    { key: 'property_class', label: 'Class', type: 'text', defaultVisible: true },
-    { key: 'zip', label: 'ZIP', type: 'text' },
-    { key: 'open_violations_count', label: 'Open Violations', type: 'number', defaultVisible: true },
-    { key: 'open_complaints_count', label: 'Open Complaints', type: 'number' },
-    { key: 'last_permit_date', label: 'Last Permit', type: 'date' },
-    { key: 'is_prohibited_building', label: 'PBL', type: 'boolean', defaultVisible: true },
-    { key: 'has_active_registration', label: 'Registered', type: 'boolean', defaultVisible: true },
-    { key: 'registration_expiration', label: 'Reg Expires', type: 'date', defaultVisible: true },
-    { key: 'is_restricted_zone', label: 'Restricted Zone', type: 'boolean', defaultVisible: true }, 
-    { key: 'nearby_airbnb_count', label: 'Airbnb Nearby', type: 'number', defaultVisible: true },
+    { key: 'latest_shvr', label: 'Latest SHVR', type: 'date', defaultVisible: true },
+    { key: 'nearby_airbnb_count', label: 'Airbnb (150m)', type: 'number', defaultVisible: true },
     { key: 'nearby_airbnb_noncompliant', label: 'Airbnb Noncompliant', type: 'number', defaultVisible: true },
-    { key: 'nearby_airbnb_ids', label: 'Airbnb IDs', type: 'text' },
-    { key: 'complaint_lat', label: 'Lat', type: 'number' },
-    { key: 'complaint_lng', label: 'Lng', type: 'number' },
+    { key: 'vote_date', label: 'Vote Date', type: 'date', defaultVisible: true },
+    { key: 'recorded_date', label: 'Recorded', type: 'date' },
+    { key: 'lat', label: 'Lat', type: 'number' },
+    { key: 'lng', label: 'Lng', type: 'number' },
   ],
 }
 
@@ -465,7 +456,7 @@ const airbnb_listings: TableDef = {
 // ---------------------------------------------------------------------------
 
 export const EXPLORE_TABLES: Record<string, TableDef> = {
-  str_activity_summary: str_activity_summary,
+  pbl_intelligence: pbl_intelligence,
   str_prohibited_buildings: str_prohibited_buildings,
   str_registrations: str_registrations,
   airbnb_listings: airbnb_listings,
@@ -484,7 +475,7 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
 
 /** Ordered list for the table selector dropdown */
 export const EXPLORE_TABLE_LIST: TableDef[] = [
-  str_activity_summary,
+  pbl_intelligence,
   str_prohibited_buildings,
   str_registrations,
   airbnb_listings,
