@@ -88,6 +88,15 @@ export default function ExploreClient() {
   const [showColumnPicker, setShowColumnPicker] = useState(false)
   const colPickerRef = useRef<HTMLDivElement>(null)
 
+  // Drill-down modal
+  const [drillModal, setDrillModal] = useState<{
+    open: boolean
+    type: 'shvr' | 'airbnb'
+    address: string
+    data: Record<string, unknown>[]
+    loading: boolean
+  }>({ open: false, type: 'shvr', address: '', data: [], loading: false })
+
   // Debounce filters so we don't fire on every keystroke
   const debouncedFilters = useDebouncedValue(columnFilters, 400)
 
@@ -104,6 +113,26 @@ export default function ExploreClient() {
     setTotalRows(0)
     setPageCount(0)
   }, [])
+
+  // ── Drill-down handler ───────────────────────────────────────────────
+  const handleDrillClick = useCallback(
+    (lat: number, lng: number, type: 'shvr' | 'airbnb', address: string) => {
+      setDrillModal({ open: true, type, address, data: [], loading: true })
+      fetch('/api/explore/pbl-nearby', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng, type }),
+      })
+        .then((res) => res.json())
+        .then((json) => {
+          setDrillModal((prev) => ({ ...prev, data: json.data ?? [], loading: false }))
+        })
+        .catch(() => {
+          setDrillModal((prev) => ({ ...prev, loading: false }))
+        })
+    },
+    []
+  )
 
   // ── Fetch data ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -174,11 +203,38 @@ export default function ExploreClient() {
       id: col.key,
       accessorKey: col.key,
       header: col.label,
-      cell: (info: { getValue: () => unknown }) => formatCell(info.getValue(), col.type),
+      cell: (info: { getValue: () => unknown; row: { original: Record<string, unknown> } }) => {
+        const value = info.getValue()
+        if (
+          selectedTable === 'pbl_intelligence' &&
+          (col.key === 'shvr_total' || col.key === 'nearby_airbnb_count') &&
+          Number(value) > 0
+        ) {
+          const row = info.row.original
+          return (
+            <button
+              type="button"
+              className="explore-drill-link"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDrillClick(
+                  Number(row.lat),
+                  Number(row.lng),
+                  col.key === 'shvr_total' ? 'shvr' : 'airbnb',
+                  String(row.address_normalized ?? '')
+                )
+              }}
+            >
+              {formatCell(value, col.type)}
+            </button>
+          )
+        }
+        return formatCell(info.getValue(), col.type)
+      },
       enableSorting: true,
       meta: { type: col.type, sticky: col.sticky },
     }))
-  }, [tableDef])
+  }, [tableDef, selectedTable, handleDrillClick])
 
   // ── TanStack table instance ──────────────────────────────────────────
   const table = useReactTable({
@@ -506,6 +562,123 @@ export default function ExploreClient() {
           />
         </div>
       </div>
+
+      {/* ── Drill-down modal ────────────────────────────────────────── */}
+      {drillModal.open && (
+        <div className="explore-modal-backdrop" onClick={() => setDrillModal((p) => ({ ...p, open: false }))}>
+          <div className="explore-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="explore-modal-header">
+              <div>
+                <div className="explore-modal-title">
+                  {drillModal.type === 'shvr' ? 'SHVR Complaints' : 'Airbnb Listings'} near
+                </div>
+                <div className="explore-modal-address">{drillModal.address}</div>
+              </div>
+              <button
+                type="button"
+                className="explore-modal-close"
+                onClick={() => setDrillModal((p) => ({ ...p, open: false }))}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="explore-modal-body">
+              {drillModal.loading ? (
+                <div className="explore-modal-loading">Loading…</div>
+              ) : drillModal.data.length === 0 ? (
+                <div className="explore-modal-loading">No results</div>
+              ) : drillModal.type === 'shvr' ? (
+                <table className="explore-modal-table">
+                  <thead>
+                    <tr>
+                      <th>SR Number</th>
+                      <th>Address</th>
+                      <th>Status</th>
+                      <th>Type</th>
+                      <th>Filed</th>
+                      <th>Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drillModal.data.map((row, i) => (
+                      <tr key={i}>
+                        <td>{String(row.sr_number ?? '—')}</td>
+                        <td>{String(row.address ?? '—')}</td>
+                        <td>
+                          <span
+                            className={`explore-modal-badge ${String(row.status ?? '').toUpperCase() === 'OPEN' ? 'badge-open' : 'badge-closed'}`}
+                          >
+                            {String(row.status ?? '—')}
+                          </span>
+                        </td>
+                        <td>{String(row.sr_type ?? '—')}</td>
+                        <td>{row.created_date ? String(row.created_date).slice(0, 10) : '—'}</td>
+                        <td>{row.closed_date ? String(row.closed_date).slice(0, 10) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="explore-modal-table">
+                  <thead>
+                    <tr>
+                      <th>Listing</th>
+                      <th>Host</th>
+                      <th>Type</th>
+                      <th>Price</th>
+                      <th>License</th>
+                      <th>Noncompliant</th>
+                      <th>Reviews</th>
+                      <th>Last Review</th>
+                      <th>Host Listings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drillModal.data.map((row, i) => (
+                      <tr key={i}>
+                        <td>
+                          {row.listing_url ? (
+                            <a
+                              href={String(row.listing_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="explore-drill-link"
+                            >
+                              {String(row.id ?? '—')}
+                            </a>
+                          ) : (
+                            String(row.id ?? '—')
+                          )}
+                        </td>
+                        <td>{String(row.host_name ?? '—')}</td>
+                        <td>{String(row.property_type ?? '—')}</td>
+                        <td>{String(row.price ?? '—')}</td>
+                        <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {String(row.license ?? '—')}
+                        </td>
+                        <td>
+                          <span
+                            className={`explore-modal-badge ${row.is_potentially_noncompliant ? 'badge-open' : 'badge-closed'}`}
+                          >
+                            {row.is_potentially_noncompliant ? 'Yes' : 'No'}
+                          </span>
+                        </td>
+                        <td>{row.number_of_reviews != null ? Number(row.number_of_reviews).toLocaleString() : '—'}</td>
+                        <td>{row.last_review ? String(row.last_review).slice(0, 10) : '—'}</td>
+                        <td>{row.host_listings_count != null ? String(row.host_listings_count) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="explore-modal-footer">
+              {drillModal.data.length} {drillModal.type === 'shvr' ? 'complaint' : 'listing'}
+              {drillModal.data.length !== 1 ? 's' : ''} within {drillModal.type === 'shvr' ? '40m' : '150m'}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
