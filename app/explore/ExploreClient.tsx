@@ -146,7 +146,9 @@ export default function ExploreClient() {
 
     // Include any filtered columns even if not visible
     const filterCols = debouncedFilters.map((f) => f.id)
-    const allCols = [...new Set([...visibleCols, ...filterCols])]
+    // Always include lat/lng for PBL drill-down even if columns are hidden
+    const extraCols = selectedTable === 'pbl_intelligence' ? ['lat', 'lng'] : []
+    const allCols = [...new Set([...visibleCols, ...filterCols, ...extraCols])]
 
     const body = {
       table: selectedTable,
