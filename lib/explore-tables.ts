@@ -322,9 +322,9 @@ const property_tax_exempt: TableDef = {
 }
 
 const pbl_intelligence: TableDef = {
-  name: 'pbl_intelligence',
+  name: 'pbl_intelligence_live',
   label: 'PBL Intelligence',
-  rowEstimate: '~800',
+  rowEstimate: '~2,400',
   defaultSort: 'nearby_airbnb_count',
   defaultSortDesc: true,
   columns: [
@@ -344,6 +344,8 @@ const pbl_intelligence: TableDef = {
     { key: 'latest_shvr', label: 'Latest SHVR', type: 'date', defaultVisible: true },
     { key: 'nearby_airbnb_count', label: 'Airbnb (150m)', type: 'number', defaultVisible: true },
     { key: 'nearby_airbnb_noncompliant', label: 'Airbnb Noncompliant', type: 'number', defaultVisible: true },
+    { key: 'flagged_yes', label: 'Flagged Yes', type: 'number', defaultVisible: true },
+    { key: 'flagged_maybe', label: 'Flagged Maybe', type: 'number', defaultVisible: true },
     { key: 'vote_date', label: 'Vote Date', type: 'date', defaultVisible: true },
     { key: 'recorded_date', label: 'Recorded', type: 'date' },
     { key: 'lat', label: 'Lat', type: 'number' },
@@ -456,7 +458,7 @@ const airbnb_listings: TableDef = {
 // ---------------------------------------------------------------------------
 
 export const EXPLORE_TABLES: Record<string, TableDef> = {
-  pbl_intelligence: pbl_intelligence,
+  pbl_intelligence_live: pbl_intelligence,
   str_prohibited_buildings: str_prohibited_buildings,
   str_registrations: str_registrations,
   airbnb_listings: airbnb_listings,

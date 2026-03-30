@@ -7,30 +7,6 @@
     flex-direction: column;
   }
   
-  .address-page:has(.explore-toolbar) {
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-  
-  .address-page:has(.explore-toolbar) .prop-page,
-  .address-page:has(.explore-toolbar) .profile,
-  .address-page:has(.explore-toolbar) .rail {
-    display: none;
-  }
-
-  .explore-layout {
-    display: flex;
-    flex-direction: column;
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-  
-  .explore-layout .explore-table-wrap {
-    width: 100%;
-    max-width: 100vw;
-    overflow-x: auto;
-  }
-
   .explore-denied {
     display: flex;
     flex-direction: column;
@@ -70,9 +46,6 @@
     background: #fff;
     border-bottom: 1px solid var(--border, #e5e5e0);
     flex-wrap: wrap;
-    position: sticky;
-    top: 0;
-    z-index: 20;
   }
   
   .explore-toolbar-left {
@@ -427,9 +400,6 @@
     padding: 10px 16px;
     background: #fff;
     border-top: 1px solid var(--border, #e5e5e0);
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
     flex-wrap: wrap;
     gap: 8px;
   }
@@ -705,4 +675,264 @@
   letter-spacing: 0.06em;
   color: var(--text-dim, #6b7280);
   text-align: right;
+}
+
+/* ── Annotation inputs ────────────────────────────────────────────────── */
+
+.explore-annotation-select {
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border: 1px solid var(--border, #e5e5e0);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text, #1a2332);
+  cursor: pointer;
+  min-width: 64px;
+}
+
+.explore-annotation-select.ann-yes {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.explore-annotation-select.ann-maybe {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.explore-annotation-select.ann-no {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.explore-annotation-input {
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  padding: 3px 6px;
+  border: 1px solid var(--border, #e5e5e0);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text, #1a2332);
+  width: 140px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.explore-annotation-input:focus {
+  border-color: #2d6a4f;
+}
+
+.explore-annotation-input::placeholder {
+  color: rgba(0, 0, 0, 0.25);
+}
+
+.explore-annotation-notes {
+  width: 200px;
+}
+
+.explore-modal {
+  max-width: 1200px;
+}
+
+/* ── Explore sidebar layout (tabs, card, no grid on main) ─────────────── */
+
+.address-page.explore-page-stack .prop-main-content.explore-page-main::before {
+  display: none;
+}
+
+.explore-client-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.explore-tab-bar {
+  padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--border, #e5e5e0);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.explore-tab {
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 10px 16px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim, #999);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.explore-tab:hover {
+  color: var(--text, #1a2332);
+}
+
+.explore-tab-active {
+  color: #0f2744;
+  border-bottom-color: #0f2744;
+}
+
+.explore-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  min-height: 0;
+  background: #f2f0eb;
+}
+
+.explore-content-area::before {
+  display: none;
+}
+
+.explore-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--border, #e5e5e0);
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.explore-lead-toolbar .explore-lead-title {
+  font-weight: 700;
+  color: var(--text, #1a2332);
+}
+
+.explore-lead-reveal-btn {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--mono, monospace);
+  font-size: 9px;
+  font-weight: 500;
+  background: #e8e6e1;
+  color: #6b6862;
+  border: 1px solid #d4d1ca;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.explore-lead-reveal-btn:hover:not(:disabled) {
+  background: #dedad3;
+}
+
+.explore-lead-reveal-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.explore-lead-revealed {
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  color: var(--text, #1a2332);
+  line-height: 1.4;
+}
+
+.explore-lead-status {
+  font-family: var(--mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border: 1px solid var(--border, #e5e5e0);
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 90px;
+}
+
+.explore-lead-status-not_started {
+  background: #f1efe8;
+  color: #5f5e5a;
+  border-color: #d3d1c7;
+}
+
+.explore-lead-status-letter_sent {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.explore-lead-status-called {
+  background: #e6f1fb;
+  color: #185fa5;
+  border-color: #b5d4f4;
+}
+
+.explore-lead-status-responded {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.explore-lead-status-converted {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.explore-lead-notes-input {
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--border, #e5e5e0);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text, #1a2332);
+  width: 160px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.explore-lead-notes-input:focus {
+  border-color: #2d6a4f;
+}
+
+.explore-lead-notes-input::placeholder {
+  color: rgba(0, 0, 0, 0.25);
+}
+
+/* ── Column resize handle ─────────────────────────────────────────────── */
+
+.explore-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.explore-resize-handle:hover,
+.explore-resize-handle.isResizing {
+  background: rgba(45, 106, 79, 0.5);
+}
+
+/* Sticky header cells already create a positioning context for the resize handle */
+
+.explore-th-dragging {
+  opacity: 0.5;
+}
+
+.explore-th-dragover {
+  border-left: 2px solid #2d6a4f;
 }

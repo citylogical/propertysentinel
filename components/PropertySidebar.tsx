@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getRecentSearches, type RecentSearch } from '@/lib/recent-searches'
 
-type SidebarTab = 'search' | 'portfolio' | 'account'
+type SidebarTab = 'search' | 'portfolio' | 'account' | 'explore'
 
 type Props = {
   initialTab?: SidebarTab
@@ -64,36 +64,49 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
   const [profileName, setProfileName] = useState('')
   const [profileOrg, setProfileOrg] = useState('')
   const [profileInitials, setProfileInitials] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
       setProfileName('')
       setProfileOrg('')
       setProfileInitials('')
+      setIsAdmin(false)
       return
     }
     fetch('/api/profile/update')
       .then((res) => res.json())
-      .then((data: { profile?: { first_name?: string | null; last_name?: string | null; email?: string | null; organization?: string | null } | null }) => {
-        if (data.profile) {
-          const p = data.profile
-          const first = p.first_name || ''
-          const last = p.last_name || ''
-          const name = [first, last].filter(Boolean).join(' ') || p.email || 'User'
-          const initials =
-            [first, last]
-              .filter(Boolean)
-              .map((n: string) => n[0]?.toUpperCase())
-              .join('') || 'U'
-          setProfileName(name)
-          setProfileOrg(p.organization || '')
-          setProfileInitials(initials)
-        } else {
-          setProfileName('')
-          setProfileOrg('')
-          setProfileInitials('')
+      .then(
+        (data: {
+          profile?: {
+            first_name?: string | null
+            last_name?: string | null
+            email?: string | null
+            organization?: string | null
+            role?: string | null
+          } | null
+        }) => {
+          setIsAdmin(data.profile?.role === 'admin')
+          if (data.profile) {
+            const p = data.profile
+            const first = p.first_name || ''
+            const last = p.last_name || ''
+            const name = [first, last].filter(Boolean).join(' ') || p.email || 'User'
+            const initials =
+              [first, last]
+                .filter(Boolean)
+                .map((n: string) => n[0]?.toUpperCase())
+                .join('') || 'U'
+            setProfileName(name)
+            setProfileOrg(p.organization || '')
+            setProfileInitials(initials)
+          } else {
+            setProfileName('')
+            setProfileOrg('')
+            setProfileInitials('')
+          }
         }
-      })
+      )
       .catch(() => {})
   }, [isLoaded, isSignedIn])
 
@@ -122,6 +135,86 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
           </span>
         )}
       </button>
+
+      {/* ── Mobile header bar ── */}
+      <div className="prop-mobile-header">
+        <Link href="/" className="prop-mobile-brand">Property Sentinel</Link>
+        <button
+          type="button"
+          className="prop-mobile-hamburger"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Open menu"
+        >
+          <span /><span /><span />
+        </button>
+      </div>
+
+      {/* ── Mobile drawer overlay ── */}
+      {isOpen && (
+        <div className="prop-mobile-drawer-backdrop" onClick={() => setIsOpen(false)}>
+          <div className="prop-mobile-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="prop-mobile-drawer-header">
+              <Link href="/" className="prop-sidebar-brand" onClick={() => setIsOpen(false)}>
+                Property Sentinel
+              </Link>
+              <button
+                type="button"
+                className="prop-mobile-drawer-close"
+                onClick={() => setIsOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="prop-mobile-drawer-nav">
+              <button
+                type="button"
+                className={`prop-sidebar-nav-item ${activeTab === 'search' ? 'active' : ''}`}
+                onClick={() => {
+                  setIsOpen(false)
+                  setActiveTab('search')
+                  const recent = getRecentSearches()
+                  if (recent.length > 0) {
+                    router.push(`/address/${encodeURIComponent(recent[0].slug)}`)
+                  } else {
+                    router.push('/search')
+                  }
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+                Property search
+              </button>
+              <button
+                type="button"
+                className={`prop-sidebar-nav-item ${activeTab === 'portfolio' ? 'active' : ''}`}
+                onClick={() => { setIsOpen(false); router.push('/portfolio') }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
+                Portfolio
+              </button>
+              <button
+                type="button"
+                className={`prop-sidebar-nav-item ${activeTab === 'account' ? 'active' : ''}`}
+                onClick={() => { setIsOpen(false); router.push('/profile') }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                Account
+              </button>
+            </div>
+            {isSignedIn && (
+              <div className="prop-mobile-drawer-footer">
+                <div className="prop-sidebar-user">
+                  <div className="prop-sidebar-avatar">{footerInitials}</div>
+                  <div>
+                    <div className="prop-sidebar-username">{footerName}</div>
+                    {profileOrg && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{profileOrg}</div>}
+                    <button type="button" className="prop-sidebar-signout" onClick={() => signOut({ redirectUrl: '/' })}>Sign out</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {isOpen ? (
         <>
@@ -176,6 +269,24 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
               </svg>
               Account
             </button>
+            {isAdmin && (
+              <button
+                type="button"
+                className={`prop-sidebar-nav-item ${activeTab === 'explore' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('explore')
+                  router.push('/explore')
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                </svg>
+                Explore
+              </button>
+            )}
           </div>
 
           <div className="prop-sidebar-content">
