@@ -3,30 +3,48 @@
 import { useClerk, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getRecentSearches, type RecentSearch } from '@/lib/recent-searches'
 
-type SidebarTab = 'search' | 'portfolio' | 'account' | 'explore'
+type SidebarTab = 'search' | 'portfolio' | 'account' | 'explore' | 'about'
 
 type Props = {
   initialTab?: SidebarTab
 }
 
-type SavedPropertyPreview = {
-  id: string
-  slug: string
-  display_name: string | null
-  address_range: string | null
-  canonical_address: string
-  alerts_enabled: boolean
-}
-
 export default function PropertySidebar({ initialTab = 'search' }: Props) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('ps-sidebar-open') === 'true'
+  })
+  const [sidebarAnimating, setSidebarAnimating] = useState(false)
+  const isInitialMount = useRef(true)
+
+  useEffect(() => {
+    localStorage.setItem('ps-sidebar-open', String(isOpen))
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    if (isOpen) {
+      setSidebarAnimating(true)
+      const t = setTimeout(() => setSidebarAnimating(false), 350)
+      return () => clearTimeout(t)
+    }
+  }, [isOpen])
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [sidebarReady, setSidebarReady] = useState(false)
   const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab)
+
+  useEffect(() => {
+    if (isOpen) {
+      const t = setTimeout(() => setSidebarReady(true), 350)
+      return () => clearTimeout(t)
+    }
+    setSidebarReady(false)
+  }, [isOpen])
+
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([])
-  const [savedProperties, setSavedProperties] = useState<SavedPropertyPreview[]>([])
-  const [loadingSaved, setLoadingSaved] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const { user, isSignedIn, isLoaded } = useUser()
@@ -39,27 +57,6 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
   useEffect(() => {
     setRecentSearches(getRecentSearches())
   }, [pathname])
-
-  useEffect(() => {
-    if (activeTab !== 'portfolio' || !isLoaded) return
-    if (!isSignedIn) {
-      setSavedProperties([])
-      setLoadingSaved(false)
-      return
-    }
-    setLoadingSaved(true)
-    fetch('/api/portfolio/list')
-      .then((res) => res.json())
-      .then((data: { error?: string; properties?: SavedPropertyPreview[] }) => {
-        if (data.error) {
-          setSavedProperties([])
-          return
-        }
-        setSavedProperties((data.properties ?? []).slice(0, 4))
-      })
-      .catch(() => setSavedProperties([]))
-      .finally(() => setLoadingSaved(false))
-  }, [activeTab, isSignedIn, isLoaded])
 
   const [profileName, setProfileName] = useState('')
   const [profileOrg, setProfileOrg] = useState('')
@@ -119,7 +116,9 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
   const footerInitials = profileInitials || avatarLetter
 
   return (
-    <div className={`prop-sidebar ${isOpen ? 'prop-sidebar-expanded' : 'prop-sidebar-collapsed'}`}>
+    <div
+      className={`prop-sidebar ${isOpen ? `prop-sidebar-expanded${sidebarReady ? ' sidebar-ready' : ''}${sidebarAnimating ? ' sidebar-animating' : ''}` : 'prop-sidebar-collapsed'}`}
+    >
       <button
         type="button"
         className="prop-sidebar-toggle"
@@ -142,75 +141,87 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
         <button
           type="button"
           className="prop-mobile-hamburger"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setIsMobileMenuOpen(true)}
           aria-label="Open menu"
         >
           <span /><span /><span />
         </button>
       </div>
 
-      {/* ── Mobile drawer overlay ── */}
-      {isOpen && (
-        <div className="prop-mobile-drawer-backdrop" onClick={() => setIsOpen(false)}>
-          <div className="prop-mobile-drawer" onClick={(e) => e.stopPropagation()}>
-            <div className="prop-mobile-drawer-header">
-              <Link href="/" className="prop-sidebar-brand" onClick={() => setIsOpen(false)}>
-                Property Sentinel
+      {/* ── Mobile fullscreen nav ── */}
+      {isMobileMenuOpen && (
+        <div className="prop-mobile-overlay">
+          <div className="prop-mobile-overlay-top">
+            <Link href="/" className="prop-mobile-overlay-brand" onClick={() => setIsMobileMenuOpen(false)}>
+              Property Sentinel
+            </Link>
+            <button
+              type="button"
+              className="prop-mobile-overlay-close"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+          <nav className="prop-mobile-overlay-nav">
+            <button
+              type="button"
+              className="prop-mobile-overlay-item"
+              onClick={() => {
+                setIsMobileMenuOpen(false)
+                const recent = getRecentSearches()
+                if (recent.length > 0) {
+                  router.push(`/address/${encodeURIComponent(recent[0].slug)}`)
+                } else {
+                  router.push('/search')
+                }
+              }}
+            >
+              <span>Property Search</span>
+              <span className="prop-mobile-overlay-chevron">›</span>
+            </button>
+            <button
+              type="button"
+              className="prop-mobile-overlay-item"
+              onClick={() => { setIsMobileMenuOpen(false); router.push('/portfolio') }}
+            >
+              <span>Portfolio</span>
+              <span className="prop-mobile-overlay-chevron">›</span>
+            </button>
+            <button
+              type="button"
+              className="prop-mobile-overlay-item"
+              onClick={() => { setIsMobileMenuOpen(false); router.push('/profile') }}
+            >
+              <span>Account</span>
+              <span className="prop-mobile-overlay-chevron">›</span>
+            </button>
+            <button
+              type="button"
+              className="prop-mobile-overlay-item"
+              onClick={() => { setIsMobileMenuOpen(false); router.push('/status') }}
+            >
+              <span>System Status</span>
+              <span className="prop-mobile-overlay-chevron">›</span>
+            </button>
+          </nav>
+          <div className="prop-mobile-overlay-footer">
+            {isSignedIn ? (
+              <button
+                type="button"
+                className="prop-mobile-overlay-signout"
+                onClick={() => signOut({ redirectUrl: '/' })}
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                href="/sign-in"
+                className="prop-mobile-overlay-signin"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Log in
               </Link>
-              <button
-                type="button"
-                className="prop-mobile-drawer-close"
-                onClick={() => setIsOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="prop-mobile-drawer-nav">
-              <button
-                type="button"
-                className={`prop-sidebar-nav-item ${activeTab === 'search' ? 'active' : ''}`}
-                onClick={() => {
-                  setIsOpen(false)
-                  setActiveTab('search')
-                  const recent = getRecentSearches()
-                  if (recent.length > 0) {
-                    router.push(`/address/${encodeURIComponent(recent[0].slug)}`)
-                  } else {
-                    router.push('/search')
-                  }
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-                Property search
-              </button>
-              <button
-                type="button"
-                className={`prop-sidebar-nav-item ${activeTab === 'portfolio' ? 'active' : ''}`}
-                onClick={() => { setIsOpen(false); router.push('/portfolio') }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-                Portfolio
-              </button>
-              <button
-                type="button"
-                className={`prop-sidebar-nav-item ${activeTab === 'account' ? 'active' : ''}`}
-                onClick={() => { setIsOpen(false); router.push('/profile') }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                Account
-              </button>
-            </div>
-            {isSignedIn && (
-              <div className="prop-mobile-drawer-footer">
-                <div className="prop-sidebar-user">
-                  <div className="prop-sidebar-avatar">{footerInitials}</div>
-                  <div>
-                    <div className="prop-sidebar-username">{footerName}</div>
-                    {profileOrg && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{profileOrg}</div>}
-                    <button type="button" className="prop-sidebar-signout" onClick={() => signOut({ redirectUrl: '/' })}>Sign out</button>
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         </div>
@@ -225,7 +236,6 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
           </div>
 
           <div className="prop-sidebar-nav">
-            <div className="prop-sidebar-nav-label">Navigation</div>
             <button
               type="button"
               className={`prop-sidebar-nav-item ${activeTab === 'search' ? 'active' : ''}`}
@@ -248,26 +258,15 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
             <button
               type="button"
               className={`prop-sidebar-nav-item ${activeTab === 'portfolio' ? 'active' : ''}`}
-              onClick={() => setActiveTab('portfolio')}
+              onClick={() => {
+                setActiveTab('portfolio')
+                router.push('/portfolio')
+              }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
               Portfolio
-            </button>
-            <button
-              type="button"
-              className={`prop-sidebar-nav-item ${activeTab === 'account' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('account')
-                router.push('/profile')
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              Account
             </button>
             {isAdmin && (
               <button
@@ -287,118 +286,80 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
                 Explore
               </button>
             )}
+            <button
+              type="button"
+              className={`prop-sidebar-nav-item ${activeTab === 'about' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('about')
+                router.push('/about')
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
+              </svg>
+              About
+            </button>
+            <button
+              type="button"
+              className={`prop-sidebar-nav-item ${activeTab === 'account' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('account')
+                router.push('/profile')
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              Account
+            </button>
           </div>
 
           <div className="prop-sidebar-content">
-            {activeTab === 'search' && (
-              <div className="prop-sidebar-section">
-                <div className="prop-sidebar-section-label">Recent</div>
-                <div className="prop-sidebar-recent-list">
-                  {recentSearches.length === 0 ? (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>
-                      No recent searches
-                    </div>
-                  ) : (
-                    recentSearches.map((s) => (
-                      <Link
-                        key={s.slug}
-                        href={`/address/${encodeURIComponent(s.slug)}`}
-                        className="prop-sidebar-recent-item"
-                      >
-                        {s.address}
-                      </Link>
-                    ))
-                  )}
-                </div>
+            <div className="prop-sidebar-section">
+              <div className="prop-sidebar-section-label">Recent</div>
+              <div className="prop-sidebar-recent-list">
+                {recentSearches.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>
+                    No recent searches
+                  </div>
+                ) : (
+                  recentSearches.slice(0, 4).map((s) => (
+                    <Link
+                      key={s.slug}
+                      href={`/address/${encodeURIComponent(s.slug)}`}
+                      className="prop-sidebar-recent-item"
+                    >
+                      {s.address}
+                    </Link>
+                  ))
+                )}
               </div>
-            )}
+            </div>
 
+            {/* Saved properties — dormant for now
             {activeTab === 'portfolio' && (
               <div className="prop-sidebar-section">
                 <div className="prop-sidebar-section-label">Saved properties</div>
-                <div className="prop-sidebar-recent-list">
-                  {!isLoaded ? (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>Loading...</div>
-                  ) : !isSignedIn ? (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>
-                      Sign in to see saved properties
-                    </div>
-                  ) : loadingSaved ? (
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 0' }}>Loading...</div>
-                  ) : savedProperties.length === 0 ? (
-                    <div style={{ padding: '16px 0', textAlign: 'center' }}>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>Add your first property</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', lineHeight: 1.4 }}>
-                        Use the{' '}
-                        <span style={{ display: 'inline-flex', verticalAlign: 'middle', margin: '0 2px' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
-                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                          </svg>
-                        </span>{' '}
-                        button on any property
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {savedProperties.map((p) => (
-                        <Link
-                          key={p.id}
-                          href={`/address/${encodeURIComponent(p.slug)}`}
-                          className="prop-sidebar-recent-item"
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
-                        >
-                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {p.display_name || p.address_range || p.canonical_address}
-                          </span>
-                          {p.alerts_enabled && (
-                            <span
-                              style={{
-                                width: 6,
-                                height: 6,
-                                borderRadius: '50%',
-                                background: '#2d6a4f',
-                                flexShrink: 0,
-                              }}
-                              aria-hidden
-                            />
-                          )}
-                        </Link>
-                      ))}
-                      <Link
-                        href="/portfolio"
-                        style={{
-                          display: 'block',
-                          textAlign: 'center',
-                          fontSize: 11,
-                          color: 'rgba(255,255,255,0.4)',
-                          padding: '10px 0 2px',
-                          textDecoration: 'underline',
-                          textUnderlineOffset: '2px',
-                        }}
-                      >
-                        View all
-                      </Link>
-                    </>
-                  )}
-                </div>
+                ...
               </div>
             )}
+            */}
           </div>
 
           <div className="prop-sidebar-footer">
             {isSignedIn ? (
-              <div className="prop-sidebar-user">
+              <Link href="/profile" className="prop-sidebar-user" style={{ textDecoration: 'none', cursor: 'pointer' }} onClick={() => setActiveTab('account')}>
                 <div className="prop-sidebar-avatar">{footerInitials}</div>
                 <div>
                   <div className="prop-sidebar-username">{footerName}</div>
                   {profileOrg && (
                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{profileOrg}</div>
                   )}
-                  <button type="button" className="prop-sidebar-signout" onClick={() => signOut({ redirectUrl: '/' })}>
-                    Sign out
-                  </button>
                 </div>
-              </div>
+              </Link>
             ) : (
               <Link href="/sign-in" className="prop-sidebar-signin">
                 Sign in
