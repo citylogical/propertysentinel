@@ -644,18 +644,19 @@ body {
 /* Page layout — navy sidebar + main (cream) + light address header */
 .address-page .prop-page-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .address-page .prop-main-content {
   flex: 1;
   min-width: 0;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--cream);
   padding-left: 8px;
   position: relative;
+  overflow-y: auto;
 }
 
 .address-page .prop-main-content::before {
@@ -902,7 +903,6 @@ body {
 
 .address-page .prop-sidebar-collapsed {
   width: 32px;
-  min-height: 100vh;
   background: var(--navy);
   cursor: default;
   box-sizing: border-box;
@@ -913,7 +913,6 @@ body {
 
 .address-page .prop-sidebar-expanded {
   width: 220px;
-  min-height: 100vh;
   background: var(--navy);
   display: flex;
   flex-direction: column;
@@ -928,6 +927,12 @@ body {
 .address-page .prop-sidebar-expanded .prop-sidebar-content,
 .address-page .prop-sidebar-expanded .prop-sidebar-footer {
   min-width: 220px;
+}
+
+.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-header,
+.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-nav,
+.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-content,
+.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-footer {
   animation: sidebarContentIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
 }
 

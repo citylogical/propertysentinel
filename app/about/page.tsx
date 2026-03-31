@@ -1,15 +1,21 @@
-import Link from 'next/link'
+import PropertySidebar from '@/components/PropertySidebar'
+import AboutClient from './AboutClient'
+import './about.css'
+
+export const metadata = {
+  title: 'Property Sentinel — About',
+  description: 'Chicago property intelligence powered by 13M+ public records.',
+}
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-[#f2f0eb] p-6">
-      <nav className="mb-8">
-        <Link href="/" className="text-[var(--navy)] font-semibold no-underline hover:underline">
-          ← Property Sentinel
-        </Link>
-      </nav>
-      <h1 className="text-2xl font-bold text-[#1a1a1a]">About</h1>
-      <p className="mt-2 text-[#4a5568]">This page is a placeholder. Content coming soon.</p>
+    <div className="address-page">
+      <div className="prop-page-shell">
+        <PropertySidebar initialTab="about" />
+        <div className="prop-main-content">
+          <AboutClient />
+        </div>
+      </div>
     </div>
   )
 }
