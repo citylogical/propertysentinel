@@ -29,13 +29,13 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'HDF',     label: 'Lead Inspection Request',                     category: 'building',           defaultVisible: true },
   { code: 'SCB',     label: 'Sanitation Code Violation',                   category: 'building',           defaultVisible: true },
   { code: 'SHVR',    label: 'Shared Housing/Vacation Rental Complaint',    category: 'building',           defaultVisible: true },
-  { code: 'CAFE',    label: 'Sidewalk Café/Outdoor Dining Complaint',      category: 'building',           defaultVisible: true },
   { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'building',           defaultVisible: true },
   { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'building',           defaultVisible: true },
   { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'building',           defaultVisible: true },
   { code: 'WM3',     label: 'Check for Leak',                              category: 'building',           defaultVisible: true },
   { code: 'WBJ',     label: 'No Water Complaint',                          category: 'building',           defaultVisible: true },
   { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'building',           defaultVisible: true },
+  { code: 'PETCO',   label: 'Petcoke Dust Complaint',                      category: 'building',           defaultVisible: true },
   { code: 'WCA',     label: 'Water Quality Concern',                       category: 'building',           defaultVisible: true },
 
 
@@ -47,19 +47,16 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'LIQUORCO',label: 'Liquor Establishment Complaint',              category: 'business',           defaultVisible: true },
   { code: 'CSF',     label: 'Consumer Fraud Complaint',                    category: 'business',           defaultVisible: true },
   { code: 'CST',     label: 'Consumer Retail Business Complaint',          category: 'business',           defaultVisible: true },
-  { code: 'CSP',     label: 'Public Vehicle/Valet Complaint',              category: 'business',           defaultVisible: true },
-  { code: 'CSC',     label: 'Cab Feedback',                                category: 'business',           defaultVisible: true },
+  { code: 'CAFE',    label: 'Sidewalk Café/Outdoor Dining Complaint',      category: 'business',           defaultVisible: true },
   { code: 'CORNVEND',label: 'Pushcart Food Vendor Complaint',              category: 'business',           defaultVisible: true },
   { code: 'FPC',     label: 'Inaccurate Fuel Pump Complaint',              category: 'business',           defaultVisible: true },
   { code: 'INR',     label: 'Inaccurate Retail Scales Complaint',          category: 'business',           defaultVisible: true },
   { code: 'ODM',     label: 'Outdated Merchandise Complaint',              category: 'business',           defaultVisible: true },
   { code: 'MWC',     label: 'Wage Complaint',                              category: 'business',           defaultVisible: true },
   { code: 'PSL',     label: 'Paid Sick Leave Violation',                   category: 'business',           defaultVisible: true },
-  { code: 'QAC',     label: 'City Vehicle Sticker Violation',              category: 'business',           defaultVisible: true },
   { code: 'NOSOLCPP',label: 'No Solicitation Complaint',                   category: 'business',           defaultVisible: true },
   { code: 'HFF',     label: 'Smokeless Tobacco at Sports Event Complaint', category: 'business',           defaultVisible: true },
   { code: 'LPRC',    label: 'Licensed Pharmaceutical Representative Complaint', category: 'business',      defaultVisible: true },
-  { code: 'PETCO',   label: 'Petcoke Dust Complaint',                      category: 'business',           defaultVisible: true },
   { code: 'RFC',     label: 'Renters and Foreclosure Complaint',           category: 'business',           defaultVisible: true },
   
 
@@ -81,6 +78,8 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'TNP',     label: 'Ridesharing Complaint',                       category: 'street_nuisance',    defaultVisible: false },
   { code: 'FPCE',    label: 'Finance Parking Code Enforcement Review',     category: 'street_nuisance',    defaultVisible: false },
   { code: 'SKA',     label: 'Abandoned Vehicle Complaint',                 category: 'street_nuisance',    defaultVisible: false },
+  { code: 'CSP',     label: 'Public Vehicle/Valet Complaint',              category: 'street_nuisance',    defaultVisible: false },
+  { code: 'CSC',     label: 'Cab Feedback',                                category: 'street_nuisance',    defaultVisible: false },
   { code: 'VBL',     label: 'Vehicle Parked in Bike Lane Complaint',       category: 'street_nuisance',    defaultVisible: false },
   { code: 'SCC',     label: 'Missed Garbage Pick-Up Complaint',            category: 'street_nuisance',    defaultVisible: false },
   { code: 'SCP',     label: 'Weed Removal Request',                        category: 'street_nuisance',    defaultVisible: false },
@@ -99,6 +98,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'DBPC',    label: 'Divvy Bike Parking Complaint',                category: 'street_nuisance',    defaultVisible: false },
   { code: 'DBES',    label: 'Submerged Divvy or Lime Device in the Lake/River', category: 'street_nuisance', defaultVisible: false },
   { code: 'PCL',     label: 'Bicycle Request/Complaint',                   category: 'street_nuisance',    defaultVisible: false },
+  { code: 'QAC',     label: 'City Vehicle Sticker Violation',              category: 'street_nuisance',    defaultVisible: false },
   { code: 'PCL3',    label: 'E-Scooter',                                   category: 'street_nuisance',    defaultVisible: false },
 
   // ── STREET INFRASTRUCTURE — hidden by default ──────────────────────────────

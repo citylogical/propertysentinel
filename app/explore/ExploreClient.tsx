@@ -64,22 +64,54 @@ function useDebouncedValue<T>(value: T, ms: number): T {
   return debounced
 }
 
+const FIRST_EXPLORE_TABLE = EXPLORE_TABLE_LIST[0].name
+
+type ExploreTablePrefs = {
+  visibleKeys: string[]
+  columnOrder: string[]
+  columnWidths: Record<string, number>
+}
+
+function readExploreTablePrefs(table: string): ExploreTablePrefs | null {
+  try {
+    const raw = localStorage.getItem(`ps-explore-cols-${table}`)
+    if (!raw) return null
+    return JSON.parse(raw) as ExploreTablePrefs
+  } catch {
+    return null
+  }
+}
+
+function exploreVisibilityFromKeys(def: TableDef, keys: string[]): VisibilityState {
+  const vis: VisibilityState = {}
+  for (const c of def.columns) {
+    vis[c.key] = keys.includes(c.key)
+  }
+  return vis
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function ExploreClient() {
   const [activeExploreTab, setActiveExploreTab] = useState<'data' | 'leads'>('data')
 
   // Table selection
-  const [selectedTable, setSelectedTable] = useState<string>(EXPLORE_TABLE_LIST[0].name)
+  const [selectedTable, setSelectedTable] = useState<string>(FIRST_EXPLORE_TABLE)
   const tableDef: TableDef = EXPLORE_TABLES[selectedTable]
 
   // TanStack state
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: tableDef.defaultSort, desc: tableDef.defaultSortDesc ?? false },
-  ])
+  const [sorting, setSorting] = useState<SortingState>(() => {
+    const def = EXPLORE_TABLES[FIRST_EXPLORE_TABLE]
+    return [{ id: def.defaultSort, desc: def.defaultSortDesc ?? false }]
+  })
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    getDefaultVisibleColumns(selectedTable)
-  )
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
+    const prefs = readExploreTablePrefs(FIRST_EXPLORE_TABLE)
+    const def = EXPLORE_TABLES[FIRST_EXPLORE_TABLE]
+    if (prefs?.visibleKeys?.length) {
+      return exploreVisibilityFromKeys(def, prefs.visibleKeys)
+    }
+    return getDefaultVisibleColumns(FIRST_EXPLORE_TABLE)
+  })
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 50 })
 
   // Data
@@ -92,10 +124,21 @@ export default function ExploreClient() {
   // Column visibility popover
   const [showColumnPicker, setShowColumnPicker] = useState(false)
   const colPickerRef = useRef<HTMLDivElement>(null)
+  const widthSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Column resizing & reordering
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([])
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
+    const prefs = readExploreTablePrefs(FIRST_EXPLORE_TABLE)
+    return prefs?.columnWidths ?? {}
+  })
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+    const prefs = readExploreTablePrefs(FIRST_EXPLORE_TABLE)
+    const def = EXPLORE_TABLES[FIRST_EXPLORE_TABLE]
+    if (prefs?.columnOrder?.length) {
+      return prefs.columnOrder.filter((k) => def.columns.some((c) => c.key === k))
+    }
+    return []
+  })
   const dragCol = useRef<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
 
@@ -109,6 +152,12 @@ export default function ExploreClient() {
     flagFilter?: string
   }>({ open: false, type: 'shvr', address: '', data: [], loading: false })
 
+  const [pendingAnnotations, setPendingAnnotations] = useState<
+    Record<number, { flag?: string; verified_address?: string; notes?: string }>
+  >({})
+  const [annotationSaving, setAnnotationSaving] = useState(false)
+  const [annotationSaved, setAnnotationSaved] = useState(false)
+
   // Debounce filters so we don't fire on every keystroke
   const debouncedFilters = useDebouncedValue(columnFilters, 400)
 
@@ -116,16 +165,25 @@ export default function ExploreClient() {
   const handleTableChange = useCallback((tableName: string) => {
     const def = EXPLORE_TABLES[tableName]
     if (!def) return
+    const prefs = readExploreTablePrefs(tableName)
     setSelectedTable(tableName)
-    setColumnVisibility(getDefaultVisibleColumns(tableName))
+    if (prefs?.visibleKeys?.length) {
+      setColumnVisibility(exploreVisibilityFromKeys(def, prefs.visibleKeys))
+    } else {
+      setColumnVisibility(getDefaultVisibleColumns(tableName))
+    }
     setColumnFilters([])
     setSorting([{ id: def.defaultSort, desc: def.defaultSortDesc ?? false }])
     setPagination({ pageIndex: 0, pageSize: 50 })
     setData([])
     setTotalRows(0)
     setPageCount(0)
-    setColumnOrder([])
-    setColumnSizing({})
+    if (prefs?.columnOrder?.length) {
+      setColumnOrder(prefs.columnOrder.filter((k) => def.columns.some((c) => c.key === k)))
+    } else {
+      setColumnOrder([])
+    }
+    setColumnSizing(prefs?.columnWidths ?? {})
   }, [])
 
   // ── Drill-down handler ───────────────────────────────────────────────
@@ -148,29 +206,98 @@ export default function ExploreClient() {
     []
   )
 
-  // ── Annotation save handler ──────────────────────────────────────────
-  const handleAnnotationSave = useCallback(
-    (row: Record<string, unknown>, field: string, value: string) => {
-      const listingId = Number(row.id)
-      setDrillModal((prev) => ({
+  const updatePendingAnnotation = useCallback(
+    (listingId: number, field: 'flag' | 'verified_address' | 'notes', value: string) => {
+      setPendingAnnotations((prev) => ({
         ...prev,
-        data: prev.data.map((r) =>
-          Number(r.id) === listingId ? { ...r, [field]: value || null } : r
-        ),
+        [listingId]: {
+          ...prev[listingId],
+          [field]: value,
+        },
       }))
-      fetch('/api/explore/pbl-annotate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          listing_id: listingId,
-          flag: field === 'flag' ? (value || null) : (String(row.flag ?? '') || null),
-          verified_address: field === 'verified_address' ? (value || null) : (String(row.verified_address ?? '') || null),
-          notes: field === 'notes' ? (value || null) : (String(row.notes ?? '') || null),
-        }),
-      }).catch(console.error)
+      setAnnotationSaved(false)
     },
     []
   )
+
+  const saveAllAnnotations = useCallback(async () => {
+    const snapshot = pendingAnnotations
+    const entries = Object.entries(snapshot)
+    if (entries.length === 0) return
+
+    const rowById = new Map(drillModal.data.map((r) => [Number(r.id), r]))
+
+    setAnnotationSaving(true)
+    try {
+      const results = await Promise.allSettled(
+        entries.map(async ([listingId, fields]) => {
+          const id = Number(listingId)
+          const row = rowById.get(id) ?? {}
+          const flagRaw =
+            fields.flag !== undefined ? fields.flag : String(row.flag ?? '')
+          const addrRaw =
+            fields.verified_address !== undefined
+              ? fields.verified_address
+              : String(row.verified_address ?? '')
+          const notesRaw =
+            fields.notes !== undefined ? fields.notes : String(row.notes ?? '')
+          const res = await fetch('/api/explore/pbl-annotate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              listing_id: id,
+              flag: flagRaw ? flagRaw : null,
+              verified_address: addrRaw ? addrRaw : null,
+              notes: notesRaw ? notesRaw : null,
+            }),
+          })
+          const json = (await res.json().catch(() => ({}))) as { error?: string }
+          if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+          return Number(listingId)
+        })
+      )
+
+      const ok: number[] = []
+      const failed: number[] = []
+      results.forEach((r, i) => {
+        const id = Number(entries[i][0])
+        if (r.status === 'fulfilled') ok.push(id)
+        else failed.push(id)
+      })
+      if (failed.length > 0) {
+        console.error(`[annotations] ${failed.length} saves failed`)
+      }
+
+      if (ok.length > 0) {
+        setDrillModal((prev) => ({
+          ...prev,
+          data: prev.data.map((row) => {
+            const id = Number(row.id)
+            if (!ok.includes(id)) return row
+            const patch = snapshot[id] ?? {}
+            return { ...row, ...patch }
+          }),
+        }))
+        setPendingAnnotations((prev) => {
+          const next = { ...prev }
+          for (const id of ok) delete next[id]
+          return next
+        })
+        setAnnotationSaved(true)
+        setTimeout(() => setAnnotationSaved(false), 3000)
+      }
+    } catch (err) {
+      console.error('[annotations] Save failed:', err)
+    } finally {
+      setAnnotationSaving(false)
+    }
+  }, [pendingAnnotations, drillModal.data])
+
+  const closeDrillModal = useCallback(() => {
+    setDrillModal((p) => ({ ...p, open: false }))
+    setPendingAnnotations({})
+    setAnnotationSaved(false)
+  }, [])
 
   // ── Fetch data ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -237,6 +364,39 @@ export default function ExploreClient() {
       return () => document.removeEventListener('mousedown', onClickOutside)
     }
   }, [showColumnPicker])
+
+  // ── Persist column visibility (Data explorer) ───────────────────────
+  useEffect(() => {
+    if (activeExploreTab !== 'data') return
+    const keys = tableDef.columns.filter((c) => columnVisibility[c.key]).map((c) => c.key)
+    try {
+      const key = `ps-explore-cols-${selectedTable}`
+      const existing = JSON.parse(localStorage.getItem(key) || '{}')
+      localStorage.setItem(key, JSON.stringify({ ...existing, visibleKeys: keys }))
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisibility, selectedTable, tableDef.columns, activeExploreTab])
+
+  // ── Debounced column width persistence ───────────────────────────────
+  useEffect(() => {
+    if (activeExploreTab !== 'data') return
+    if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
+    widthSaveTimer.current = setTimeout(() => {
+      if (Object.keys(columnSizing).length > 0) {
+        try {
+          const key = `ps-explore-cols-${selectedTable}`
+          const existing = JSON.parse(localStorage.getItem(key) || '{}')
+          localStorage.setItem(key, JSON.stringify({ ...existing, columnWidths: columnSizing }))
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 500)
+    return () => {
+      if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
+    }
+  }, [columnSizing, selectedTable, activeExploreTab])
 
   // ── Build TanStack columns ───────────────────────────────────────────
   const columns = useMemo<TanStackColumnDef<Record<string, unknown>>[]>(() => {
@@ -412,7 +572,7 @@ export default function ExploreClient() {
               <div className="explore-col-picker">
                 <div className="explore-col-picker-header">
                   <span>Toggle Columns</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
                       type="button"
                       className="explore-col-picker-action"
@@ -441,6 +601,17 @@ export default function ExploreClient() {
                       }}
                     >
                       None
+                    </button>
+                    <button
+                      type="button"
+                      className="explore-reset-cols-btn"
+                      title="Reset column layout"
+                      onClick={() => {
+                        localStorage.removeItem(`ps-explore-cols-${selectedTable}`)
+                        window.location.reload()
+                      }}
+                    >
+                      Reset columns
                     </button>
                   </div>
                 </div>
@@ -518,6 +689,16 @@ export default function ExploreClient() {
                       currentOrder.splice(fromIdx, 1)
                       currentOrder.splice(toIdx, 0, dragCol.current)
                       setColumnOrder(currentOrder)
+                      try {
+                        const key = `ps-explore-cols-${selectedTable}`
+                        const existing = JSON.parse(localStorage.getItem(key) || '{}')
+                        localStorage.setItem(
+                          key,
+                          JSON.stringify({ ...existing, columnOrder: currentOrder })
+                        )
+                      } catch {
+                        /* ignore */
+                      }
                       dragCol.current = null
                     }}
                     onDragEnd={() => {
@@ -699,7 +880,7 @@ export default function ExploreClient() {
             ? 'SHVR Complaints near'
             : 'Airbnb Listings near'
         return (
-          <div className="explore-modal-backdrop" onClick={() => setDrillModal((p) => ({ ...p, open: false }))}>
+          <div className="explore-modal-backdrop" onClick={closeDrillModal}>
             <div className="explore-modal" onClick={(e) => e.stopPropagation()}>
               <div className="explore-modal-header">
                 <div>
@@ -720,7 +901,7 @@ export default function ExploreClient() {
                   <button
                     type="button"
                     className="explore-modal-close"
-                    onClick={() => setDrillModal((p) => ({ ...p, open: false }))}
+                    onClick={closeDrillModal}
                   >
                     ✕
                   </button>
@@ -778,15 +959,19 @@ export default function ExploreClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayData.map((row, i) => (
-                        <tr key={i}>
+                      {displayData.map((row) => {
+                        const rowId = Number(row.id)
+                        const effFlag =
+                            pendingAnnotations[rowId]?.flag ?? String(row.flag ?? '')
+                        return (
+                        <tr key={rowId}>
                           <td>
                             <select
                               className={`explore-annotation-select ${
-                                row.flag === 'yes' ? 'ann-yes' : row.flag === 'maybe' ? 'ann-maybe' : row.flag === 'no' ? 'ann-no' : ''
+                                effFlag === 'yes' ? 'ann-yes' : effFlag === 'maybe' ? 'ann-maybe' : effFlag === 'no' ? 'ann-no' : ''
                               }`}
-                              value={String(row.flag ?? '')}
-                              onChange={(e) => handleAnnotationSave(row, 'flag', e.target.value)}
+                              value={effFlag}
+                              onChange={(e) => updatePendingAnnotation(rowId, 'flag', e.target.value)}
                             >
                               <option value="">—</option>
                               <option value="yes">Yes</option>
@@ -818,34 +1003,65 @@ export default function ExploreClient() {
                           <td>{row.host_listings_count != null ? String(row.host_listings_count) : '—'}</td>
                           <td>
                             <input
-                              key={`addr-${row.id}`}
                               type="text"
                               className="explore-annotation-input"
-                              defaultValue={String(row.verified_address ?? '')}
+                              value={
+                                pendingAnnotations[rowId]?.verified_address ??
+                                String(row.verified_address ?? '')
+                              }
                               placeholder="Address…"
-                              onBlur={(e) => handleAnnotationSave(row, 'verified_address', e.target.value)}
+                              onChange={(e) =>
+                                updatePendingAnnotation(rowId, 'verified_address', e.target.value)
+                              }
                             />
                           </td>
                           <td>
                             <input
-                              key={`notes-${row.id}`}
                               type="text"
                               className="explore-annotation-input explore-annotation-notes"
-                              defaultValue={String(row.notes ?? '')}
+                              value={
+                                pendingAnnotations[rowId]?.notes ?? String(row.notes ?? '')
+                              }
                               placeholder="Notes…"
-                              onBlur={(e) => handleAnnotationSave(row, 'notes', e.target.value)}
+                              onChange={(e) => updatePendingAnnotation(rowId, 'notes', e.target.value)}
                             />
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 )}
               </div>
               <div className="explore-modal-footer">
-                {displayData.length} {drillModal.type === 'shvr' ? 'complaint' : 'listing'}
-                {displayData.length !== 1 ? 's' : ''} within {drillModal.type === 'shvr' ? '40m' : '150m'}
-                {drillModal.flagFilter ? ` (filtered: ${drillModal.flagFilter})` : ''}
+                <span>
+                  {displayData.length} {drillModal.type === 'shvr' ? 'complaint' : 'listing'}
+                  {displayData.length !== 1 ? 's' : ''} within {drillModal.type === 'shvr' ? '40m' : '150m'}
+                  {drillModal.flagFilter ? ` (filtered: ${drillModal.flagFilter})` : ''}
+                </span>
+                {drillModal.type === 'airbnb' && (
+                  <div className="explore-modal-save-row">
+                    {Object.keys(pendingAnnotations).length > 0 && !annotationSaved && (
+                      <span className="explore-modal-unsaved">
+                        {Object.keys(pendingAnnotations).length} unsaved{' '}
+                        {Object.keys(pendingAnnotations).length === 1 ? 'change' : 'changes'}
+                      </span>
+                    )}
+                    {annotationSaved && (
+                      <span className="explore-modal-saved">Saved ✓</span>
+                    )}
+                    <button
+                      type="button"
+                      className="explore-modal-save-btn"
+                      onClick={saveAllAnnotations}
+                      disabled={
+                        annotationSaving || Object.keys(pendingAnnotations).length === 0
+                      }
+                    >
+                      {annotationSaving ? 'Saving…' : 'Save all'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

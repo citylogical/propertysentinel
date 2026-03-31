@@ -11,10 +11,45 @@ import {
   type PaginationState,
   type ColumnOrderState,
   type ColumnSizingState,
+  type VisibilityState,
 } from '@tanstack/react-table'
 import { EXPLORE_TABLES, type ColumnDef as AppColumnDef, type TableDef } from '@/lib/explore-tables'
 
 const PBL_TABLE = 'pbl_intelligence_live' as const
+
+const LEAD_PREFS_KEY = 'ps-lead-explorer-cols'
+const LEAD_META_COLS = ['lead_contact', 'lead_status', 'lead_notes'] as const
+
+type LeadTablePrefs = {
+  visibleKeys: string[]
+  columnOrder: string[]
+  columnWidths: Record<string, number>
+}
+
+function readLeadPrefs(): LeadTablePrefs | null {
+  try {
+    const raw = localStorage.getItem(LEAD_PREFS_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as LeadTablePrefs
+  } catch {
+    return null
+  }
+}
+
+function defaultLeadVisibility(tableDef: TableDef): VisibilityState {
+  const v: VisibilityState = {}
+  for (const c of tableDef.columns) {
+    v[c.key] = c.defaultVisible === true
+  }
+  for (const id of LEAD_META_COLS) {
+    v[id] = true
+  }
+  return v
+}
+
+function allLeadColumnIds(tableDef: TableDef): string[] {
+  return [...tableDef.columns.map((c) => c.key), ...LEAD_META_COLS]
+}
 
 type QueryResponse = {
   data: Record<string, unknown>[]
@@ -68,6 +103,7 @@ function useDebouncedValue<T>(value: T, ms: number): T {
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'not_started', label: 'Not started' },
+  { value: 'target', label: 'Target' },
   { value: 'letter_sent', label: 'Letter sent' },
   { value: 'called', label: 'Called' },
   { value: 'responded', label: 'Responded' },
@@ -80,10 +116,6 @@ type Props = {
 
 export default function LeadExplorer({ onDrillClick }: Props) {
   const tableDef: TableDef = EXPLORE_TABLES[PBL_TABLE]
-  const defaultColKeys = useMemo(
-    () => tableDef.columns.filter((c) => c.defaultVisible === true).map((c) => c.key),
-    [tableDef]
-  )
 
   const [sorting, setSorting] = useState<SortingState>([
     { id: tableDef.defaultSort, desc: tableDef.defaultSortDesc ?? false },
@@ -99,10 +131,30 @@ export default function LeadExplorer({ onDrillClick }: Props) {
 
   const [leadsByAppId, setLeadsByAppId] = useState<Map<number, LeadRow>>(new Map())
   const [revealLoading, setRevealLoading] = useState<number | null>(null)
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
+    const prefs = readLeadPrefs()
+    const base = defaultLeadVisibility(tableDef)
+    if (prefs?.visibleKeys?.length) {
+      for (const id of allLeadColumnIds(tableDef)) {
+        base[id] = prefs.visibleKeys.includes(id)
+      }
+    }
+    return base
+  })
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(
+    () => readLeadPrefs()?.columnWidths ?? {}
+  )
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+    const prefs = readLeadPrefs()
+    if (!prefs?.columnOrder?.length) return []
+    const valid = new Set(allLeadColumnIds(tableDef))
+    return prefs.columnOrder.filter((k) => valid.has(k))
+  })
   const dragCol = useRef<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
+  const widthSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showColumnPicker, setShowColumnPicker] = useState(false)
+  const colPickerRef = useRef<HTMLDivElement>(null)
 
   const debouncedFilters = useDebouncedValue(columnFilters, 400)
 
@@ -125,10 +177,67 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     refreshLeads()
   }, [refreshLeads])
 
+  const visiblePblColDefs = useMemo(() => {
+    const visibleKeys = tableDef.columns
+      .filter((c) => columnVisibility[c.key])
+      .map((c) => c.key)
+    const order =
+      columnOrder.length > 0
+        ? columnOrder.filter((k) => visibleKeys.includes(k))
+        : visibleKeys
+    const rest = visibleKeys.filter((k) => !order.includes(k))
+    const keys = [...order, ...rest]
+    return keys
+      .map((k) => tableDef.columns.find((c) => c.key === k))
+      .filter((c): c is AppColumnDef => Boolean(c))
+  }, [tableDef, columnVisibility, columnOrder])
+
   const queryColumns = useMemo(
-    () => [...new Set([...defaultColKeys, 'lat', 'lng'])],
-    [defaultColKeys]
+    () => [...new Set([...visiblePblColDefs.map((c) => c.key), 'lat', 'lng'])],
+    [visiblePblColDefs]
   )
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setShowColumnPicker(false)
+      }
+    }
+    if (showColumnPicker) {
+      document.addEventListener('mousedown', onClickOutside)
+      return () => document.removeEventListener('mousedown', onClickOutside)
+    }
+  }, [showColumnPicker])
+
+  useEffect(() => {
+    const keys = allLeadColumnIds(tableDef).filter((id) => columnVisibility[id])
+    try {
+      const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
+      localStorage.setItem(LEAD_PREFS_KEY, JSON.stringify({ ...existing, visibleKeys: keys }))
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisibility, tableDef])
+
+  useEffect(() => {
+    if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
+    widthSaveTimer.current = setTimeout(() => {
+      if (Object.keys(columnSizing).length > 0) {
+        try {
+          const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
+          localStorage.setItem(
+            LEAD_PREFS_KEY,
+            JSON.stringify({ ...existing, columnWidths: columnSizing })
+          )
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 500)
+    return () => {
+      if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
+    }
+  }, [columnSizing])
 
   useEffect(() => {
     let cancelled = false
@@ -199,14 +308,8 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     []
   )
 
-  const pblColumns = useMemo(() => {
-    return defaultColKeys
-      .map((key) => tableDef.columns.find((c) => c.key === key))
-      .filter((c): c is AppColumnDef => Boolean(c))
-  }, [defaultColKeys, tableDef.columns])
-
   const columns = useMemo<TanStackColumnDef<Record<string, unknown>>[]>(() => {
-    const base: TanStackColumnDef<Record<string, unknown>>[] = pblColumns.map((col) => ({
+    const base: TanStackColumnDef<Record<string, unknown>>[] = visiblePblColDefs.map((col) => ({
       id: col.key,
       accessorKey: col.key,
       header: col.label,
@@ -336,8 +439,49 @@ export default function LeadExplorer({ onDrillClick }: Props) {
       meta: { type: 'text', sticky: false },
     }
 
-    return [...base, leadContact, leadStatus, leadNotes]
-  }, [pblColumns, leadsByAppId, onDrillClick, revealLoading, saveLead])
+    const byId = new Map<string, TanStackColumnDef<Record<string, unknown>>>()
+    for (const c of base) {
+      if (c.id) byId.set(c.id, c)
+    }
+    if (columnVisibility.lead_contact) byId.set('lead_contact', leadContact)
+    if (columnVisibility.lead_status) byId.set('lead_status', leadStatus)
+    if (columnVisibility.lead_notes) byId.set('lead_notes', leadNotes)
+
+    const defaultOrder: string[] = [
+      ...visiblePblColDefs.map((c) => c.key),
+      ...(columnVisibility.lead_contact ? ['lead_contact'] : []),
+      ...(columnVisibility.lead_status ? ['lead_status'] : []),
+      ...(columnVisibility.lead_notes ? ['lead_notes'] : []),
+    ]
+
+    let orderedIds: string[] = defaultOrder
+    if (columnOrder.length > 0) {
+      const seen = new Set<string>()
+      orderedIds = []
+      for (const id of columnOrder) {
+        if (byId.has(id) && !seen.has(id)) {
+          orderedIds.push(id)
+          seen.add(id)
+        }
+      }
+      for (const id of defaultOrder) {
+        if (!seen.has(id)) {
+          orderedIds.push(id)
+          seen.add(id)
+        }
+      }
+    }
+
+    return orderedIds.map((id) => byId.get(id)).filter((c): c is TanStackColumnDef<Record<string, unknown>> => Boolean(c))
+  }, [
+    visiblePblColDefs,
+    leadsByAppId,
+    onDrillClick,
+    revealLoading,
+    saveLead,
+    columnVisibility,
+    columnOrder,
+  ])
 
   const table = useReactTable({
     data,
@@ -371,12 +515,114 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }
 
+  const leadColTotal = allLeadColumnIds(tableDef).length
+  const leadColVisible = allLeadColumnIds(tableDef).filter((id) => columnVisibility[id]).length
+
+  const leadColLabels: Record<string, string> = {
+    lead_contact: 'Contact',
+    lead_status: 'Status',
+    lead_notes: 'Notes',
+  }
+
   return (
     <>
       <div className="explore-toolbar explore-lead-toolbar">
         <div className="explore-toolbar-left">
           <span className="explore-row-count explore-lead-title">PBL Intelligence — leads</span>
           <span className="explore-row-count">{loading ? '…' : totalRows.toLocaleString()} rows</span>
+          <div className="explore-col-picker-wrap" ref={colPickerRef} style={{ marginLeft: 12 }}>
+            <button
+              type="button"
+              className="explore-btn"
+              onClick={() => setShowColumnPicker(!showColumnPicker)}
+            >
+              Columns {leadColVisible}/{leadColTotal}
+            </button>
+            {showColumnPicker && (
+              <div className="explore-col-picker">
+                <div className="explore-col-picker-header">
+                  <span>Toggle columns</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="explore-col-picker-action"
+                      onClick={() => {
+                        const all: VisibilityState = {}
+                        for (const id of allLeadColumnIds(tableDef)) {
+                          all[id] = true
+                        }
+                        setColumnVisibility(all)
+                      }}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      className="explore-col-picker-action"
+                      onClick={() => setColumnVisibility(defaultLeadVisibility(tableDef))}
+                    >
+                      Default
+                    </button>
+                    <button
+                      type="button"
+                      className="explore-col-picker-action"
+                      onClick={() => {
+                        const none: VisibilityState = {}
+                        for (const id of allLeadColumnIds(tableDef)) {
+                          none[id] = false
+                        }
+                        setColumnVisibility(none)
+                      }}
+                    >
+                      None
+                    </button>
+                    <button
+                      type="button"
+                      className="explore-reset-cols-btn"
+                      title="Reset column layout"
+                      onClick={() => {
+                        localStorage.removeItem(LEAD_PREFS_KEY)
+                        window.location.reload()
+                      }}
+                    >
+                      Reset columns
+                    </button>
+                  </div>
+                </div>
+                <div className="explore-col-picker-list">
+                  {tableDef.columns.map((col) => (
+                    <label key={col.key} className="explore-col-picker-item">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility[col.key] ?? false}
+                        onChange={(e) =>
+                          setColumnVisibility((prev) => ({
+                            ...prev,
+                            [col.key]: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{col.label}</span>
+                      <span className="explore-col-picker-type">{col.type}</span>
+                    </label>
+                  ))}
+                  {LEAD_META_COLS.map((id) => (
+                    <label key={id} className="explore-col-picker-item">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility[id] ?? false}
+                        onChange={(e) =>
+                          setColumnVisibility((prev) => ({ ...prev, [id]: e.target.checked }))
+                        }
+                      />
+                      <span>{leadColLabels[id]}</span>
+                      <span className="explore-col-picker-type">lead</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -430,6 +676,15 @@ export default function LeadExplorer({ onDrillClick }: Props) {
                       currentOrder.splice(fromIdx, 1)
                       currentOrder.splice(toIdx, 0, dragCol.current)
                       setColumnOrder(currentOrder)
+                      try {
+                        const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
+                        localStorage.setItem(
+                          LEAD_PREFS_KEY,
+                          JSON.stringify({ ...existing, columnOrder: currentOrder })
+                        )
+                      } catch {
+                        /* ignore */
+                      }
                       dragCol.current = null
                     }}
                     onDragEnd={() => {
@@ -459,7 +714,7 @@ export default function LeadExplorer({ onDrillClick }: Props) {
               {table.getHeaderGroups()[0]?.headers.map((header) => {
                 const meta = header.column.columnDef.meta as { type?: string; sticky?: boolean } | undefined
                 const colKey = header.id
-                const pblCol = pblColumns.find((c) => c.key === colKey)
+                const pblCol = visiblePblColDefs.find((c) => c.key === colKey)
                 if (!pblCol) {
                   return (
                     <th

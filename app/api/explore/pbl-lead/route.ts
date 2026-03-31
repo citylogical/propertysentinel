@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const LEAD_STATUSES = ['not_started', 'letter_sent', 'called', 'responded', 'converted'] as const
+const LEAD_STATUSES = ['not_started', 'target', 'letter_sent', 'called', 'responded', 'converted'] as const
 
 async function requireExploreUser(supabase: ReturnType<typeof getSupabaseAdmin>, userId: string) {
   const { data: subscriber } = await supabase.from('subscribers').select('role').eq('clerk_id', userId).single()
