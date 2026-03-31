@@ -656,7 +656,8 @@ body {
   background: var(--cream);
   padding-left: 8px;
   position: relative;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 .address-page .prop-main-content::before {

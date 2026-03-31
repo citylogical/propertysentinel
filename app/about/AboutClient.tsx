@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 /* ────────────────────────────────────────────────────────────────────
-   DATA
+   FEATURE DATA (static — these don't need a database)
    ──────────────────────────────────────────────────────────────────── */
 
 type Feature = {
@@ -16,15 +17,15 @@ type Feature = {
 const FEATURES: Feature[] = [
   {
     category: '311 complaints',
-    headline: 'Know the moment it\u2019s filed',
+    headline: 'Know the moment it’s filed',
     description:
-      'Every complaint ingested within 30 minutes. Heating, rodents, building violations, shared housing \u2014 13M records, searchable by address.',
+      'Every complaint ingested within 30 minutes. Heating, rodents, building violations, shared housing — 13M records, searchable by address.',
     example: {
       title: '5540 S Hyde Park Blvd',
       lines: [
-        'Building Violation \u2014 Mar 4, 2026 \u00b7 Open',
-        'Heating Complaint \u2014 Jan 12, 2026 \u00b7 Completed',
-        'Rodent Baiting \u2014 Nov 8, 2025 \u00b7 Completed',
+        'Building Violation — Mar 4, 2026 · Open',
+        'Heating Complaint — Jan 12, 2026 · Completed',
+        'Rodent Baiting — Nov 8, 2025 · Completed',
         '134 total complaints on record',
       ],
     },
@@ -33,9 +34,9 @@ const FEATURES: Feature[] = [
     category: 'Building resolution',
     headline: 'One building, one record',
     description:
-      'Multiple addresses, multiple PINs \u2014 resolved automatically into a single unified property view.',
+      'Multiple addresses, multiple PINs — resolved automatically into a single unified property view.',
     example: {
-      title: '1112\u20131134 N La Salle & 153\u2013163 W Elm',
+      title: '1112–1134 N La Salle & 153–163 W Elm',
       lines: [
         '12 PINs resolved across 2 street addresses',
         'All complaints unified regardless of entrance',
@@ -52,9 +53,9 @@ const FEATURES: Feature[] = [
     example: {
       title: 'Inspection #14923847',
       lines: [
-        'Failed porch \u2014 wood deteriorated beyond repair',
-        'Handrails missing, rear staircase 2nd\u20133rd floor',
-        'Stop work order issued \u2014 permit #100924618',
+        'Failed porch — wood deteriorated beyond repair',
+        'Handrails missing, rear staircase 2nd–3rd floor',
+        'Stop work order issued — permit #100924618',
         'Cure deadline: 15 days from notice',
       ],
     },
@@ -65,7 +66,7 @@ const FEATURES: Feature[] = [
     description:
       'Airbnb listings cross-referenced against BACP registrations, the Prohibited Buildings List, and SHVR complaints.',
     example: {
-      title: '70 E Cedar St \u00b7 Prohibited Building',
+      title: '70 E Cedar St · Prohibited Building',
       lines: [
         '14 Airbnb listings detected within 150m',
         '7 SHVR complaints filed, 1 currently open',
@@ -83,7 +84,7 @@ const FEATURES: Feature[] = [
       title: 'PIN 17-04-207-086-1001',
       lines: [
         '2025 Mailed Total: $28,450',
-        'Class 299 \u2014 Condo, 10% assessment level',
+        'Class 299 — Condo, 10% assessment level',
         'Implied Market Value: $284,500',
         'CCAO website still shows 2023: $24,100',
       ],
@@ -95,7 +96,7 @@ const FEATURES: Feature[] = [
     description:
       'Save any property. Weekly digests free. Hourly SMS alerts on premium. The window between filing and inspection is everything.',
     example: {
-      title: 'Weekly digest \u2014 344 W Concord Pl',
+      title: 'Weekly digest — 344 W Concord Pl',
       lines: [
         '2 new 311 complaints filed this week',
         '1 permit status changed to ISSUED',
@@ -106,62 +107,39 @@ const FEATURES: Feature[] = [
   },
 ]
 
-type BlogPost = {
+/* ────────────────────────────────────────────────────────────────────
+   TYPES
+   ──────────────────────────────────────────────────────────────────── */
+
+type Tab = 'features' | 'pricing' | 'blog' | 'contact'
+
+type BlogPostSummary = {
   slug: string
   title: string
-  date: string
-  hasContent: boolean
+  date_label: string
 }
 
-const BLOG_POSTS: BlogPost[] = [
-  {
-    slug: 'shvr-complaint-lifecycle',
-    title: 'What happens after an SHVR complaint is filed in Chicago',
-    date: 'March 2026',
-    hasContent: true,
-  },
-  {
-    slug: '311-complaint-types',
-    title: 'Chicago 311 complaint types: what each code means for your property',
-    date: 'March 2026',
-    hasContent: false,
-  },
-  {
-    slug: '201-str-operators',
-    title: '201 licensed STR operators in Chicago: what the data shows',
-    date: 'April 2026',
-    hasContent: false,
-  },
-  {
-    slug: 'building-12-addresses',
-    title: 'Why one Chicago building has 12 different addresses',
-    date: 'April 2026',
-    hasContent: false,
-  },
-  {
-    slug: 'permits-inspections-violations',
-    title: 'Permits, inspections, and violations: how they\u2019re connected',
-    date: 'April 2026',
-    hasContent: false,
-  },
-  {
-    slug: 'assessed-values-2023-vs-2025',
-    title: 'Cook County assessed values: why the county shows 2023 and we show 2025',
-    date: 'May 2026',
-    hasContent: false,
-  },
-]
+type BlogPostFull = {
+  slug: string
+  title: string
+  date_label: string
+  body: string
+}
 
 /* ────────────────────────────────────────────────────────────────────
    COMPONENT
    ──────────────────────────────────────────────────────────────────── */
 
-type Tab = 'features' | 'pricing' | 'blog' | 'contact'
-
 export default function AboutClient() {
   const [activeTab, setActiveTab] = useState<Tab>('features')
   const [featureModal, setFeatureModal] = useState<number | null>(null)
-  const [readingPost, setReadingPost] = useState<string | null>(null)
+
+  // Blog state
+  const [blogPosts, setBlogPosts] = useState<BlogPostSummary[]>([])
+  const [blogLoading, setBlogLoading] = useState(false)
+  const [readingSlug, setReadingSlug] = useState<string | null>(null)
+  const [currentPost, setCurrentPost] = useState<BlogPostFull | null>(null)
+  const [postLoading, setPostLoading] = useState(false)
 
   // Pricing state
   const [isAnnual, setIsAnnual] = useState(false)
@@ -170,17 +148,69 @@ export default function AboutClient() {
   const switchTab = useCallback((tab: Tab) => {
     setActiveTab(tab)
     setFeatureModal(null)
-    setReadingPost(null)
+    setReadingSlug(null)
+    setCurrentPost(null)
   }, [])
 
-  const extra = Math.max(0, propertyCount - 3)
+  // Keyboard left/right arrow navigation
+  useEffect(() => {
+    const tabOrder: Tab[] = ['features', 'pricing', 'blog', 'contact']
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) return
+      if (readingSlug) return
 
-  // Monthly math
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setActiveTab((current) => {
+          const idx = tabOrder.indexOf(current)
+          if (e.key === 'ArrowRight') {
+            return tabOrder[(idx + 1) % tabOrder.length]
+          } else {
+            return tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length]
+          }
+        })
+        setFeatureModal(null)
+        setReadingSlug(null)
+        setCurrentPost(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [readingSlug])
+
+  // Fetch blog list when blog tab is active
+  useEffect(() => {
+    if (activeTab !== 'blog') return
+    setBlogLoading(true)
+    fetch('/api/blog')
+      .then((res) => res.json())
+      .then((data) => setBlogPosts(data.posts ?? []))
+      .catch(() => setBlogPosts([]))
+      .finally(() => setBlogLoading(false))
+  }, [activeTab])
+
+  // Fetch individual post when reading
+  useEffect(() => {
+    if (!readingSlug) {
+      setCurrentPost(null)
+      return
+    }
+    setPostLoading(true)
+    fetch(`/api/blog/${readingSlug}`)
+      .then((res) => res.json())
+      .then((data) => setCurrentPost(data.post ?? null))
+      .catch(() => setCurrentPost(null))
+      .finally(() => setPostLoading(false))
+  }, [readingSlug])
+
+  // Pricing math
+  const extra = Math.max(0, propertyCount - 3)
   const moBase = 25
   const moExtra = extra * 10
   const moTotal = moBase + moExtra
-
-  // Annual math (20% discount across the board)
   const yrBase = 240
   const yrExtraEach = 96
   const yrExtraTotal = extra * yrExtraEach
@@ -218,7 +248,7 @@ export default function AboutClient() {
 
       {/* ── Features ── */}
       {activeTab === 'features' && (
-        <div className="about-panel about-features-panel">
+        <div key="features" className="about-panel about-features-panel">
           <div className="about-features-grid">
             {FEATURES.map((f, i) => (
               <div
@@ -233,7 +263,6 @@ export default function AboutClient() {
             ))}
           </div>
 
-          {/* Centered modal overlay */}
           {featureModal !== null && (
             <div
               className="about-modal-overlay"
@@ -274,8 +303,7 @@ export default function AboutClient() {
 
       {/* ── Pricing ── */}
       {activeTab === 'pricing' && (
-        <div className="about-panel about-pricing-panel">
-          {/* Toggle */}
+        <div key="pricing" className="about-panel about-pricing-panel">
           <div className="pc-toggle">
             <span className={`pc-tl ${!isAnnual ? 'on' : ''}`}>Monthly</span>
             <button
@@ -289,14 +317,12 @@ export default function AboutClient() {
             {isAnnual && <span className="pc-save-pill">Save 20%</span>}
           </div>
 
-          {/* Free text */}
           <p className="pc-free-text">
             Every Chicago address is free to search — unlimited lookups, complete
             complaint, violation, permit, and assessment history.{' '}
             <strong>No account required.</strong>
           </p>
 
-          {/* Two cards */}
           <div className="pc-cards">
             <div className="pc-card">
               <div className="pc-tier pc-tier-dim">Account</div>
@@ -315,9 +341,7 @@ export default function AboutClient() {
                   ${isAnnual ? '20' : '25'}
                 </span>
                 <span className="pc-price-per">/mo</span>
-                {isAnnual && (
-                  <span className="pc-price-strike">$25</span>
-                )}
+                {isAnnual && <span className="pc-price-strike">$25</span>}
               </div>
               <div className="pc-sub">
                 {isAnnual
@@ -332,7 +356,6 @@ export default function AboutClient() {
             </div>
           </div>
 
-          {/* Slider */}
           <div className="pc-slider-section">
             <div className="pc-slider-header">
               <span className="pc-slider-label">
@@ -377,9 +400,7 @@ export default function AboutClient() {
                   </span>
                   <span>
                     <span className="pc-breakdown-val">
-                      {isAnnual
-                        ? `$${yrExtraTotal}`
-                        : `$${moExtra}`}
+                      {isAnnual ? `$${yrExtraTotal}` : `$${moExtra}`}
                     </span>
                     {isAnnual && (
                       <span className="pc-breakdown-strike">
@@ -428,116 +449,79 @@ export default function AboutClient() {
         </div>
       )}
 
-      {/* ── Blog ── */}
-      {activeTab === 'blog' && !readingPost && (
-        <div className="about-panel about-blog-panel">
-          <div className="about-blog-list">
-            {BLOG_POSTS.map((post) => (
-              <button
-                key={post.slug}
-                type="button"
-                className="about-blog-item"
-                onClick={() => post.hasContent && setReadingPost(post.slug)}
-                style={{ cursor: post.hasContent ? 'pointer' : 'default' }}
-              >
-                <div className="about-blog-title">{post.title}</div>
-                <div className="about-blog-date">
-                  {post.date}
-                  {!post.hasContent && (
-                    <span className="about-blog-soon"> · Coming soon</span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
+      {/* ── Blog List ── */}
+      {activeTab === 'blog' && !readingSlug && (
+        <div key="blog-list" className="about-panel about-blog-panel">
+          {blogLoading ? (
+            <div className="about-blog-loading">Loading…</div>
+          ) : blogPosts.length === 0 ? (
+            <div className="about-blog-loading">No posts yet.</div>
+          ) : (
+            <div className="about-blog-list">
+              {blogPosts.map((post) => (
+                <button
+                  key={post.slug}
+                  type="button"
+                  className="about-blog-item"
+                  onClick={() => setReadingSlug(post.slug)}
+                >
+                  <div className="about-blog-title">{post.title}</div>
+                  <div className="about-blog-date">{post.date_label}</div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Blog Post Reader ── */}
-      {activeTab === 'blog' && readingPost === 'shvr-complaint-lifecycle' && (
-        <div className="about-panel about-post-panel">
+      {activeTab === 'blog' && readingSlug && (
+        <div key="blog-post" className="about-panel about-post-panel">
           <button
             type="button"
             className="about-post-back"
-            onClick={() => setReadingPost(null)}
+            onClick={() => setReadingSlug(null)}
           >
             ← All posts
           </button>
-          <div className="about-post-layout">
-            <article className="about-post-article">
-              <div className="about-post-date">March 2026</div>
-              <h1 className="about-post-h1">
-                What happens after an SHVR complaint is filed in Chicago
-              </h1>
-              <div className="about-post-body">
-                <p>
-                  When someone files a Shared Housing Vacation Rental complaint
-                  through Chicago&apos;s 311 system, it enters a queue at the
-                  Department of Business Affairs and Consumer Protection. The
-                  complaint is assigned an SR number and classified under the
-                  short code SHVR. From that moment, the clock starts — but
-                  nobody tells the operator.
-                </p>
-                <p>
-                  We analyzed every SHVR complaint filed in Chicago since 2018.
-                  The median time from filing to resolution is 23 days. But that
-                  median hides enormous variance: complaints in the Loop close
-                  in 8–12 days; complaints in outlying wards can sit open for 90
-                  or more.
-                </p>
-                <p>
-                  The enforcement pattern is clear. BACP inspectors prioritize
-                  by geography and complaint density, not chronological order. A
-                  building with two SHVR complaints in a 30-day window moves to
-                  the front of the queue. A building with one complaint and no
-                  prior history waits.
-                </p>
-                <p>
-                  What makes this data actionable is the gap between filing and
-                  inspection. For most complaints, that window is 6 to 21 days —
-                  long enough to pull registrations, verify compliance, and
-                  address the issue before an inspector arrives. The operators
-                  who know the complaint was filed have time to respond. The
-                  operators who don&apos;t find out when someone knocks on the door.
-                </p>
-                <p>
-                  Property Sentinel ingests SHVR complaints within 30 minutes of
-                  filing. If your address is monitored, you&apos;ll know before the
-                  inspector is dispatched.
-                </p>
-                <p className="about-post-note">
-                  This analysis is based on 13.4 million 311 records in the
-                  Property Sentinel database, filtered to the SHVR complaint
-                  type. All data is sourced from the City of Chicago Data
-                  Portal.
-                </p>
-              </div>
-            </article>
-            <aside className="about-post-sidebar">
-              <div className="about-post-sidebar-label">More posts</div>
-              {BLOG_POSTS.filter((p) => p.slug !== readingPost).map((post) => (
-                <div
-                  key={post.slug}
-                  className="about-post-sidebar-item"
-                  onClick={() =>
-                    post.hasContent && setReadingPost(post.slug)
-                  }
-                  style={{
-                    cursor: post.hasContent ? 'pointer' : 'default',
-                  }}
-                >
-                  <div className="about-post-sidebar-title">{post.title}</div>
-                  <div className="about-post-sidebar-date">{post.date}</div>
+          {postLoading || !currentPost ? (
+            <div className="about-blog-loading">Loading…</div>
+          ) : (
+            <div className="about-post-layout">
+              <article className="about-post-article">
+                <div className="about-post-date">{currentPost.date_label}</div>
+                <h1 className="about-post-h1">{currentPost.title}</h1>
+                <div className="about-post-body">
+                  <ReactMarkdown>{currentPost.body}</ReactMarkdown>
                 </div>
-              ))}
-            </aside>
-          </div>
+              </article>
+              <aside className="about-post-sidebar">
+                <div className="about-post-sidebar-label">More posts</div>
+                {blogPosts
+                  .filter((p) => p.slug !== readingSlug)
+                  .map((post) => (
+                    <div
+                      key={post.slug}
+                      className="about-post-sidebar-item"
+                      onClick={() => setReadingSlug(post.slug)}
+                    >
+                      <div className="about-post-sidebar-title">
+                        {post.title}
+                      </div>
+                      <div className="about-post-sidebar-date">
+                        {post.date_label}
+                      </div>
+                    </div>
+                  ))}
+              </aside>
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Contact ── */}
       {activeTab === 'contact' && (
-        <div className="about-panel about-contact-panel">
+        <div key="contact" className="about-panel about-contact-panel">
           <div className="about-contact-row">
             <img
               src="/jim.jpg"
@@ -563,7 +547,7 @@ export default function AboutClient() {
                 organization or our city, please reach out.
               </p>
               <div className="about-contact-channels">
-                jim@propertysentinel.io
+                <a href="mailto:jim@propertysentinel.io">jim@propertysentinel.io</a>
               </div>
             </div>
           </div>
