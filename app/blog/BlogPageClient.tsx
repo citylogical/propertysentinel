@@ -138,10 +138,10 @@ export default function BlogPageClient() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      h1: ({ children }) => <h1 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f2744', margin: '24px 0 12px' }}>{children}</h1>,
-                      h2: ({ children }) => <h2 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 18, fontWeight: 700, color: '#0f2744', margin: '20px 0 10px' }}>{children}</h2>,
-                      h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '16px 0 8px' }}>{children}</h3>,
-                      h4: ({ children }) => <h4 style={{ fontSize: 13, fontWeight: 600, color: '#4a5568', margin: '14px 0 6px' }}>{children}</h4>,
+                      h2: ({ children }) => <h2 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 18, fontWeight: 700, color: '#0f2744', margin: '24px 0 12px' }}>{children}</h2>,
+                      h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '20px 0 8px' }}>{children}</h3>,
+                      h4: ({ children }) => <h4 style={{ fontSize: 13, fontWeight: 600, color: '#4a5568', margin: '16px 0 6px' }}>{children}</h4>,
+                      h5: ({ children }) => <h5 style={{ fontSize: 12, fontWeight: 600, color: '#4a5568', margin: '14px 0 4px' }}>{children}</h5>,
                       a: ({ href, children }) => (
                         <a
                           href={href}
