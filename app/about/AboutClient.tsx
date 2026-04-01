@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 /* ────────────────────────────────────────────────────────────────────
    FEATURE DATA (static — these don't need a database)
@@ -118,13 +117,7 @@ type Tab = 'features' | 'pricing' | 'contact'
    ──────────────────────────────────────────────────────────────────── */
 
 export default function AboutClient() {
-  const searchParams = useSearchParams()
-  const initialTab = searchParams.get('tab') as Tab | null
-  const [activeTab, setActiveTab] = useState<Tab>(
-    initialTab && ['features', 'pricing', 'contact'].includes(initialTab)
-      ? initialTab
-      : 'features'
-  )
+  const [activeTab, setActiveTab] = useState<Tab>('features')
   const [featureModal, setFeatureModal] = useState<number | null>(null)
 
   // Pricing state
