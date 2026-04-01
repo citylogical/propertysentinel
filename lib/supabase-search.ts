@@ -258,12 +258,27 @@ export async function fetchSiblingPins(
         if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
           const { data: mailingMatches } = await supabaseAdmin
             .from('properties')
-            .select('pin')
+            .select('pin, address_normalized')
             .eq('mailing_name', subject.mailing_name)
           if (mailingMatches && mailingMatches.length > 0) {
-            const mailingPins = mailingMatches.map((r: any) => r.pin).filter(Boolean) as string[]
-            allPins = [...new Set([pin, ...mailingPins])]
-            console.log('fetchSiblingPins Path D mailing lookup found', allPins.length, 'PINs')
+            const buildingAddressSet = new Set(manualBuilding.allAddresses)
+            const displayAddrs = manualBuilding.displayAddresses ?? manualBuilding.allAddresses
+            const displaySet = new Set(displayAddrs)
+            const scopedPins = mailingMatches
+              .filter((r: { address_normalized?: string | null }) => {
+                const addr = r.address_normalized
+                if (!addr) return false
+                return (
+                  buildingAddressSet.has(addr) ||
+                  displaySet.has(addr) ||
+                  displayAddrs.some((da) => addr.startsWith(da + ' '))
+                )
+              })
+              .map((r: { pin?: string | null }) => r.pin)
+              .filter(Boolean) as string[]
+            allPins =
+              scopedPins.length > 0 ? [...new Set([pin, ...scopedPins])] : [pin]
+            console.log('fetchSiblingPins Path D scoped mailing lookup:', allPins.length, 'PINs')
           }
         }
       }
@@ -273,6 +288,45 @@ export async function fetchSiblingPins(
         siblingPins: allPins,
         siblingAddresses: manualBuilding.allAddresses,
         addressRange: buildAddressRange(displayAddrs),
+        resolvedVia: 'mailing',
+      }
+    }
+
+    // PATH D2 — approved user-submitted building ranges
+    const userRange = await findApprovedUserRange(addressNormalized)
+    if (userRange) {
+      console.log('fetchSiblingPins Path D2 user range match for:', addressNormalized)
+
+      let allPins: string[] = [pin]
+      const { data: subject } = await supabaseAdmin.from('properties').select('mailing_name').eq('pin', pin).maybeSingle()
+      if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
+        const { data: mm } = await supabaseAdmin
+          .from('properties')
+          .select('pin, address_normalized')
+          .eq('mailing_name', subject.mailing_name)
+        if (mm && mm.length > 0) {
+          const rangeAddressSet = new Set(userRange.allAddresses)
+          const scopedPins = mm
+            .filter((r: { address_normalized?: string | null }) => {
+              const addr = r.address_normalized
+              if (!addr) return false
+              return (
+                rangeAddressSet.has(addr) ||
+                userRange.allAddresses.some((da) => addr.startsWith(da + ' '))
+              )
+            })
+            .map((r: { pin?: string | null }) => r.pin)
+            .filter(Boolean) as string[]
+          if (scopedPins.length > 0) {
+            allPins = [...new Set([pin, ...scopedPins])]
+          }
+        }
+      }
+
+      return {
+        siblingPins: allPins,
+        siblingAddresses: userRange.allAddresses,
+        addressRange: buildAddressRange(userRange.displayAddresses),
         resolvedVia: 'mailing',
       }
     }
@@ -347,7 +401,19 @@ export async function fetchSiblingPins(
     console.log('Path C subject:', JSON.stringify(subject), 'pin queried:', pin)
 
     if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
-      const streetWords = addressNormalized.split(' ').slice(2).join(' ')
+      const parts = addressNormalized.split(' ')
+      // Detect if second word is a direction (N/S/E/W) or part of the street name
+      const hasDirection = parts.length >= 3 && /^[NSEW]$/.test(parts[1])
+      const streetWords = hasDirection
+        ? parts.slice(2).join(' ')
+        : parts.slice(1).join(' ')
+
+      // Safety: don't run if street extracted is too short (just a type suffix like "AVE" or "ST")
+      if (!streetWords || streetWords.length <= 3) {
+        console.log('Path C skipped — street extraction too short:', streetWords)
+        return noSiblings
+      }
+
       const { data: siblings } = await supabaseAdmin
         .from('properties')
         .select('pin, address_normalized')
@@ -375,6 +441,76 @@ export async function fetchSiblingPins(
   } catch (e) {
     console.log('fetchSiblingPins error:', e instanceof Error ? e.message : String(e))
     return noSiblings
+  }
+}
+
+/**
+ * Enumerate addresses between low and high, respecting even/odd parity (one side of street).
+ * "342 W X" to "344 W X" → 342, 344. "609 W NORTH AVE" to "645 W NORTH AVE" → 609, 611, …, 645.
+ */
+function enumerateAddressRange(low: string, high: string): string[] {
+  const lowParts = low.trim().split(/\s+/)
+  const highParts = high.trim().split(/\s+/)
+  const lowNum = parseInt(lowParts[0] ?? '', 10)
+  const highNum = parseInt(highParts[0] ?? '', 10)
+  const street = lowParts.slice(1).join(' ')
+  if (Number.isNaN(lowNum) || Number.isNaN(highNum) || !street) return []
+  const start = Math.min(lowNum, highNum)
+  const end = Math.max(lowNum, highNum)
+  const parity = start % 2
+  const addresses: string[] = []
+  for (let num = start; num <= end; num++) {
+    if (num % 2 === parity) addresses.push(normalizeAddress(`${num} ${street}`))
+  }
+  return addresses
+}
+
+type UserBuildingRangeRow = {
+  street1_low: string | null
+  street1_high: string | null
+  street2_low: string | null
+  street2_high: string | null
+  street3_low: string | null
+  street3_high: string | null
+  street4_low: string | null
+  street4_high: string | null
+}
+
+async function findApprovedUserRange(
+  normalizedAddress: string
+): Promise<{
+  allAddresses: string[]
+  displayAddresses: string[]
+  canonicalAddress: string
+} | null> {
+  try {
+    const supabaseAdmin = getSupabaseAdmin()
+    const { data, error } = await supabaseAdmin.from('user_building_ranges').select('*').eq('status', 'approved')
+    if (error || !data?.length) return null
+
+    for (const range of data as UserBuildingRangeRow[]) {
+      const allAddresses: string[] = []
+      for (let i = 1; i <= 4; i++) {
+        const low = range[`street${i}_low` as keyof UserBuildingRangeRow] as string | null | undefined
+        const high = range[`street${i}_high` as keyof UserBuildingRangeRow] as string | null | undefined
+        if (!low || !high) continue
+        allAddresses.push(...enumerateAddressRange(low, high))
+      }
+      if (allAddresses.length === 0) continue
+
+      const uniqueAll = [...new Set(allAddresses)]
+      if (uniqueAll.includes(normalizedAddress)) {
+        return {
+          allAddresses: uniqueAll,
+          displayAddresses: uniqueAll,
+          canonicalAddress: uniqueAll[0]!,
+        }
+      }
+    }
+    return null
+  } catch (e) {
+    console.log('findApprovedUserRange error:', e instanceof Error ? e.message : String(e))
+    return null
   }
 }
 
@@ -1159,13 +1295,35 @@ export async function fetchCommercialChars(pin: string): Promise<{
 }> {
   try {
     const supabaseAdmin = getSupabaseAdmin()
-    const { data, error } = await supabaseAdmin
+
+    // First try: PIN is the keypin itself
+    let { data, error } = await supabaseAdmin
       .from('property_chars_commercial')
-      .select('keypin, tax_year, sheet, class, property_type_use, year_built, building_sqft, land_sqft, noi, caprate, final_market_value, income_market_value, adj_rent_sf, investment_rating')
+      .select('keypin, pins, tax_year, sheet, class, property_type_use, year_built, building_sqft, land_sqft, noi, caprate, final_market_value, income_market_value, adj_rent_sf, investment_rating')
       .eq('keypin', pin)
       .order('tax_year', { ascending: false })
       .order('sheet', { ascending: true })
+
     if (error) throw new Error(error.message)
+
+    // Second try: PIN appears inside another record's pins column
+    // The pins column stores dashed PINs like "17-04-411-006-0000"
+    if (!data || data.length === 0) {
+      const dashedPin = pin.replace(
+        /^(\d{2})(\d{2})(\d{3})(\d{3})(\d{4})$/,
+        '$1-$2-$3-$4-$5'
+      )
+      const { data: data2, error: error2 } = await supabaseAdmin
+        .from('property_chars_commercial')
+        .select('keypin, pins, tax_year, sheet, class, property_type_use, year_built, building_sqft, land_sqft, noi, caprate, final_market_value, income_market_value, adj_rent_sf, investment_rating')
+        .ilike('pins', `%${dashedPin}%`)
+        .order('tax_year', { ascending: false })
+        .order('sheet', { ascending: true })
+
+      if (error2) throw new Error(error2.message)
+      data = data2
+    }
+
     return { chars: data ?? [], error: null }
   } catch (e) {
     return { chars: [], error: e instanceof Error ? e.message : 'Unknown error' }

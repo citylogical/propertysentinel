@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
 
@@ -14,6 +15,19 @@ export default function PortfolioTable() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [syncedAt, setSyncedAt] = useState<string>('')
   const [orgName, setOrgName] = useState('')
+  const [unsaveTarget, setUnsaveTarget] = useState<{
+    displayName: string
+    canonicalAddress: string
+  } | null>(null)
+
+  const loadPortfolioList = useCallback(async () => {
+    const listData = await fetch('/api/portfolio/list').then((r) => r.json())
+    if (listData.error) {
+      throw new Error(String(listData.error))
+    }
+    setProperties((listData.properties as PortfolioProperty[]) ?? [])
+    setSyncedAt('just now')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -21,20 +35,15 @@ export default function PortfolioTable() {
     setError(null)
 
     Promise.all([
-      fetch('/api/portfolio/list').then((r) => r.json()),
+      loadPortfolioList(),
       fetch('/api/profile/update').then((r) => r.json()),
     ])
-      .then(([listData, profileData]: [Record<string, unknown>, Record<string, unknown>]) => {
+      .then(([, profileData]: [void, Record<string, unknown>]) => {
         if (cancelled) return
         const org = (profileData.profile as { organization?: string | null } | undefined)?.organization
         if (org && String(org).trim()) {
           setOrgName(String(org).trim())
         }
-        if (listData.error) {
-          throw new Error(String(listData.error))
-        }
-        setProperties((listData.properties as PortfolioProperty[]) ?? [])
-        setSyncedAt('just now')
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -48,7 +57,7 @@ export default function PortfolioTable() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [loadPortfolioList])
 
   const getStatus = (p: PortfolioProperty): { label: string; cls: string; tags: string[] } => {
     const tags: string[] = []
@@ -190,6 +199,7 @@ export default function PortfolioTable() {
                 <th className="center">Violations</th>
                 <th className="center">Permits</th>
                 <th className="center">Alerts</th>
+                <th className="center" aria-label="Remove" style={{ width: 40 }} />
               </tr>
             </thead>
             <tbody>
@@ -262,6 +272,26 @@ export default function PortfolioTable() {
                     <td className="center">
                       <span className={`portfolio-alert-dot ${p.alerts_enabled ? 'on' : 'off'}`} />
                     </td>
+                    <td className="center">
+                      <button
+                        type="button"
+                        className="portfolio-unsave-btn"
+                        title="Remove from portfolio"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setUnsaveTarget({
+                            displayName: p.display_name || p.address_range || p.canonical_address,
+                            canonicalAddress: p.canonical_address,
+                          })
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                          <path d="M3 6h18" />
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -273,6 +303,21 @@ export default function PortfolioTable() {
         </div>
 
         {selectedProperty && <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} />}
+
+        <UnsavePropertyModal
+          isOpen={!!unsaveTarget}
+          onClose={(didUnsave) => {
+            if (didUnsave && unsaveTarget) {
+              const ca = unsaveTarget.canonicalAddress
+              const removedId = properties.find((p) => p.canonical_address === ca)?.id
+              if (removedId && selectedId === removedId) setSelectedId(null)
+              loadPortfolioList().catch(() => {})
+            }
+            setUnsaveTarget(null)
+          }}
+          displayName={unsaveTarget?.displayName ?? ''}
+          canonicalAddress={unsaveTarget?.canonicalAddress ?? ''}
+        />
       </div>
     </>
   )

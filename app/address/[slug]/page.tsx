@@ -1,4 +1,6 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
+import { cache } from 'react'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import {
   fetchProperty,
@@ -28,20 +30,92 @@ import PropertyFeed from './PropertyFeed'
 import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
 import AddressBarButtons from './AddressBarButtons'
+import OwnerPortfolioCard from './OwnerPortfolioCard'
 import RecordSearch from './RecordSearch'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import React from 'react'
+
+const cachedFetchProperty = cache(async (normalizedAddress: string) => fetchProperty(normalizedAddress))
 
 type PageProps = {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ building?: string }>
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const display = slugToDisplayAddress(decodeURIComponent(slug))
+  const decodedSlug = decodeURIComponent(slug)
+  const normalizedAddress = slugToNormalizedAddress(decodedSlug)
+  const displayAddress =
+    slugToDisplayAddress(decodedSlug) || decodedSlug.replace(/-/g, ' ')
+
+  const { property } = await cachedFetchProperty(normalizedAddress)
+
+  const details: string[] = []
+  if (property) {
+    const classDesc = getClassDescription(property.property_class)
+    if (classDesc) details.push(classDesc)
+  }
+
+  const supabase = getSupabaseAdmin()
+  const [openViolations, openComplaints, permitCountResult] = await Promise.all([
+    supabase
+      .from('violations')
+      .select('violation_id', { count: 'exact', head: true })
+      .eq('address_normalized', normalizedAddress)
+      .or('violation_status.eq.OPEN,violation_status.eq.FAILED,inspection_status.eq.OPEN,inspection_status.eq.FAILED'),
+    supabase
+      .from('complaints_311')
+      .select('sr_number', { count: 'exact', head: true })
+      .eq('address_normalized', normalizedAddress)
+      .in('status', ['OPEN', 'Open', 'open']),
+    supabase
+      .from('permits')
+      .select('permit_number', { count: 'exact', head: true })
+      .ilike('address_normalized', `${normalizedAddress}%`),
+  ])
+
+  const vCount = openViolations.error ? null : openViolations.count
+  const cCount = openComplaints.error ? null : openComplaints.count
+  const pCount = permitCountResult.error ? null : permitCountResult.count
+
+  if (vCount != null && vCount > 0) {
+    details.push(`${vCount} open violation${vCount > 1 ? 's' : ''}`)
+  }
+  if (cCount != null && cCount > 0) {
+    details.push(`${cCount} open 311 complaint${cCount > 1 ? 's' : ''}`)
+  }
+  if (pCount != null && pCount > 0) {
+    details.push(`${pCount} permit${pCount > 1 ? 's' : ''} on record`)
+  }
+
+  const description =
+    details.length > 0
+      ? `${displayAddress} — ${details.join(' · ')}. View full property intelligence on Property Sentinel.`
+      : `${displayAddress} — View 311 complaints, violations, permits, and assessed values on Property Sentinel.`
+
+  const title = `${displayAddress} | Property Sentinel`
+  const url = `https://www.propertysentinel.io/address/${encodeURIComponent(slug)}`
+
   return {
-    title: display ? `Property Sentinel — ${display}` : 'Property Sentinel — Address',
-    description: '311 complaints, violations, and property details for this Chicago address.',
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: 'Property Sentinel',
+      type: 'website',
+      locale: 'en_US',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+    alternates: {
+      canonical: url,
+    },
   }
 }
 
@@ -194,11 +268,12 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const { slug } = await params
   const { building } = await searchParams
   let isExpanded = building === 'true'
+  let isLocalCondoExpand = false
   const decodedSlug = decodeURIComponent(slug)
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddress = slugToDisplayAddress(decodedSlug)
 
-  const propertyResult = await fetchProperty(normalizedAddress)
+  const propertyResult = await cachedFetchProperty(normalizedAddress)
   const property = propertyResult.property
   const nearestParcel = propertyResult.nearestParcel
   const pin: string | null =
@@ -221,6 +296,9 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   let siblingPinsForPortfolio: string[] = []
   let expandedSiblings: SiblingPin[] = []
   let buildingParcelCountForAv = 0
+  let ownerOtherProperties: { address: string; address_normalized: string; pin: string; neighborhood: string | null }[] = []
+  let ownerMailingName: string | null = null
+  let localCondoPins: string[] | null = null
 
   if (pin) {
     const normalizedPin = normalizePin(pin)
@@ -235,26 +313,70 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         isExpanded = true
       }
 
-      const useBuildingAssessedSum = isExpanded && siblings.siblingPins.length > 1
+      // Also auto-expand when multiple PINs share the exact searched address
+      // (e.g. 6 condo units at "1120 N LA SALLE ST" inside a larger 16-PIN building)
+      if (!isExpanded && siblings.siblingPins.length > 1 && siblings.addressRange !== normalizedAddress) {
+        const supabaseAdmin = getSupabaseAdmin()
+        // Try the searched address first
+        let { data: sameAddrPins } = await supabaseAdmin
+          .from('properties')
+          .select('pin')
+          .eq('address_normalized', normalizedAddress)
+
+        // If no results, try the canonical address from the manual building table
+        // (handles DR vs ST, LASALLE vs LA SALLE mismatches)
+        if ((!sameAddrPins || sameAddrPins.length <= 1) && property?.address) {
+          const canonicalAddr = property.address.toUpperCase().trim()
+          if (canonicalAddr !== normalizedAddress) {
+            const { data: canonicalPins } = await supabaseAdmin
+              .from('properties')
+              .select('pin')
+              .eq('address_normalized', canonicalAddr)
+            if (canonicalPins && canonicalPins.length > 1) {
+              sameAddrPins = canonicalPins
+            }
+          }
+        }
+
+        // Also try prefix match for unit-suffixed addresses
+        if (!sameAddrPins || sameAddrPins.length <= 1) {
+          const { data: prefixPins } = await supabaseAdmin
+            .from('properties')
+            .select('pin')
+            .like('address_normalized', `${property?.address ?? normalizedAddress} %`)
+          if (prefixPins && prefixPins.length > 1) {
+            sameAddrPins = prefixPins
+          }
+        }
+
+        if (sameAddrPins && sameAddrPins.length > 1) {
+          localCondoPins = sameAddrPins.map((r: { pin?: string | null }) => r.pin).filter(Boolean) as string[]
+          isExpanded = true
+          isLocalCondoExpand = true
+        }
+      }
+
+      const pinsForAssessment = localCondoPins ?? siblings.siblingPins
+      const useBuildingAssessedSum = isExpanded && pinsForAssessment.length > 1
 
       type AssessedUnion =
         | { mode: 'byPins'; result: Awaited<ReturnType<typeof fetchAssessedValuesByPins>> }
         | { mode: 'single'; result: Awaited<ReturnType<typeof fetchAssessedValue>> }
 
       const assessedPromise: Promise<AssessedUnion> = useBuildingAssessedSum
-        ? fetchAssessedValuesByPins(siblings.siblingPins).then((result) => ({ mode: 'byPins' as const, result }))
+        ? fetchAssessedValuesByPins(pinsForAssessment).then((result) => ({ mode: 'byPins' as const, result }))
         : fetchAssessedValue(normalizedPin).then((result) => ({ mode: 'single' as const, result }))
 
       const [assessedUnion, complaintsResult, violationsResult, permitsResult, charsResResult, charsCondoResult, parcelResult] =
         await Promise.all([
           assessedPromise,
-          isExpanded && siblings.siblingAddresses.length > 1
+          isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
             ? fetchComplaintsByAddresses(siblings.siblingAddresses)
             : fetchComplaints(normalizedAddress),
-          isExpanded && siblings.siblingAddresses.length > 1
+          isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
             ? fetchViolationsByAddresses(siblings.siblingAddresses)
             : fetchViolations(normalizedAddress),
-          isExpanded && siblings.siblingAddresses.length > 1
+          isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
             ? fetchPermitsByAddresses(siblings.siblingAddresses)
             : fetchPermits(normalizedAddress),
           fetchPropertyCharsResidential(normalizedPin),
@@ -272,22 +394,23 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       if (assessedUnion.mode === 'byPins') {
         assessedByPins = assessedUnion.result
         assessed = null
-        buildingParcelCountForAv = siblings.siblingPins.length
+        buildingParcelCountForAv = isLocalCondoExpand ? pinsForAssessment.length : siblingPinsForPortfolio.length
       } else {
         assessed = assessedUnion.result.assessed
         assessedByPins = null
         buildingParcelCountForAv = 0
       }
 
-      if (isExpanded && siblings.siblingPins.length > 0) {
-        const pinMap = await fetchPinAddressMap(siblings.siblingPins)
+      const pinsForExpansion = localCondoPins ?? (isExpanded ? siblings.siblingPins : [])
+      if (isExpanded && pinsForExpansion.length > 0) {
+        const pinMap = await fetchPinAddressMap(pinsForExpansion)
         if (assessedByPins && !assessedByPins.error) {
-          expandedSiblings = siblings.siblingPins.map((p, i) => {
+          expandedSiblings = pinsForExpansion.map((p, i) => {
             const r = assessedByPins!.results[i]
             const key = normalizePinSilent(p)
             return {
               pin: p,
-              address: pinMap[key] ?? siblings.siblingAddresses[i] ?? '',
+              address: pinMap[key] ?? siblings.siblingAddresses[i] ?? normalizedAddress,
               assessedClass: r?.assessedClass ?? null,
               assessedValue: r?.assessedValue ?? null,
               taxYear: r?.taxYear ?? null,
@@ -295,13 +418,13 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
             }
           })
         } else {
-          const assessedPerPin = await Promise.all(siblings.siblingPins.map((p) => fetchAssessedValue(p)))
-          expandedSiblings = siblings.siblingPins.map((p, i) => {
+          const assessedPerPin = await Promise.all(pinsForExpansion.map((p) => fetchAssessedValue(p)))
+          expandedSiblings = pinsForExpansion.map((p, i) => {
             const key = normalizePinSilent(p)
             const av = assessedPerPin[i].assessed
             return {
               pin: p,
-              address: pinMap[key] ?? siblings.siblingAddresses[i] ?? '',
+              address: pinMap[key] ?? siblings.siblingAddresses[i] ?? normalizedAddress,
               assessedClass: av?.class ?? null,
               assessedValue: av?.displayValue ?? null,
               taxYear: av?.taxYear ?? null,
@@ -333,6 +456,64 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     complaints = complaintsResult.complaints ?? []
     violations = violationsResult.violations ?? []
     permits = permitsResult.permits ?? []
+  }
+
+  if (property?.mailing_name && property.mailing_name.trim() !== '') {
+    ownerMailingName = property.mailing_name
+    const supabaseAdmin = getSupabaseAdmin()
+    const { data: ownerProps } = await supabaseAdmin
+      .from('properties')
+      .select('address, address_normalized, pin')
+      .eq('mailing_name', property.mailing_name)
+      .order('address_normalized', { ascending: true })
+      .limit(200)
+
+    const ownerPins = (ownerProps ?? [])
+      .map((p: { pin?: string | null }) => normalizePinSilent(String(p.pin ?? '')))
+      .filter(Boolean) as string[]
+    const { data: ownerParcels } =
+      ownerPins.length > 0
+        ? await supabaseAdmin
+            .from('parcel_universe')
+            .select('pin, community_area_name, municipality_name')
+            .in('pin', ownerPins)
+            .order('tax_year', { ascending: false })
+        : { data: [] as { pin: string; community_area_name: string | null; municipality_name: string | null }[] }
+    const pinToNeighborhood: Record<string, string> = {}
+    for (const row of ownerParcels ?? []) {
+      const pk = row.pin ? normalizePinSilent(String(row.pin)) : ''
+      if (!pk) continue
+      const label = row.community_area_name || row.municipality_name || null
+      if (label && pinToNeighborhood[pk] === undefined) {
+        pinToNeighborhood[pk] = label
+      }
+    }
+
+    if (ownerProps && ownerProps.length > 0) {
+      const excludePins =
+        isExpanded && building === 'true'
+          ? siblingPinsForPortfolio.map((p) => p.replace(/-/g, '').padStart(14, '0'))
+          : isLocalCondoExpand && localCondoPins && localCondoPins.length > 0
+            ? localCondoPins.map((p) => p.replace(/-/g, '').padStart(14, '0'))
+            : pin
+              ? [pin.replace(/-/g, '').padStart(14, '0')]
+              : []
+      const excludePinSet = new Set(excludePins)
+      ownerOtherProperties = ownerProps
+        .filter((p: { pin?: string | null }) => {
+          const pPin = (p.pin || '').replace(/-/g, '').padStart(14, '0')
+          return !excludePinSet.has(pPin)
+        })
+        .map((p: { address?: string | null; address_normalized?: string | null; pin?: string | null }) => {
+          const pPin = normalizePinSilent(String(p.pin ?? ''))
+          return {
+            address: (p.address || p.address_normalized) as string,
+            address_normalized: (p.address_normalized || p.address) as string,
+            pin: String(p.pin ?? ''),
+            neighborhood: (pPin && pinToNeighborhood[pPin]) || null,
+          }
+        })
+    }
   }
 
   const complaintsOpenCount = complaints.filter((c) => (c.status ?? '').toUpperCase() === 'OPEN').length
@@ -432,16 +613,31 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const displayClass = (parcel?.['class'] ?? assessed?.class) as string | null | undefined
   const classDescription = getClassDescription(displayClass)
 
+  const municipalityName = parcel?.municipality_name ?? null
+  const isChicago =
+    !municipalityName ||
+    municipalityName.toUpperCase() === 'CHICAGO' ||
+    municipalityName.toUpperCase() === 'CITY OF CHICAGO' ||
+    displayCommunityAreaName != null
+
+  const cityStateDisplay = isChicago
+    ? displayZip
+      ? `CHICAGO, IL ${displayZip}`
+      : 'CHICAGO, IL'
+    : displayZip
+      ? `${municipalityName!.toUpperCase()}, IL ${displayZip}`
+      : `${municipalityName!.toUpperCase()}, IL`
+
   const addressBarMeta = [
-    displayCommunityAreaName ?? property?.community_area ?? null,
+    displayCommunityAreaName ?? (isChicago ? property?.community_area ?? null : null),
     displayWard != null ? `Ward ${displayWard}` : property?.ward != null ? `Ward ${property.ward}` : null,
-    displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL',
+    cityStateDisplay,
   ]
     .filter(Boolean)
     .join(' · ')
 
   const addressBarHeadline =
-    isExpanded && addressRange
+    isExpanded && addressRange && !isLocalCondoExpand
       ? formatRangeForDisplay(addressRange)
       : displayAddress || slug
 
@@ -482,7 +678,8 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     currentAddress: displayAddress || addressBarHeadline,
     canonicalAddress: normalizedAddress,
     isPartOfBuilding: !!(addressRange && addressRange !== displayAddress),
-    buildingAddressRange: addressBarHeadline || null,
+    buildingAddressRange:
+      isLocalCondoExpand && addressRange ? formatRangeForDisplay(addressRange) : addressBarHeadline || null,
     additionalStreets:
       addressBarHeadline.includes(' & ') ? addressBarHeadline.split(' & ').slice(1).map((s) => s.trim()).filter(Boolean) : [],
     allPins: portfolioPins,
@@ -532,6 +729,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
               addressRange={addressRange}
               slug={decodedSlug}
               isExpanded={isExpanded}
+              isFullBuildingView={isExpanded && !isLocalCondoExpand}
               apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY}
               saveData={portfolioSaveData}
             />
@@ -737,6 +935,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
               </div>
             )}
           </div>
+
+          {ownerOtherProperties.length > 0 && ownerMailingName && (
+            <OwnerPortfolioCard mailingName={ownerMailingName} properties={ownerOtherProperties} />
+          )}
         </div>
 
             <PropertyFeed

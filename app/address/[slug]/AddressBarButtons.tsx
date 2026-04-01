@@ -2,10 +2,11 @@
 
 import { useUser } from '@clerk/nextjs'
 import Script from 'next/script'
-import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
+import BuildingDetectionModal from '@/components/BuildingDetectionModal'
 import SavePropertyModal from '@/components/SavePropertyModal'
+import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 import { addressToSlug } from '@/lib/address-slug'
 
 const ADDRESS_HEADER_SEARCH_INPUT_ID = 'address-header-search-input'
@@ -84,6 +85,8 @@ type Props = {
   addressRange: string | null
   slug: string
   isExpanded: boolean
+  /** True when the header shows the full building range (excludes local-condo-only expansion). */
+  isFullBuildingView: boolean
   apiKey?: string
   saveData: PortfolioSaveData
 }
@@ -92,15 +95,17 @@ export default function AddressBarButtons({
   addressRange,
   slug,
   isExpanded,
+  isFullBuildingView,
   apiKey,
   saveData,
 }: Props) {
   const { isSignedIn, isLoaded } = useUser()
-  const router = useRouter()
   const registeredRef = useRef(false)
   const initedRef = useRef(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [unsaveModalOpen, setUnsaveModalOpen] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
 
   useEffect(() => {
     if (!apiKey || registeredRef.current) return
@@ -158,7 +163,11 @@ export default function AddressBarButtons({
       window.location.href = '/sign-in'
       return
     }
-    setSaveModalOpen(true)
+    if (isSaved) {
+      setUnsaveModalOpen(true)
+    } else {
+      setSaveModalOpen(true)
+    }
   }
 
   return (
@@ -188,26 +197,42 @@ export default function AddressBarButtons({
           </form>
         </div>
 
-        {addressRange && (
-          <button
-            type="button"
-            className={`address-header-icon-btn ${!isExpanded ? 'address-header-icon-btn-building' : ''}`}
-            title={isExpanded ? 'View Prior Address' : 'View Full Building'}
-            onClick={() =>
-              isExpanded ? router.push(`/address/${slug}`) : router.push(`/address/${slug}?building=true`)
-            }
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isExpanded ? '#0f2744' : '#92400e'} strokeWidth="2">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
+        {/* Share link */}
+        <button
+          type="button"
+          className="address-header-icon-btn"
+          title="Copy link"
+          onClick={() => {
+            void navigator.clipboard.writeText(window.location.href)
+            setShareCopied(true)
+            setTimeout(() => setShareCopied(false), 1500)
+          }}
+        >
+          {shareCopied ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="20 6 9 17 4 12" />
             </svg>
-          </button>
-        )}
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f2744" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          )}
+        </button>
+
+        <BuildingDetectionModal
+          isPartOfBuilding={!!(saveData.buildingAddressRange && saveData.isPartOfBuilding)}
+          addressRange={addressRange ?? saveData.buildingAddressRange}
+          slug={slug}
+          searchedAddress={saveData.canonicalAddress}
+          isExpanded={isExpanded}
+          isFullBuildingView={isFullBuildingView}
+        />
 
         <button
           type="button"
           className="address-header-icon-btn address-header-icon-btn-alert"
-          title="Save to portfolio"
+          title={isSaved ? 'Remove from portfolio' : 'Save to portfolio'}
           onClick={openSaveFlow}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">
@@ -231,6 +256,15 @@ export default function AddressBarButtons({
         allPins={saveData.allPins}
         assessorSqft={saveData.assessorSqft}
         assessorUnits={saveData.assessorUnits}
+      />
+      <UnsavePropertyModal
+        isOpen={unsaveModalOpen}
+        onClose={(didUnsave) => {
+          setUnsaveModalOpen(false)
+          if (didUnsave) setIsSaved(false)
+        }}
+        displayName={saveData.buildingAddressRange || saveData.currentAddress}
+        canonicalAddress={saveData.canonicalAddress}
       />
     </>
   )
