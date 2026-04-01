@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type BlogTab = 'latest' | 'list'
 
@@ -135,6 +136,7 @@ export default function BlogPageClient() {
                 <h1 className="about-post-h1">{latestPost.title}</h1>
                 <div className="about-post-body">
                   <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
                     components={{
                       a: ({ href, children }) => (
                         <a

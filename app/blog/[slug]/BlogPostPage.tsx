@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type Post = {
   slug: string
@@ -61,6 +62,7 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
             <h1 className="about-post-h1">{post.title}</h1>
             <div className="about-post-body">
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   a: ({ href, children }) => (
                     <a

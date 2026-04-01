@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type Post = {
   id: string
@@ -314,7 +315,25 @@ export default function BlogEditor() {
           {/* Body */}
           {preview ? (
             <div className="about-post-body" style={{ minHeight: 300, padding: '12px 0' }}>
-              <ReactMarkdown>{body}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  h1: ({ children }) => <h1 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f2744', margin: '24px 0 12px' }}>{children}</h1>,
+                  h2: ({ children }) => <h2 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 18, fontWeight: 700, color: '#0f2744', margin: '20px 0 10px' }}>{children}</h2>,
+                  h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '16px 0 8px' }}>{children}</h3>,
+                  h4: ({ children }) => <h4 style={{ fontSize: 13, fontWeight: 600, color: '#4a5568', margin: '14px 0 6px' }}>{children}</h4>,
+                  table: ({ children }) => (
+                    <div style={{ overflowX: 'auto', margin: '16px 0' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: '"DM Mono", monospace' }}>{children}</table>
+                    </div>
+                  ),
+                  th: ({ children }) => <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #ddd9d0', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>{children}</th>,
+                  td: ({ children }) => <td style={{ padding: '6px 10px', borderBottom: '1px solid #eee8df', color: '#1a1a1a' }}>{children}</td>,
+                  a: ({ href, children }) => <a href={href} style={{ color: '#0f2744', textDecoration: 'underline', textUnderlineOffset: '2px' }}>{children}</a>,
+                }}
+              >
+                {body}
+              </ReactMarkdown>
             </div>
           ) : (
             <textarea
