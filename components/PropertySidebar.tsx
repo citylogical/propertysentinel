@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { getRecentSearches, type RecentSearch } from '@/lib/recent-searches'
 
-type SidebarTab = 'search' | 'portfolio' | 'account' | 'explore' | 'about'
+type SidebarTab = 'search' | 'portfolio' | 'account' | 'explore' | 'about' | 'blog'
 
 type Props = {
   initialTab?: SidebarTab
@@ -286,6 +286,23 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
                 Explore
               </button>
             )}
+            <button
+              type="button"
+              className={`prop-sidebar-nav-item ${activeTab === 'blog' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('blog')
+                router.push('/blog')
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="4" y="4" width="16" height="16" />
+                <path d="M4 8h16" />
+                <path d="M8 4v4" />
+                <path d="M7 12h6" />
+                <path d="M7 16h10" />
+              </svg>
+              Blog
+            </button>
             <button
               type="button"
               className={`prop-sidebar-nav-item ${activeTab === 'about' ? 'active' : ''}`}

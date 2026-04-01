@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase()
   const body = await req.json()
-  const { id, slug, title, body: postBody, date_label, published, sort_order } = body
+  const { id, slug, title, body: postBody, date_label, description, published, sort_order } = body
 
   if (!slug || !title || !postBody || !date_label) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
         date_label,
         published: published ?? false,
         sort_order: sort_order ?? 0,
+        description: description || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
       date_label,
       published: published ?? false,
       sort_order: sort_order ?? 0,
+      description: description || null,
     })
     .select()
     .single()

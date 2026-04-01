@@ -57,6 +57,8 @@ declare global {
 function initAddressHeaderAutocomplete(): void {
   const input = document.getElementById(ADDRESS_HEADER_SEARCH_INPUT_ID) as HTMLInputElement | null
   if (!input || !window.google?.maps?.places?.Autocomplete) return
+  if ((window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited) return
+  ;(window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited = true
 
   const autocomplete = new window.google.maps.places.Autocomplete(input, {
     types: ['address'],
@@ -96,6 +98,7 @@ export default function AddressBarButtons({
   const { isSignedIn, isLoaded } = useUser()
   const router = useRouter()
   const registeredRef = useRef(false)
+  const initedRef = useRef(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
 
@@ -105,6 +108,29 @@ export default function AddressBarButtons({
     window.initAddressHeaderAutocomplete = initAddressHeaderAutocomplete
     return () => {
       delete window.initAddressHeaderAutocomplete
+    }
+  }, [apiKey])
+
+  useEffect(() => {
+    if (!apiKey) return
+    ;(window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited = false
+    initedRef.current = false
+
+    const run = () => {
+      if (initedRef.current) return
+      const input = document.getElementById(ADDRESS_HEADER_SEARCH_INPUT_ID)
+      if (!input || !window.google?.maps?.places?.Autocomplete) return
+      initedRef.current = true
+      initAddressHeaderAutocomplete()
+    }
+
+    run()
+    const timeoutId = setTimeout(run, 500)
+    const intervalId = setInterval(run, 1000)
+    return () => {
+      clearTimeout(timeoutId)
+      clearInterval(intervalId)
+      ;(window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited = false
     }
   }, [apiKey])
 

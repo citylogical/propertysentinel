@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { useSearchParams } from 'next/navigation'
 
 /* ────────────────────────────────────────────────────────────────────
    FEATURE DATA (static — these don't need a database)
@@ -111,35 +111,21 @@ const FEATURES: Feature[] = [
    TYPES
    ──────────────────────────────────────────────────────────────────── */
 
-type Tab = 'features' | 'pricing' | 'blog' | 'contact'
-
-type BlogPostSummary = {
-  slug: string
-  title: string
-  date_label: string
-}
-
-type BlogPostFull = {
-  slug: string
-  title: string
-  date_label: string
-  body: string
-}
+type Tab = 'features' | 'pricing' | 'contact'
 
 /* ────────────────────────────────────────────────────────────────────
    COMPONENT
    ──────────────────────────────────────────────────────────────────── */
 
 export default function AboutClient() {
-  const [activeTab, setActiveTab] = useState<Tab>('features')
+  const searchParams = useSearchParams()
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [activeTab, setActiveTab] = useState<Tab>(
+    initialTab && ['features', 'pricing', 'contact'].includes(initialTab)
+      ? initialTab
+      : 'features'
+  )
   const [featureModal, setFeatureModal] = useState<number | null>(null)
-
-  // Blog state
-  const [blogPosts, setBlogPosts] = useState<BlogPostSummary[]>([])
-  const [blogLoading, setBlogLoading] = useState(false)
-  const [readingSlug, setReadingSlug] = useState<string | null>(null)
-  const [currentPost, setCurrentPost] = useState<BlogPostFull | null>(null)
-  const [postLoading, setPostLoading] = useState(false)
 
   // Pricing state
   const [isAnnual, setIsAnnual] = useState(false)
@@ -148,19 +134,16 @@ export default function AboutClient() {
   const switchTab = useCallback((tab: Tab) => {
     setActiveTab(tab)
     setFeatureModal(null)
-    setReadingSlug(null)
-    setCurrentPost(null)
   }, [])
 
   // Keyboard left/right arrow navigation
   useEffect(() => {
-    const tabOrder: Tab[] = ['features', 'pricing', 'blog', 'contact']
+    const tabOrder: Tab[] = ['features', 'pricing', 'contact']
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
       ) return
-      if (readingSlug) return
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault()
@@ -173,38 +156,11 @@ export default function AboutClient() {
           }
         })
         setFeatureModal(null)
-        setReadingSlug(null)
-        setCurrentPost(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [readingSlug])
-
-  // Fetch blog list when blog tab is active
-  useEffect(() => {
-    if (activeTab !== 'blog') return
-    setBlogLoading(true)
-    fetch('/api/blog')
-      .then((res) => res.json())
-      .then((data) => setBlogPosts(data.posts ?? []))
-      .catch(() => setBlogPosts([]))
-      .finally(() => setBlogLoading(false))
-  }, [activeTab])
-
-  // Fetch individual post when reading
-  useEffect(() => {
-    if (!readingSlug) {
-      setCurrentPost(null)
-      return
-    }
-    setPostLoading(true)
-    fetch(`/api/blog/${readingSlug}`)
-      .then((res) => res.json())
-      .then((data) => setCurrentPost(data.post ?? null))
-      .catch(() => setCurrentPost(null))
-      .finally(() => setPostLoading(false))
-  }, [readingSlug])
+  }, [])
 
   // Pricing math
   const extra = Math.max(0, propertyCount - 3)
@@ -221,7 +177,6 @@ export default function AboutClient() {
   const TABS: { key: Tab; label: string }[] = [
     { key: 'features', label: 'Features' },
     { key: 'pricing', label: 'Pricing' },
-    { key: 'blog', label: 'Blog' },
     { key: 'contact', label: 'Contact' },
   ]
 
@@ -446,76 +401,6 @@ export default function AboutClient() {
             </button>{' '}
             for enterprise pricing
           </div>
-        </div>
-      )}
-
-      {/* ── Blog List ── */}
-      {activeTab === 'blog' && !readingSlug && (
-        <div key="blog-list" className="about-panel about-blog-panel">
-          {blogLoading ? (
-            <div className="about-blog-loading">Loading…</div>
-          ) : blogPosts.length === 0 ? (
-            <div className="about-blog-loading">No posts yet.</div>
-          ) : (
-            <div className="about-blog-list">
-              {blogPosts.map((post) => (
-                <button
-                  key={post.slug}
-                  type="button"
-                  className="about-blog-item"
-                  onClick={() => setReadingSlug(post.slug)}
-                >
-                  <div className="about-blog-title">{post.title}</div>
-                  <div className="about-blog-date">{post.date_label}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Blog Post Reader ── */}
-      {activeTab === 'blog' && readingSlug && (
-        <div key="blog-post" className="about-panel about-post-panel">
-          <button
-            type="button"
-            className="about-post-back"
-            onClick={() => setReadingSlug(null)}
-          >
-            ← All posts
-          </button>
-          {postLoading || !currentPost ? (
-            <div className="about-blog-loading">Loading…</div>
-          ) : (
-            <div className="about-post-layout">
-              <article className="about-post-article">
-                <div className="about-post-date">{currentPost.date_label}</div>
-                <h1 className="about-post-h1">{currentPost.title}</h1>
-                <div className="about-post-body">
-                  <ReactMarkdown>{currentPost.body}</ReactMarkdown>
-                </div>
-              </article>
-              <aside className="about-post-sidebar">
-                <div className="about-post-sidebar-label">More posts</div>
-                {blogPosts
-                  .filter((p) => p.slug !== readingSlug)
-                  .map((post) => (
-                    <div
-                      key={post.slug}
-                      className="about-post-sidebar-item"
-                      onClick={() => setReadingSlug(post.slug)}
-                    >
-                      <div className="about-post-sidebar-title">
-                        {post.title}
-                      </div>
-                      <div className="about-post-sidebar-date">
-                        {post.date_label}
-                      </div>
-                    </div>
-                  ))}
-              </aside>
-            </div>
-          )}
         </div>
       )}
 

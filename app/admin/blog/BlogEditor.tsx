@@ -9,6 +9,7 @@ type Post = {
   title: string
   body: string
   date_label: string
+  description?: string | null
   published: boolean
   sort_order: number
   created_at: string
@@ -30,6 +31,7 @@ export default function BlogEditor() {
   const [dateLabel, setDateLabel] = useState('')
   const [published, setPublished] = useState(false)
   const [sortOrder, setSortOrder] = useState(0)
+  const [description, setDescription] = useState('')
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -56,6 +58,7 @@ export default function BlogEditor() {
     setDateLabel('')
     setPublished(false)
     setSortOrder(0)
+    setDescription('')
     setPreview(false)
   }
 
@@ -67,6 +70,7 @@ export default function BlogEditor() {
     setDateLabel(post.date_label)
     setPublished(post.published)
     setSortOrder(post.sort_order)
+    setDescription(post.description || '')
     setPreview(false)
   }
 
@@ -87,6 +91,7 @@ export default function BlogEditor() {
           title: title.trim(),
           body: body,
           date_label: dateLabel.trim(),
+          description: description.trim() || null,
           published: pub !== undefined ? pub : published,
           sort_order: sortOrder,
         }),
@@ -254,6 +259,27 @@ export default function BlogEditor() {
                   boxSizing: 'border-box',
                 }}
               />
+            </div>
+          </div>
+
+          {/* Meta description for SEO */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#4a5568', marginBottom: 4 }}>
+              Meta description (SEO)
+            </label>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="155 characters — shown in Google search results"
+              maxLength={160}
+              style={{
+                width: '100%', padding: '8px 10px', fontSize: 12, border: '1px solid #ddd9d0',
+                borderRadius: 6, outline: 'none', fontFamily: 'inherit', color: '#1a1a1a',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ fontSize: 10, color: '#8a94a0', marginTop: 3, textAlign: 'right' }}>
+              {description.length}/155
             </div>
           </div>
 

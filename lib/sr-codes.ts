@@ -29,6 +29,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'HDF',     label: 'Lead Inspection Request',                     category: 'building',           defaultVisible: true },
   { code: 'SCB',     label: 'Sanitation Code Violation',                   category: 'building',           defaultVisible: true },
   { code: 'SHVR',    label: 'Shared Housing/Vacation Rental Complaint',    category: 'building',           defaultVisible: true },
+  { code: 'NAC',     label: 'No Air Conditioning',                         category: 'building',           defaultVisible: true },
   { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'building',           defaultVisible: true },
   { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'building',           defaultVisible: true },
   { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'building',           defaultVisible: true },
@@ -69,7 +70,6 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'CIAC',    label: 'Coyote Interaction Complaint',                category: 'other',              defaultVisible: true },
   { code: 'SCT',     label: 'Clean Vacant Lot Request',                    category: 'other',              defaultVisible: true },
   { code: 'SCX',     label: 'Recycling Inspection Request',                category: 'other',              defaultVisible: true },
-  { code: 'NAC',     label: 'No Air Conditioning',                         category: 'other',              defaultVisible: true },
   { code: 'PET',     label: 'Pet Wellness Check Request',                  category: 'other',              defaultVisible: true },
   { code: 'BUNGALOW',label: 'Bungalow/Vintage Home Information Request',   category: 'other',              defaultVisible: true },
 
