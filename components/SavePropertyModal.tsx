@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useUser } from '@clerk/nextjs'
 
 export type SavePropertyModalProps = {
@@ -66,8 +67,6 @@ export default function SavePropertyModal({
     setAlertsEnabled(false)
   }, [isOpen, currentAddress, buildingAddressRange, initialAdditionalStreets, assessorSqft, assessorUnits])
 
-  if (!isOpen) return null
-
   const handleAddStreet = () => {
     setAdditionalStreets([...additionalStreets, ''])
   }
@@ -120,7 +119,10 @@ export default function SavePropertyModal({
 
   const saveDisabled = saving || !displayName.trim() || !user
 
-  return (
+  if (!isOpen) return null
+  if (typeof window === 'undefined') return null
+
+  return createPortal(
     <div className="save-modal-backdrop" onClick={() => onClose()} role="presentation">
       <div
         className="save-modal"
@@ -293,6 +295,7 @@ export default function SavePropertyModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

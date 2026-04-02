@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type Props = {
   isOpen: boolean
@@ -20,8 +21,6 @@ export default function UnsavePropertyModal({
   useEffect(() => {
     if (isOpen) setUnsaving(false)
   }, [isOpen])
-
-  if (!isOpen) return null
 
   const handleUnsave = async () => {
     setUnsaving(true)
@@ -44,7 +43,10 @@ export default function UnsavePropertyModal({
     }
   }
 
-  return (
+  if (!isOpen) return null
+  if (typeof window === 'undefined') return null
+
+  return createPortal(
     <div className="building-modal-overlay" role="presentation" onClick={(e) => e.stopPropagation()}>
       <div className="building-modal" style={{ maxWidth: 340 }} role="dialog" aria-modal="true" aria-labelledby="unsave-modal-title">
         <button type="button" className="building-modal-x" onClick={() => onClose(false)} aria-label="Close">
@@ -74,6 +76,7 @@ export default function UnsavePropertyModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

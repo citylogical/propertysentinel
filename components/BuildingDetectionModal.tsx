@@ -3,6 +3,7 @@
 import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const BUILDING_MODAL_DISMISS_COOKIE = 'ps-building-modal-dismissed'
 
@@ -156,128 +157,131 @@ export default function BuildingDetectionModal({
         {bldgSvg(isPartOfBuilding ? '#92400e' : '#0f2744')}
       </button>
 
-      {showModal && (
-        <div className="building-modal-overlay">
-          {modalType === 'detected' && !isFullBuildingView && (
-            <div className="building-modal">
-              <button type="button" className="building-modal-x" onClick={closeModal} aria-label="Close">
-                &times;
-              </button>
-              <div className="building-modal-icon building-modal-icon-amber">{bldgSvg('#d97706')}</div>
-              <div className="building-modal-title">This address appears to belong to a building with multiple addresses</div>
-              <div className="building-modal-range">{addressRange}</div>
-              <div className="building-modal-buttons">
-                <button type="button" className="building-modal-btn building-modal-btn-amber" onClick={viewFullBuilding}>
-                  View full building
+      {showModal &&
+        typeof window !== 'undefined' &&
+        createPortal(
+          <div className="building-modal-overlay">
+            {modalType === 'detected' && !isFullBuildingView && (
+              <div className="building-modal">
+                <button type="button" className="building-modal-x" onClick={closeModal} aria-label="Close">
+                  &times;
                 </button>
-                <button type="button" className="building-modal-btn building-modal-btn-outline" onClick={closeModal}>
-                  View single address
-                </button>
-              </div>
-              <div className="building-modal-dismiss">
-                <input
-                  type="checkbox"
-                  className="building-modal-checkbox"
-                  id="bldg-dismiss"
-                  checked={dontShowAgain}
-                  onChange={(e) => setDontShowAgain(e.target.checked)}
-                />
-                <label className="building-modal-dismiss-label" htmlFor="bldg-dismiss">
-                  Don&apos;t show me this again
-                </label>
-              </div>
-            </div>
-          )}
-
-          {modalType === 'suggest' && (
-            <div className="building-modal">
-              <button type="button" className="building-modal-x" onClick={() => setShowModal(false)} aria-label="Close">
-                &times;
-              </button>
-              <div className={`building-modal-icon ${isPartOfBuilding ? 'building-modal-icon-amber' : 'building-modal-icon-grey'}`}>
-                {bldgSvg(isPartOfBuilding ? '#d97706' : '#8a94a0')}
-              </div>
-
-              {submitted ? (
-                <>
-                  <div className="building-modal-title">Thank you for your submission.</div>
-                  <div className="building-modal-subtitle">We will review the proposed address range as soon as possible.</div>
-                </>
-              ) : (
-                <>
-                  <div className="building-modal-title">
-                    {isPartOfBuilding ? 'This building has multiple addresses' : 'This address does not appear to belong to a building with multiple addresses'}
-                  </div>
-                  <div className="building-modal-subtitle">{isPartOfBuilding ? 'Think this is wrong?' : 'Do you think it should?'}</div>
-
-                  <div className="building-modal-field-label">Street 1 — address range</div>
-                  <input
-                    className="building-modal-input"
-                    placeholder="e.g. 5532–5540 S Hyde Park Blvd"
-                    value={street1}
-                    onChange={(e) => setStreet1(e.target.value)}
-                  />
-
-                  {streetCount >= 2 && (
-                    <>
-                      <div className="building-modal-field-label">Street 2 — address range</div>
-                      <input
-                        className="building-modal-input"
-                        placeholder="e.g. 153–163 W Elm St"
-                        value={street2}
-                        onChange={(e) => setStreet2(e.target.value)}
-                      />
-                    </>
-                  )}
-                  {streetCount >= 3 && (
-                    <>
-                      <div className="building-modal-field-label">Street 3 — address range</div>
-                      <input
-                        className="building-modal-input"
-                        placeholder="e.g. 200–210 N State St"
-                        value={street3}
-                        onChange={(e) => setStreet3(e.target.value)}
-                      />
-                    </>
-                  )}
-                  {streetCount >= 4 && (
-                    <>
-                      <div className="building-modal-field-label">Street 4 — address range</div>
-                      <input
-                        className="building-modal-input"
-                        placeholder="e.g. 100–108 E Oak St"
-                        value={street4}
-                        onChange={(e) => setStreet4(e.target.value)}
-                      />
-                    </>
-                  )}
-
-                  {streetCount < 4 && (
-                    <button type="button" className="building-modal-add-street" onClick={() => setStreetCount((c) => Math.min(c + 1, 4))}>
-                      + Add another street
-                    </button>
-                  )}
-
-                  <div className="building-modal-hint">
-                    <a href="https://webapps1.chicago.gov/buildingrecords/" target="_blank" rel="noopener noreferrer">
-                      Verify on the city&apos;s website
-                    </a>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="building-modal-btn building-modal-btn-navy building-modal-btn-full"
-                    onClick={handleSubmit}
-                    disabled={submitting || !street1.trim()}
-                  >
-                    {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
+                <div className="building-modal-icon building-modal-icon-amber">{bldgSvg('#d97706')}</div>
+                <div className="building-modal-title">This address appears to belong to a building with multiple addresses</div>
+                <div className="building-modal-range">{addressRange}</div>
+                <div className="building-modal-buttons">
+                  <button type="button" className="building-modal-btn building-modal-btn-amber" onClick={viewFullBuilding}>
+                    View full building
                   </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                  <button type="button" className="building-modal-btn building-modal-btn-outline" onClick={closeModal}>
+                    View single address
+                  </button>
+                </div>
+                <div className="building-modal-dismiss">
+                  <input
+                    type="checkbox"
+                    className="building-modal-checkbox"
+                    id="bldg-dismiss"
+                    checked={dontShowAgain}
+                    onChange={(e) => setDontShowAgain(e.target.checked)}
+                  />
+                  <label className="building-modal-dismiss-label" htmlFor="bldg-dismiss">
+                    Don&apos;t show me this again
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {modalType === 'suggest' && (
+              <div className="building-modal">
+                <button type="button" className="building-modal-x" onClick={() => setShowModal(false)} aria-label="Close">
+                  &times;
+                </button>
+                <div className={`building-modal-icon ${isPartOfBuilding ? 'building-modal-icon-amber' : 'building-modal-icon-grey'}`}>
+                  {bldgSvg(isPartOfBuilding ? '#d97706' : '#8a94a0')}
+                </div>
+
+                {submitted ? (
+                  <>
+                    <div className="building-modal-title">Thank you for your submission.</div>
+                    <div className="building-modal-subtitle">We will review the proposed address range as soon as possible.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="building-modal-title">
+                      {isPartOfBuilding ? 'This building has multiple addresses' : 'This address does not appear to belong to a building with multiple addresses'}
+                    </div>
+                    <div className="building-modal-subtitle">{isPartOfBuilding ? 'Think this is wrong?' : 'Do you think it should?'}</div>
+
+                    <div className="building-modal-field-label">Street 1 — address range</div>
+                    <input
+                      className="building-modal-input"
+                      placeholder="e.g. 5532–5540 S Hyde Park Blvd"
+                      value={street1}
+                      onChange={(e) => setStreet1(e.target.value)}
+                    />
+
+                    {streetCount >= 2 && (
+                      <>
+                        <div className="building-modal-field-label">Street 2 — address range</div>
+                        <input
+                          className="building-modal-input"
+                          placeholder="e.g. 153–163 W Elm St"
+                          value={street2}
+                          onChange={(e) => setStreet2(e.target.value)}
+                        />
+                      </>
+                    )}
+                    {streetCount >= 3 && (
+                      <>
+                        <div className="building-modal-field-label">Street 3 — address range</div>
+                        <input
+                          className="building-modal-input"
+                          placeholder="e.g. 200–210 N State St"
+                          value={street3}
+                          onChange={(e) => setStreet3(e.target.value)}
+                        />
+                      </>
+                    )}
+                    {streetCount >= 4 && (
+                      <>
+                        <div className="building-modal-field-label">Street 4 — address range</div>
+                        <input
+                          className="building-modal-input"
+                          placeholder="e.g. 100–108 E Oak St"
+                          value={street4}
+                          onChange={(e) => setStreet4(e.target.value)}
+                        />
+                      </>
+                    )}
+
+                    {streetCount < 4 && (
+                      <button type="button" className="building-modal-add-street" onClick={() => setStreetCount((c) => Math.min(c + 1, 4))}>
+                        + Add another street
+                      </button>
+                    )}
+
+                    <div className="building-modal-hint">
+                      <a href="https://webapps1.chicago.gov/buildingrecords/" target="_blank" rel="noopener noreferrer">
+                        Verify on the city&apos;s website
+                      </a>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="building-modal-btn building-modal-btn-navy building-modal-btn-full"
+                      onClick={handleSubmit}
+                      disabled={submitting || !street1.trim()}
+                    >
+                      {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>,
+          document.body
+        )}
     </>
   )
 }

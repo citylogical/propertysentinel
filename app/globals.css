@@ -1582,6 +1582,12 @@ body {
 
 /* ── Address page mobile (≤768px): 48px fixed navy bar, right-hand nav drawer, address header not sticky ── */
 @media (max-width: 768px) {
+  /* Do not set .prop-sidebar to display:none here — .prop-mobile-header and drawer live inside it. */
+  .address-page .prop-page-shell {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+  }
+
   .address-page .prop-sidebar {
     display: flex !important;
     flex-direction: column;
@@ -1636,6 +1642,9 @@ body {
 
   .address-page .prop-main-content {
     padding-top: 48px;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    width: 100% !important;
   }
 
   .address-page .address-header {
@@ -1949,7 +1958,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 400;
 }
 
 .save-modal {
