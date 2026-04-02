@@ -1805,33 +1805,26 @@ body {
     background: rgba(255, 255, 255, 0.2);
   }
 
-  /* LiveTimestamp — keep popover within the viewport (avoid horizontal clip) */
+  /* LiveTimestamp — fixed + centered on viewport; clears inline absolute/bottom */
   .status-popover {
-    left: 8px !important;
-    right: 8px !important;
-    transform: none !important;
-    max-width: calc(100vw - 16px) !important;
+    position: fixed !important;
+    left: 50% !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translateX(-50%) !important;
+    width: calc(100vw - 32px) !important;
+    max-width: 320px !important;
+    z-index: 100 !important;
   }
 
-  /*
-   * Homepage: LandingNav stays (hamburger opens MobileNavDrawer). Placeholder nav
-   * class hiders; wrapper classes clear the 48px fixed bar — see app/page.tsx.
-   */
-  .homepage-nav,
-  .home-nav,
-  .nav-bar {
+  /* Homepage: hide local top nav on mobile when global MobileNav/layout bar is used */
+  nav.home-nav,
+  .home-header-nav {
     display: none !important;
   }
 
-  .landing-page .landing-nav {
-    height: 48px;
-    padding: 0 14px;
-    z-index: 300;
-  }
-
-  .landing-page,
-  .homepage,
-  .home-container {
+  .homepage-wrapper {
     padding-top: 48px;
   }
 

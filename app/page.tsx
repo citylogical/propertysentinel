@@ -5,7 +5,7 @@ import LandingNav from './components/LandingNav'
 
 export default function Home() {
   return (
-    <div className="landing-page homepage home-container">
+    <div className="landing-page homepage home-container homepage-wrapper">
       <LandingNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       <section className="landing-hero">
