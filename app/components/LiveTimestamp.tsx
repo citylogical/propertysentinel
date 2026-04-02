@@ -97,6 +97,7 @@ export default function LiveTimestamp() {
 
       {showPopover && (
         <span
+          className="status-popover"
           style={{
             position: 'absolute',
             bottom: 'calc(100% + 10px)',

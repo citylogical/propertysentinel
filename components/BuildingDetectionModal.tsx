@@ -211,7 +211,7 @@ export default function BuildingDetectionModal({
                     <div className="building-modal-title">
                       {isPartOfBuilding ? 'This building has multiple addresses' : 'This address does not appear to belong to a building with multiple addresses'}
                     </div>
-                    <div className="building-modal-subtitle">{isPartOfBuilding ? 'Think this is wrong?' : 'Do you think it should?'}</div>
+                    <div className="building-modal-subtitle">{isPartOfBuilding ? 'Think this is wrong? Submit a correction.' : 'Do you think it should?'}</div>
 
                     <div className="building-modal-field-label">Street 1 — address range</div>
                     <input
@@ -263,7 +263,7 @@ export default function BuildingDetectionModal({
 
                     <div className="building-modal-hint">
                       <a href="https://webapps1.chicago.gov/buildingrecords/" target="_blank" rel="noopener noreferrer">
-                        Verify on the city&apos;s website
+                        Verify address ranges on the city website
                       </a>
                     </div>
 

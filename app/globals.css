@@ -1804,6 +1804,86 @@ body {
   .address-page .prop-mobile-overlay-signin:hover {
     background: rgba(255, 255, 255, 0.2);
   }
+
+  /* LiveTimestamp — keep popover within the viewport (avoid horizontal clip) */
+  .status-popover {
+    left: 8px !important;
+    right: 8px !important;
+    transform: none !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  /*
+   * Homepage: LandingNav stays (hamburger opens MobileNavDrawer). Placeholder nav
+   * class hiders; wrapper classes clear the 48px fixed bar — see app/page.tsx.
+   */
+  .homepage-nav,
+  .home-nav,
+  .nav-bar {
+    display: none !important;
+  }
+
+  .landing-page .landing-nav {
+    height: 48px;
+    padding: 0 14px;
+    z-index: 300;
+  }
+
+  .landing-page,
+  .homepage,
+  .home-container {
+    padding-top: 48px;
+  }
+
+  .landing-page .landing-hero {
+    padding: 0 16px;
+    height: auto;
+    min-height: calc(100vh - 48px);
+  }
+
+  /* Blog / about-style content inside address shell — full width, no sidebar offset bleed */
+  .address-page .about-header {
+    margin-left: 0 !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .address-page .blog-container,
+  .address-page .blog-post-body,
+  .address-page .about-panel.blog-list-panel,
+  .address-page .about-panel.blog-latest-panel,
+  .address-page .blog-list-panel,
+  .address-page .blog-latest-panel,
+  .address-page .blog-latest-layout,
+  .address-page .blog-latest-article,
+  .address-page .about-post-body {
+    max-width: 100vw !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .address-page .blog-content {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .address-page .blog-post-body h1,
+  .address-page .blog-post-body h2,
+  .address-page .blog-post-body h3,
+  .address-page .blog-post-body p,
+  .address-page .blog-post-body table,
+  .address-page .about-post-body h1,
+  .address-page .about-post-body h2,
+  .address-page .about-post-body h3,
+  .address-page .about-post-body p,
+  .address-page .about-post-body table {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    word-wrap: break-word !important;
+  }
 }
 
 /* Profile Page */

@@ -88,7 +88,7 @@ export default async function BlogSlugPage({
     <div className="address-page">
       <div className="prop-page-shell">
         <PropertySidebar initialTab="blog" />
-        <div className="prop-main-content">
+        <div className="prop-main-content blog-container">
           <BlogPostPage post={post} otherPosts={otherPosts} />
 
           <script

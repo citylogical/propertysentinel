@@ -5,7 +5,7 @@ import LandingNav from './components/LandingNav'
 
 export default function Home() {
   return (
-    <>
+    <div className="landing-page homepage home-container">
       <LandingNav apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
 
       <section className="landing-hero">
@@ -27,6 +27,6 @@ export default function Home() {
       <HowItWorks />
 
       <footer className="landing-footer">City Logical LLC &nbsp; © 2026</footer>
-    </>
+    </div>
   )
 }

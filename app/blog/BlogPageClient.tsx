@@ -83,7 +83,7 @@ export default function BlogPageClient() {
   ]
 
   return (
-    <>
+    <div className="blog-content">
       <div className="address-header about-header">
         <div className="about-header-inner">
           <div className="address-header-street">Blog</div>
@@ -134,7 +134,7 @@ export default function BlogPageClient() {
               <article className="blog-latest-article">
                 <div className="about-post-date">{latestPost.date_label}</div>
                 <h1 className="about-post-h1">{latestPost.title}</h1>
-                <div className="about-post-body">
+                <div className="about-post-body blog-post-body">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -224,6 +224,6 @@ export default function BlogPageClient() {
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

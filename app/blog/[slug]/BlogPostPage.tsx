@@ -26,7 +26,7 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
   const router = useRouter()
 
   return (
-    <>
+    <div className="blog-content">
       <div className="address-header about-header">
         <div className="about-header-inner">
           <div className="address-header-street">Blog</div>
@@ -60,7 +60,7 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
           <article>
             <div className="about-post-date">{post.date_label}</div>
             <h1 className="about-post-h1">{post.title}</h1>
-            <div className="about-post-body">
+            <div className="about-post-body blog-post-body">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -148,6 +148,6 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
           </aside>
         </div>
       </div>
-    </>
+    </div>
   )
 }

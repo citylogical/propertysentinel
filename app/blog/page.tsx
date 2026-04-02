@@ -31,7 +31,7 @@ export default function BlogPage() {
     <div className="address-page">
       <div className="prop-page-shell">
         <PropertySidebar initialTab="blog" />
-        <div className="prop-main-content">
+        <div className="prop-main-content blog-container">
           <BlogPageClient />
         </div>
       </div>
