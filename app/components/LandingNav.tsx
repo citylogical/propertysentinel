@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 import HamburgerIcon from '@/app/components/HamburgerIcon'
 
@@ -27,7 +26,7 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
 
   return (
     <>
-      <nav className="landing-nav home-nav">
+      <nav className="landing-nav home-nav homepage-nav">
         <Link className="nav-brand" href="/">
           Property Sentinel
         </Link>
@@ -58,11 +57,6 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
           )}
         </div>
       </nav>
-      <MobileNavDrawer
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        apiKey={apiKey}
-      />
     </>
   )
 }

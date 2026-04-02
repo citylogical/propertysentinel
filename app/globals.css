@@ -1580,6 +1580,11 @@ body {
   }
 }
 
+/* Homepage MobileNav — hidden ≥769px; shown only in mobile block below */
+.mobile-nav-bar {
+  display: none;
+}
+
 /* ── Address page mobile (≤768px): 48px fixed navy bar, right-hand nav drawer, address header not sticky ── */
 @media (max-width: 768px) {
   /* Do not set .prop-sidebar to display:none here — .prop-mobile-header and drawer live inside it. */
@@ -1815,13 +1820,63 @@ body {
     transform: translateX(-50%) !important;
     width: calc(100vw - 32px) !important;
     max-width: 320px !important;
-    z-index: 100 !important;
+    z-index: 200 !important;
   }
 
-  /* Homepage: hide local top nav on mobile when global MobileNav/layout bar is used */
+  /* Homepage: hide desktop landing nav on mobile — MobileNav provides the bar + drawer */
   nav.home-nav,
+  nav.homepage-nav,
   .home-header-nav {
     display: none !important;
+  }
+
+  /* Fixed bar for MobileNav */
+  .mobile-nav-brand {
+    font-family: "Merriweather", Georgia, serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    text-decoration: none;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-nav-hamburger {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 4px;
+  }
+
+  .mobile-nav-hamburger span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 1px;
+    transition: background 0.15s;
+  }
+
+  .mobile-nav-hamburger:hover span {
+    background: #ffffff;
+  }
+
+  .mobile-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    padding: 0 14px;
+    z-index: 300;
+    background: #0f2744;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .homepage-wrapper {
