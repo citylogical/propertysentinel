@@ -58,6 +58,20 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
     setRecentSearches(getRecentSearches())
   }, [pathname])
 
+  useEffect(() => {
+    if (!isMobileMenuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMobileMenuOpen(false)
+    }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [isMobileMenuOpen])
+
   const [profileName, setProfileName] = useState('')
   const [profileOrg, setProfileOrg] = useState('')
   const [profileInitials, setProfileInitials] = useState('')
@@ -148,81 +162,134 @@ export default function PropertySidebar({ initialTab = 'search' }: Props) {
         </button>
       </div>
 
-      {/* ── Mobile fullscreen nav ── */}
+      {/* ── Mobile nav drawer (slides from right ≤768px; see globals.css) ── */}
       {isMobileMenuOpen && (
-        <div className="prop-mobile-overlay">
-          <div className="prop-mobile-overlay-top">
-            <Link href="/" className="prop-mobile-overlay-brand" onClick={() => setIsMobileMenuOpen(false)}>
-              Property Sentinel
-            </Link>
-            <button
-              type="button"
-              className="prop-mobile-overlay-close"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              ✕
-            </button>
-          </div>
-          <nav className="prop-mobile-overlay-nav">
-            <button
-              type="button"
-              className="prop-mobile-overlay-item"
-              onClick={() => {
-                setIsMobileMenuOpen(false)
-                const recent = getRecentSearches()
-                if (recent.length > 0) {
-                  router.push(`/address/${encodeURIComponent(recent[0].slug)}`)
-                } else {
-                  router.push('/search')
-                }
-              }}
-            >
-              <span>Property Search</span>
-              <span className="prop-mobile-overlay-chevron">›</span>
-            </button>
-            <button
-              type="button"
-              className="prop-mobile-overlay-item"
-              onClick={() => { setIsMobileMenuOpen(false); router.push('/portfolio') }}
-            >
-              <span>Portfolio</span>
-              <span className="prop-mobile-overlay-chevron">›</span>
-            </button>
-            <button
-              type="button"
-              className="prop-mobile-overlay-item"
-              onClick={() => { setIsMobileMenuOpen(false); router.push('/profile') }}
-            >
-              <span>Account</span>
-              <span className="prop-mobile-overlay-chevron">›</span>
-            </button>
-            <button
-              type="button"
-              className="prop-mobile-overlay-item"
-              onClick={() => { setIsMobileMenuOpen(false); router.push('/status') }}
-            >
-              <span>System Status</span>
-              <span className="prop-mobile-overlay-chevron">›</span>
-            </button>
-          </nav>
-          <div className="prop-mobile-overlay-footer">
-            {isSignedIn ? (
+        <div
+          className="prop-mobile-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <div className="prop-mobile-overlay-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="prop-mobile-overlay-top">
+              <Link href="/" className="prop-mobile-overlay-brand" onClick={() => setIsMobileMenuOpen(false)}>
+                Property Sentinel
+              </Link>
               <button
                 type="button"
-                className="prop-mobile-overlay-signout"
-                onClick={() => signOut({ redirectUrl: '/' })}
-              >
-                Sign out
-              </button>
-            ) : (
-              <Link
-                href="/sign-in"
-                className="prop-mobile-overlay-signin"
+                className="prop-mobile-overlay-close"
                 onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close menu"
               >
-                Log in
-              </Link>
-            )}
+                ✕
+              </button>
+            </div>
+            <nav className="prop-mobile-overlay-nav">
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  const recent = getRecentSearches()
+                  if (recent.length > 0) {
+                    router.push(`/address/${encodeURIComponent(recent[0].slug)}`)
+                  } else {
+                    router.push('/search')
+                  }
+                }}
+              >
+                <span>Property search</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  router.push('/portfolio')
+                }}
+              >
+                <span>Portfolio</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="prop-mobile-overlay-item"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false)
+                    router.push('/explore')
+                  }}
+                >
+                  <span>Explore</span>
+                  <span className="prop-mobile-overlay-chevron">›</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  router.push('/blog')
+                }}
+              >
+                <span>Blog</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  router.push('/about')
+                }}
+              >
+                <span>About</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  router.push('/profile')
+                }}
+              >
+                <span>Account</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+              <button
+                type="button"
+                className="prop-mobile-overlay-item"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  router.push('/status')
+                }}
+              >
+                <span>System status</span>
+                <span className="prop-mobile-overlay-chevron">›</span>
+              </button>
+            </nav>
+            <div className="prop-mobile-overlay-footer">
+              {isSignedIn ? (
+                <button
+                  type="button"
+                  className="prop-mobile-overlay-signout"
+                  onClick={() => signOut({ redirectUrl: '/' })}
+                >
+                  Sign out
+                </button>
+              ) : (
+                <Link
+                  href="/sign-in"
+                  className="prop-mobile-overlay-signin"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Log in
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

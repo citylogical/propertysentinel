@@ -8,6 +8,7 @@ import BuildingDetectionModal from '@/components/BuildingDetectionModal'
 import SavePropertyModal from '@/components/SavePropertyModal'
 import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 import { addressToSlug } from '@/lib/address-slug'
+import { CHICAGO_METRO_BOUNDS, resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
 
 const ADDRESS_HEADER_SEARCH_INPUT_ID = 'address-header-search-input'
 
@@ -22,33 +23,6 @@ export type PortfolioSaveData = {
   assessorUnits: number | null
 }
 
-type PlaceResult = {
-  address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
-  formatted_address?: string
-}
-
-const CHICAGO_BOUNDS = {
-  north: 41.9742,
-  south: 41.6445,
-  east: -87.524,
-  west: -87.9401,
-}
-
-function getStreetAndZip(place: PlaceResult): { street: string; zip: string | null } {
-  const components = place.address_components ?? []
-  const map: Record<string, string> = {}
-  components.forEach((c) => {
-    c.types.forEach((t) => {
-      map[t] = c.long_name
-    })
-  })
-  const streetNumber = map.street_number ?? ''
-  const route = map.route ?? ''
-  const street = [streetNumber, route].filter(Boolean).join(' ') || (place.formatted_address ?? '')
-  const zip = map.postal_code && /^\d{5}$/.test(map.postal_code) ? map.postal_code : null
-  return { street, zip }
-}
-
 declare global {
   interface Window {
     initAddressHeaderAutocomplete?: () => void
@@ -61,23 +35,28 @@ function initAddressHeaderAutocomplete(): void {
   if ((window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited) return
   ;(window as Window & { __psAddressHeaderAutocompleteInited?: boolean }).__psAddressHeaderAutocompleteInited = true
 
+  let lastTyped = input.value
+  input.addEventListener('input', () => {
+    lastTyped = input.value
+  })
+
   const autocomplete = new window.google.maps.places.Autocomplete(input, {
     types: ['address'],
     componentRestrictions: { country: 'us' },
-    bounds: CHICAGO_BOUNDS,
-    strictBounds: true,
+    bounds: CHICAGO_METRO_BOUNDS,
+    strictBounds: false,
   })
 
   autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace() as PlaceResult
+    const place = autocomplete.getPlace()
     if (!place.address_components && !place.formatted_address) return
-    const { street, zip } = getStreetAndZip(place)
-    if (street) {
-      const zipInput = document.getElementById('address-header-zip') as HTMLInputElement | null
-      if (zipInput) zipInput.value = zip ?? ''
-      const slug = addressToSlug(street, zip)
-      window.location.href = `/address/${encodeURIComponent(slug)}`
-    }
+    const resolved = resolveStreetAndZipForNavigation(lastTyped, place)
+    if (!resolved?.street) return
+    const { street, zip } = resolved
+    const zipInput = document.getElementById('address-header-zip') as HTMLInputElement | null
+    if (zipInput) zipInput.value = zip ?? ''
+    const slug = addressToSlug(street, zip)
+    window.location.href = `/address/${encodeURIComponent(slug)}`
   })
 }
 

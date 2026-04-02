@@ -406,10 +406,11 @@ export default function PropertyDetailsExpanded({ siblings, serverSharedChars }:
             unitRows.push({ key: 'ul', label: 'Unit details', value: 'Loading…' })
           }
           if (showBedrooms) {
+            const br = Number((unitChars as PropertyCharsCondoRow).num_bedrooms)
             unitRows.push({
               key: 'br',
               label: 'Bedrooms',
-              value: String((unitChars as PropertyCharsCondoRow).num_bedrooms),
+              value: Number.isFinite(br) ? br.toLocaleString('en-US') : String((unitChars as PropertyCharsCondoRow).num_bedrooms),
             })
           }
           if (showUnitSqft) {
