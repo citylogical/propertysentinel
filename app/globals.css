@@ -85,7 +85,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
   min-height: 64px;
   display: flex;
   align-items: center;
-  padding: 14px 0 10px;
+  padding: 14px 0 15px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
@@ -255,6 +255,48 @@ body:has(.app-sidebar:hover) .app-layout-main {
   opacity: 1;
 }
 
+.app-sidebar-recent {
+  padding: 8px 0 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+}
+
+.app-sidebar-recent-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.2);
+  padding: 4px 16px;
+  opacity: 0;
+  transition: opacity 0.18s ease 0.08s;
+}
+
+.app-sidebar:hover .app-sidebar-recent-label {
+  opacity: 1;
+}
+
+.app-sidebar-recent-link {
+  display: block;
+  padding: 5px 16px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.18s ease 0.08s, color 0.12s;
+}
+
+.app-sidebar:hover .app-sidebar-recent-link {
+  opacity: 1;
+}
+
+.app-sidebar-recent-link:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 @media (max-width: 768px) {
   .app-sidebar {
     display: none !important;
@@ -405,7 +447,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
 
 .search-btn {
   flex-shrink: 0;
-  background: var(--navy);
+  background: var(--navy-deep);
   color: var(--white);
   border: none;
   cursor: pointer;
@@ -418,7 +460,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: background 0.15s;
   white-space: nowrap;
 }
-.search-btn:hover { background: var(--navy-mid); }
+.search-btn:hover { background: #1a3a5c; }
 .search-btn:disabled { opacity: 0.8; cursor: not-allowed; }
 .search-bar-no-btn input { padding-right: 16px; }
 
@@ -546,19 +588,6 @@ body:has(.app-sidebar:hover) .app-layout-main {
 }
 .step-body em { font-style: normal; color: rgba(255,255,255,0.9); font-weight: 400; }
 
-/* Landing: Footer */
-.landing-footer {
-  background: var(--navy-deep);
-  border-top: 1px solid rgba(255,255,255,0.06);
-  text-align: center;
-  padding: 20px 24px;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.18);
-}
-
 @keyframes landingFadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -606,7 +635,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
 .address-page body,
 .address-page {
   font-family: var(--sans);
-  background: var(--cream);
+  background: var(--bg);
   color: var(--text);
 }
 
@@ -881,7 +910,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--cream);
+  background: var(--bg);
   padding-left: 8px;
   position: relative;
   overflow-y: scroll;

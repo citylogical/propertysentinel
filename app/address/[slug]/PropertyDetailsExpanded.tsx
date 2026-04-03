@@ -1,8 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { getClassDescription } from '@/lib/class-codes'
 import type { PropertyCharsCondoRow, PropertyCharsResidentialRow } from '@/lib/supabase-search'
+import {
+  pickPinCharacteristicsSource,
+  renderPickedPinCharacteristics,
+  residentialPropertyTypeFromChars,
+} from './PropertyDetailsCharBlocks'
 
 export type SiblingPin = {
   pin: string
@@ -18,19 +23,17 @@ type Props = {
   serverSharedChars?: SharedNumeric | null
 }
 
-const currencyZero = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-  minimumFractionDigits: 0,
-})
+type SharedNumeric = {
+  year_built?: unknown
+  building_sqft?: unknown
+  land_sqft?: unknown
+  property_type?: string | null
+}
 
-function getAssessmentLevelForImplied(assessedClass: string | null): number {
-  if (!assessedClass) return 0.1
-  const major = parseInt(assessedClass.toString()[0], 10)
-  if (Number.isNaN(major)) return 0.1
-  if (major === 4 || major === 5) return 0.25
-  return 0.1
+function numericGtZero(val: unknown): boolean {
+  if (val === null || val === undefined) return false
+  const n = Number(val)
+  return Number.isFinite(n) && n > 0
 }
 
 function formatTitleCaseAddress(address: string): string {
@@ -41,515 +44,442 @@ function formatTitleCaseAddress(address: string): string {
     .join(' ')
 }
 
-/** Cook County class 299 (condo). */
-function isCondo299Class(assessedClass: string | null): boolean {
-  if (!assessedClass) return false
-  const t = String(assessedClass).trim()
-  if (!t.startsWith('2')) return false
-  const digits = t.replace(/\D/g, '').replace(/^0+/, '') || '0'
-  return digits === '299' || digits.startsWith('299')
+/** 25% level for Cook County class major 4 or 5; 10% otherwise (incl. EX). */
+function getAssessmentLevelForImplied(assessedClass: string | null): number {
+  if (!assessedClass) return 0.1
+  const classStr = String(assessedClass).trim()
+  if (classStr.startsWith('4') || classStr.startsWith('5')) return 0.25
+  return 0.1
 }
 
-function numericGtZero(val: unknown): boolean {
-  if (val === null || val === undefined) return false
-  const n = Number(val)
-  return Number.isFinite(n) && n > 0
+function impliedMarketValue(assessedValue: number | null, assessedClass: string | null): number | null {
+  if (assessedValue == null || !Number.isFinite(assessedValue) || assessedValue === 0) return null
+  const level = getAssessmentLevelForImplied(assessedClass)
+  if (!level) return null
+  return Math.round(assessedValue / level)
 }
 
-type SharedNumeric = {
-  year_built?: unknown
-  building_sqft?: unknown
-  land_sqft?: unknown
-  property_type?: string | null
-}
-
-function extractSharedFromCondoOrResidential(row: PropertyCharsCondoRow | PropertyCharsResidentialRow): SharedNumeric {
-  const res = row as PropertyCharsResidentialRow
-  const tor = res.type_of_residence ?? null
-  const svmf = res.single_v_multi_family ?? null
-  let propertyType: string | null = null
-  if (tor && svmf) propertyType = `${tor}, ${svmf}`
-  else if (tor) propertyType = String(tor)
-  else if (svmf) propertyType = String(svmf)
-  return {
-    year_built: row.year_built,
-    building_sqft: row.building_sqft,
-    land_sqft: row.land_sqft,
-    property_type: propertyType,
-  }
-}
-
-function extractSharedFromCommercialRow(row: Record<string, unknown>): SharedNumeric {
-  return {
-    year_built: row.year_built,
-    building_sqft: row.building_sqft,
-    land_sqft: row.land_sqft,
-    property_type: row.property_type_use != null ? String(row.property_type_use) : null,
-  }
-}
-
-const SECTION_LABEL_STYLE: CSSProperties = {
-  padding: '7px 14px 3px 29px',
+const MULTIPARCEL_SUMMARY_STYLE: CSSProperties = {
   fontFamily: 'var(--mono)',
   fontSize: '8px',
+  fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
   color: '#2d6a4f',
+  padding: '8px 14px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
   borderBottom: '0.5px solid rgba(45,106,79,0.15)',
-  display: 'block',
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
 }
 
-type BodyRowDef = { key: string; label: string; value: string }
+async function fetchCharsTriplet(pin: string) {
+  const [resR, condoR, comR] = await Promise.all([
+    fetch(`/api/property-chars-residential?pin=${encodeURIComponent(pin)}`).then((r) => r.json()),
+    fetch(`/api/property-chars-condo?pin=${encodeURIComponent(pin)}`).then((r) => r.json()),
+    fetch(`/api/property-chars-commercial?pin=${encodeURIComponent(pin)}`).then((r) => r.json()),
+  ])
+  return {
+    res: (resR as { chars: PropertyCharsResidentialRow | null }).chars ?? null,
+    condo: (condoR as { chars: PropertyCharsCondoRow | null }).chars ?? null,
+    com: (comR as { row: Record<string, unknown> | null }).row ?? null,
+  }
+}
 
-function ExpandedDataRows({
-  rows,
-  globalOffset,
-  isTerminal,
-}: {
-  rows: BodyRowDef[]
-  globalOffset: number
-  /** If true, the last row in this block is the last row before the next PIN (secondary border). */
-  isTerminal: boolean
-}) {
-  if (rows.length === 0) return null
-  const lastIdx = rows.length - 1
+/** residential → commercial → condo (for aggregation per user spec). */
+function pickAggregateRow(
+  res: PropertyCharsResidentialRow | null,
+  com: Record<string, unknown> | null,
+  condo: PropertyCharsCondoRow | null
+): { row: Record<string, unknown> | PropertyCharsResidentialRow | PropertyCharsCondoRow; kind: 'res' | 'com' | 'condo' } | null {
+  if (res) return { row: res, kind: 'res' }
+  if (com) return { row: com, kind: 'com' }
+  if (condo) return { row: condo, kind: 'condo' }
+  return null
+}
+
+function propertyTypeFromAggRow(
+  row: Record<string, unknown> | PropertyCharsResidentialRow | PropertyCharsCondoRow,
+  kind: 'res' | 'com' | 'condo'
+): string | null {
+  if (kind === 'com') {
+    const u = row.property_type_use
+    if (u != null && String(u).trim() !== '') return String(u).trim()
+    return null
+  }
+  return residentialPropertyTypeFromChars(row as PropertyCharsResidentialRow)
+}
+
+type Aggregated = {
+  earliestYear: number | null
+  totalBsq: number
+  totalLand: number
+  dominantPropertyType: string | null
+}
+
+function computeAggregation(triplets: Awaited<ReturnType<typeof fetchCharsTriplet>>[]): Aggregated {
+  const years: number[] = []
+  let totalBsq = 0
+  let totalLand = 0
+  const typeSet = new Set<string>()
+
+  for (const t of triplets) {
+    const picked = pickAggregateRow(t.res, t.com, t.condo)
+    if (!picked) continue
+    const { row, kind } = picked
+    const yb = row.year_built
+    if (yb != null && String(yb).trim() !== '') {
+      const yn = Number(yb)
+      if (Number.isFinite(yn) && yn > 1800 && yn <= 2200) years.push(yn)
+    }
+    const bsq = row.building_sqft
+    if (bsq != null && Number(bsq) > 0) totalBsq += Number(bsq)
+    const lsq = row.land_sqft
+    if (lsq != null && Number(lsq) > 0) totalLand += Number(lsq)
+    const pt = propertyTypeFromAggRow(row, kind)
+    if (pt) typeSet.add(pt)
+  }
+
+  years.sort((a, b) => a - b)
+  const dominantPropertyType = typeSet.size === 1 ? [...typeSet][0]! : null
+
+  return {
+    earliestYear: years.length > 0 ? years[0]! : null,
+    totalBsq,
+    totalLand,
+    dominantPropertyType,
+  }
+}
+
+function AggregatedBuildingSummary({ agg, showMixedUse }: { agg: Aggregated; showMixedUse: boolean }) {
+  const rows: ReactNode[] = []
+  if (agg.earliestYear != null) {
+    rows.push(
+      <div key="yb" className="detail-row">
+        <span className="detail-key">Year Built</span>
+        <span className="detail-val">{agg.earliestYear}</span>
+      </div>
+    )
+  }
+  if (agg.totalBsq > 0) {
+    rows.push(
+      <div key="bsq" className="detail-row">
+        <span className="detail-key">Building Sqft</span>
+        <span className="detail-val">{agg.totalBsq.toLocaleString('en-US')}</span>
+      </div>
+    )
+  }
+  if (agg.totalLand > 0) {
+    rows.push(
+      <div key="lsq" className="detail-row">
+        <span className="detail-key">Land Sqft</span>
+        <span className="detail-val">{agg.totalLand.toLocaleString('en-US')}</span>
+      </div>
+    )
+  }
+  if (agg.dominantPropertyType != null && agg.dominantPropertyType.trim() !== '') {
+    rows.push(
+      <div key="pt" className="detail-row">
+        <span className="detail-key">Property Type</span>
+        <span className="detail-val">{agg.dominantPropertyType}</span>
+      </div>
+    )
+  }
+  if (showMixedUse) {
+    rows.push(
+      <div key="use" className="detail-row">
+        <span className="detail-key">Use</span>
+        <span className="detail-val">Mixed-Use</span>
+      </div>
+    )
+  }
   return (
     <>
-      {rows.map((r, i) => {
-        const isLast = i === lastIdx
-        return (
-          <div
-            key={r.key}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              gap: 12,
-              padding: '6px 14px 6px 29px',
-              borderBottom:
-                isLast && isTerminal
-                  ? '0.5px solid var(--color-border-secondary)'
-                  : '0.5px solid var(--border)',
-              background: (globalOffset + i) % 2 === 0 ? '#ffffff' : '#f7f9fb',
-            }}
-          >
-            <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{r.label}</span>
-            <span
-              style={{
-                fontFamily: 'var(--mono)',
-                fontSize: 10,
-                color: 'var(--text)',
-                textAlign: 'right',
-                wordBreak: 'break-word',
-              }}
-            >
-              {r.value}
-            </span>
-          </div>
-        )
-      })}
+      {rows}
+      {rows.length > 0 && <div key="rule" style={{ borderBottom: '1px solid var(--border)' }} aria-hidden />}
     </>
   )
 }
 
-export default function PropertyDetailsExpanded({ siblings, serverSharedChars }: Props) {
-  const [openPins, setOpenPins] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(siblings.map((s) => [s.pin, false]))
-  )
-
-  const siblingPinsKey = siblings.map((s) => s.pin).join('|')
-
-  const [sharedChars, setSharedChars] = useState<SharedNumeric | null>(null)
-  const [sharedReady, setSharedReady] = useState(false)
-
-  const [condoByPin, setCondoByPin] = useState<Record<string, PropertyCharsCondoRow | null | 'loading'>>({})
-  const condoFetchedRef = useRef<Set<string>>(new Set())
-
-  const anyExpanded = siblings.some((s) => openPins[s.pin])
+/** One PIN in expanded building view: full assessor characteristics + Implied + Class + PIN. */
+function SinglePinExpandedBody({ s }: { s: SiblingPin }) {
+  const [loading, setLoading] = useState(true)
+  const [picked, setPicked] = useState<ReturnType<typeof pickPinCharacteristicsSource>>(null)
 
   useEffect(() => {
-    // If server already provided shared chars, use them directly — no client fetch needed
-    if (serverSharedChars !== undefined) {
-      setSharedChars(serverSharedChars)
-      setSharedReady(true)
-      return
-    }
-
-    const pinList = siblingPinsKey.split('|').filter(Boolean)
-    if (pinList.length === 0) {
-      setSharedChars(null)
-      setSharedReady(true)
-      return
-    }
-
     let cancelled = false
-    setSharedReady(false)
-    setSharedChars(null)
-
+    setLoading(true)
+    setPicked(null)
     ;(async () => {
-      const tryPinWaterfall = async (pin: string): Promise<SharedNumeric | null> => {
-        const condoRes = await fetch(`/api/property-chars-condo?pin=${encodeURIComponent(pin)}`)
-        const condoJson = (await condoRes.json()) as { chars: PropertyCharsCondoRow | null }
-        if (cancelled) return null
-        if (condoJson.chars) return extractSharedFromCondoOrResidential(condoJson.chars)
-
-        const resRes = await fetch(`/api/property-chars-residential?pin=${encodeURIComponent(pin)}`)
-        const resJson = (await resRes.json()) as { chars: PropertyCharsResidentialRow | null }
-        if (cancelled) return null
-        if (resJson.chars) return extractSharedFromCondoOrResidential(resJson.chars)
-
-        const commRes = await fetch(`/api/property-chars-commercial?pin=${encodeURIComponent(pin)}`)
-        const commJson = (await commRes.json()) as { row: Record<string, unknown> | null }
-        if (cancelled) return null
-        if (commJson.row) return extractSharedFromCommercialRow(commJson.row)
-
-        return null
-      }
-
       try {
-        for (const pin of pinList) {
-          const picked = await tryPinWaterfall(pin)
-          if (cancelled) return
-          if (picked) {
-            setSharedChars(picked)
-            return
-          }
-        }
-        if (!cancelled) setSharedChars(null)
+        const t = await fetchCharsTriplet(s.pin)
+        if (cancelled) return
+        setPicked(pickPinCharacteristicsSource(t.res, t.com, t.condo))
       } finally {
-        if (!cancelled) setSharedReady(true)
+        if (!cancelled) setLoading(false)
       }
     })()
-
     return () => {
       cancelled = true
     }
-  }, [siblingPinsKey, serverSharedChars])
+  }, [s.pin])
 
-  const loadLazyCondoForPin = useCallback((pinKey: string) => {
-    if (condoFetchedRef.current.has(pinKey)) return
-    condoFetchedRef.current.add(pinKey)
-    setCondoByPin((p) => ({ ...p, [pinKey]: 'loading' }))
-    void fetch(`/api/property-chars-condo?pin=${encodeURIComponent(pinKey)}`)
-      .then((r) => r.json())
-      .then((j: { chars: PropertyCharsCondoRow | null }) => {
-        setCondoByPin((p) => ({ ...p, [pinKey]: j.chars ?? null }))
-      })
-      .catch(() => {
-        setCondoByPin((p) => ({ ...p, [pinKey]: null }))
-      })
-  }, [])
+  const c = s.assessedClass
+  const classLine =
+    c != null && String(c).trim() !== ''
+      ? `${c}${getClassDescription(c) ? ` — ${getClassDescription(c)}` : ''}`
+      : 'N/A'
 
-  const togglePin = (pinKey: string, assessedClass: string | null) => {
-    setOpenPins((prev) => {
-      const nextOpen = !prev[pinKey]
-      if (nextOpen && isCondo299Class(assessedClass)) {
-        loadLazyCondoForPin(pinKey)
-      }
-      return { ...prev, [pinKey]: nextOpen }
-    })
-  }
+  const implied = impliedMarketValue(s.assessedValue, s.assessedClass)
+  const showImplied = implied != null && s.taxYear != null
 
-  const expandAll = () => {
-    setOpenPins(Object.fromEntries(siblings.map((s) => [s.pin, true])))
-    siblings.forEach((s) => {
-      if (isCondo299Class(s.assessedClass)) {
-        loadLazyCondoForPin(s.pin)
-      }
-    })
-  }
-
-  const collapseAll = () => {
-    setOpenPins(Object.fromEntries(siblings.map((s) => [s.pin, false])))
-  }
-
-  const firstSiblingWithClass = siblings.find(
-    (s) => s.assessedClass != null && String(s.assessedClass).trim() !== ''
+  return (
+    <div className="detail-list property-details-expanded-condo-shared">
+      {loading && (
+        <div className="detail-row">
+          <span className="detail-key">Characteristics</span>
+          <span className="detail-val">Loading…</span>
+        </div>
+      )}
+      {!loading && picked != null && renderPickedPinCharacteristics(picked)}
+      {!loading && picked == null && (
+        <div className="detail-row">
+          <span className="detail-key">Characteristics</span>
+          <span className="detail-val na">No assessor characteristics on file</span>
+        </div>
+      )}
+      {showImplied && (
+        <div className="detail-row">
+          <span className="detail-key">Implied Value ({s.taxYear})</span>
+          <span className="detail-val">${implied.toLocaleString('en-US')}</span>
+        </div>
+      )}
+      <div className="detail-row">
+        <span className="detail-key">Class</span>
+        <span className="detail-val">{classLine}</span>
+      </div>
+      <div className="detail-row" style={{ borderBottom: '1px solid var(--border)' }}>
+        <span className="detail-key">PIN</span>
+        <span className="detail-val">{s.pin}</span>
+      </div>
+    </div>
   )
-  const sharedClassLine =
-    firstSiblingWithClass != null
-      ? (() => {
-          const c = firstSiblingWithClass.assessedClass
-          const desc = getClassDescription(c)
-          return desc && c != null ? `${c} — ${desc}` : String(c)
-        })()
-      : null
-  const showSharedClass = sharedClassLine != null && sharedClassLine.trim() !== ''
+}
 
-  const showSharedYear =
-    sharedChars != null &&
-    sharedChars.year_built != null &&
-    String(sharedChars.year_built).trim() !== '' &&
-    numericGtZero(sharedChars.year_built)
-  const showSharedBsq =
-    sharedChars != null && sharedChars.building_sqft != null && numericGtZero(sharedChars.building_sqft)
-  const showSharedLand =
-    sharedChars != null && sharedChars.land_sqft != null && numericGtZero(sharedChars.land_sqft)
+function MultiparcelPinRow({ s, index }: { s: SiblingPin; index: number }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [picked, setPicked] = useState<ReturnType<typeof pickPinCharacteristicsSource>>(null)
 
-  const sharedDetailRows: { key: string; label: string; value: string }[] = []
-  if (showSharedYear) {
-    sharedDetailRows.push({
-      key: 'yb',
-      label: 'Year Built',
-      value: String(sharedChars!.year_built),
-    })
-  }
-  if (showSharedBsq) {
-    sharedDetailRows.push({
-      key: 'bsq',
-      label: 'Building Sqft',
-      value: Number(sharedChars!.building_sqft).toLocaleString('en-US'),
-    })
-  }
-  if (showSharedLand) {
-    sharedDetailRows.push({
-      key: 'lsq',
-      label: 'Land Sqft',
-      value: Number(sharedChars!.land_sqft).toLocaleString('en-US'),
-    })
-  }
-  const showSharedPropertyType =
-    sharedChars != null &&
-    sharedChars.property_type != null &&
-    String(sharedChars.property_type).trim() !== ''
-  if (showSharedPropertyType) {
-    sharedDetailRows.push({ key: 'ptyp', label: 'Property Type', value: String(sharedChars!.property_type) })
-  }
-  if (showSharedClass) {
-    sharedDetailRows.push({ key: 'cls', label: 'Class', value: sharedClassLine! })
-  }
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    setPicked(null)
+    ;(async () => {
+      try {
+        const t = await fetchCharsTriplet(s.pin)
+        if (cancelled) return
+        setPicked(pickPinCharacteristicsSource(t.res, t.com, t.condo))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, s.pin])
 
-  const showSharedSection = sharedReady && sharedDetailRows.length > 0
-  const lastSharedIdx = sharedDetailRows.length - 1
+  const c = s.assessedClass
+  const classLine =
+    c != null && String(c).trim() !== ''
+      ? `${c}${getClassDescription(c) ? ` — ${getClassDescription(c)}` : ''}`
+      : 'N/A'
+
+  const implied = impliedMarketValue(s.assessedValue, s.assessedClass)
+  const showImplied = implied != null && s.taxYear != null
+
+  const headerBg = index % 2 === 0 ? '#ffffff' : '#f7f9fb'
+
+  return (
+    <div className="property-details-expanded-section" style={{ borderBottom: 'none' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 0,
+          padding: '10px 0',
+          margin: 0,
+          border: 'none',
+          borderLeft: open ? '3px solid #2d6a4f' : '3px solid transparent',
+          borderBottom: open ? 'none' : '0.5px solid var(--border)',
+          background: headerBg,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <span
+          style={{
+            paddingLeft: 10,
+            paddingRight: 6,
+            flexShrink: 0,
+            fontSize: 9,
+            lineHeight: 1.2,
+            color: 'var(--text-dim)',
+          }}
+          aria-hidden
+        >
+          {open ? '▼' : '▶'}
+        </span>
+        <span style={{ flex: 1, paddingRight: 14, minWidth: 0 }}>
+          <span
+            style={{
+              display: 'block',
+              fontWeight: 600,
+              fontSize: 12,
+              lineHeight: 1.25,
+              color: 'var(--text)',
+            }}
+          >
+            {formatTitleCaseAddress(s.address)}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: 'var(--text-dim)',
+              marginTop: 2,
+            }}
+          >
+            {s.pin}
+          </span>
+        </span>
+      </button>
+
+      {open && (
+        <div
+          className="detail-list"
+          style={{
+            background: 'var(--color-background-primary)',
+            borderLeft: '3px solid #2d6a4f',
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: 4,
+          }}
+        >
+          {loading && (
+            <div className="detail-row">
+              <span className="detail-key">Characteristics</span>
+              <span className="detail-val">Loading…</span>
+            </div>
+          )}
+          {!loading && picked != null && renderPickedPinCharacteristics(picked)}
+          {!loading && picked == null && (
+            <div className="detail-row">
+              <span className="detail-key">Characteristics</span>
+              <span className="detail-val na">No assessor characteristics on file</span>
+            </div>
+          )}
+          {showImplied && (
+            <div className="detail-row">
+              <span className="detail-key">Implied Value ({s.taxYear})</span>
+              <span className="detail-val">${implied.toLocaleString('en-US')}</span>
+            </div>
+          )}
+          <div className="detail-row">
+            <span className="detail-key">Class</span>
+            <span className="detail-val">{classLine}</span>
+          </div>
+          <div className="detail-row">
+            <span className="detail-key">PIN</span>
+            <span className="detail-val">{s.pin}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function PropertyDetailsExpanded({ siblings, serverSharedChars: _serverSharedChars }: Props) {
+  const isMulti = siblings.length > 1
+
+  const [aggregated, setAggregated] = useState<Aggregated | null>(null)
+  const [aggregateLoading, setAggregateLoading] = useState(isMulti)
+
+  const siblingPinsKey = siblings.map((s) => s.pin).join('|')
+
+  useEffect(() => {
+    if (!isMulti) return
+    let cancelled = false
+    setAggregateLoading(true)
+    setAggregated(null)
+    ;(async () => {
+      try {
+        const triplets = await Promise.all(siblings.map((s) => fetchCharsTriplet(s.pin)))
+        if (cancelled) return
+        setAggregated(computeAggregation(triplets))
+      } finally {
+        if (!cancelled) setAggregateLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [siblingPinsKey, isMulti, siblings])
+
+  const uniqueAssessedClasses = new Set(
+    siblings.map((s) => (s.assessedClass != null && String(s.assessedClass).trim() !== '' ? String(s.assessedClass).trim() : null)).filter(Boolean) as string[]
+  )
+  const showMixedUse = uniqueAssessedClasses.size > 1
+
+  const [multiparcelsOpen, setMultiparcelsOpen] = useState(false)
 
   return (
     <>
-      <div className="profile-card-header profile-card-header--with-toggle">
+      <div className="profile-card-header">
         <span style={{ flex: 1 }}>Property Details</span>
-        {siblings.length > 0 && (
-          <button
-            type="button"
-            aria-label={anyExpanded ? 'Collapse all units' : 'Expand all units'}
-            onClick={anyExpanded ? collapseAll : expandAll}
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 14,
-              color: 'rgba(255,255,255,0.45)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '0 0 0 8px',
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            {anyExpanded ? '−' : '+'}
-          </button>
-        )}
       </div>
 
       <div className="property-details-expanded">
-        {showSharedSection && (
+        {isMulti && (
           <div className="detail-list property-details-expanded-condo-shared">
-            {sharedDetailRows.map((row, i) => (
-              <div
-                key={row.key}
-                className="detail-row"
-                style={
-                  i === lastSharedIdx ? { borderBottom: '1px solid var(--border)' } : undefined
-                }
-              >
-                <span className="detail-key">{row.label}</span>
-                <span className="detail-val">{row.value}</span>
+            {aggregateLoading && (
+              <div className="detail-row">
+                <span className="detail-key">Building summary</span>
+                <span className="detail-val">Loading…</span>
               </div>
-            ))}
+            )}
+            {!aggregateLoading && aggregated != null && (
+              <AggregatedBuildingSummary agg={aggregated} showMixedUse={showMixedUse} />
+            )}
           </div>
         )}
 
-        {!showSharedSection && sharedReady && (
-          <div style={{ borderTop: '1px solid var(--border)' }} aria-hidden />
-        )}
+        {!isMulti && siblings[0] != null && <SinglePinExpandedBody s={siblings[0]} />}
 
-        {siblings.map((s, index) => {
-          const pinKey = s.pin
-          const open = !!openPins[pinKey]
-          const implied =
-            s.assessedValue != null &&
-            Number.isFinite(s.assessedValue) &&
-            s.assessedClass != null &&
-            getAssessmentLevelForImplied(s.assessedClass) > 0
-              ? s.assessedValue! / getAssessmentLevelForImplied(s.assessedClass)
-              : null
-
-          const unitChars = condoByPin[pinKey]
-          const showUnitLoading =
-            open && isCondo299Class(s.assessedClass) && (unitChars === undefined || unitChars === 'loading')
-          const showBedrooms =
-            unitChars != null && unitChars !== 'loading' && unitChars.num_bedrooms != null
-          const showUnitSqft =
-            unitChars != null &&
-            unitChars !== 'loading' &&
-            unitChars.unit_sqft != null &&
-            numericGtZero(unitChars.unit_sqft)
-          const showUnitSection =
-            isCondo299Class(s.assessedClass) &&
-            (showUnitLoading || showBedrooms || showUnitSqft)
-
-          const showTaxYear = s.taxYear != null && Number.isFinite(s.taxYear)
-          const showValueSource = s.valueType != null && String(s.valueType).trim() !== ''
-          const showAssessedVal = s.assessedValue != null && Number.isFinite(s.assessedValue)
-          const showLevel = s.assessedClass != null && String(s.assessedClass).trim() !== ''
-          const showImplied = implied != null && Number.isFinite(implied)
-
-          const unitRows: BodyRowDef[] = []
-          if (showUnitLoading) {
-            unitRows.push({ key: 'ul', label: 'Unit details', value: 'Loading…' })
-          }
-          if (showBedrooms) {
-            const br = Number((unitChars as PropertyCharsCondoRow).num_bedrooms)
-            unitRows.push({
-              key: 'br',
-              label: 'Bedrooms',
-              value: Number.isFinite(br) ? br.toLocaleString('en-US') : String((unitChars as PropertyCharsCondoRow).num_bedrooms),
-            })
-          }
-          if (showUnitSqft) {
-            unitRows.push({
-              key: 'usq',
-              label: 'Unit Sqft',
-              value: Number((unitChars as PropertyCharsCondoRow).unit_sqft).toLocaleString('en-US'),
-            })
-          }
-
-          const assessmentRows: BodyRowDef[] = []
-          if (showTaxYear) {
-            assessmentRows.push({ key: 'ty', label: 'AV Tax Year', value: String(s.taxYear) })
-          }
-          if (showValueSource) {
-            assessmentRows.push({ key: 'vs', label: 'AV Value Source', value: String(s.valueType) })
-          }
-          if (showAssessedVal) {
-            assessmentRows.push({
-              key: 'av',
-              label: 'Assessed Value',
-              value: currencyZero.format(s.assessedValue!),
-            })
-          }
-          if (showLevel) {
-            assessmentRows.push({
-              key: 'al',
-              label: 'Assessment Level',
-              value: getAssessmentLevelForImplied(s.assessedClass) === 0.25 ? '25%' : '10%',
-            })
-          }
-          if (showImplied) {
-            assessmentRows.push({
-              key: 'imv',
-              label: 'Implied Market Value',
-              value: currencyZero.format(implied!),
-            })
-          }
-
-          const hasAssessmentBlock =
-            showTaxYear || showValueSource || showAssessedVal || showLevel || showImplied
-          const unitRowCount = unitRows.length
-
-          const headerBg = index % 2 === 0 ? '#ffffff' : '#f7f9fb'
-
-          return (
-            <div key={pinKey} className="property-details-expanded-section" style={{ borderBottom: 'none' }}>
-              <button
-                type="button"
-                onClick={() => togglePin(pinKey, s.assessedClass)}
-                aria-expanded={open}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 0,
-                  padding: '10px 0',
-                  margin: 0,
-                  border: 'none',
-                  borderLeft: open ? '3px solid #2d6a4f' : '3px solid transparent',
-                  borderBottom: open ? 'none' : '0.5px solid var(--border)',
-                  background: headerBg,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <span
-                  style={{
-                    paddingLeft: 10,
-                    paddingRight: 6,
-                    flexShrink: 0,
-                    fontSize: 9,
-                    lineHeight: 1.2,
-                    color: 'var(--text-dim)',
-                  }}
-                  aria-hidden
-                >
-                  {open ? '▼' : '▶'}
-                </span>
-                <span style={{ flex: 1, paddingRight: 14, minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      lineHeight: 1.25,
-                      color: 'var(--text)',
-                    }}
-                  >
-                    {formatTitleCaseAddress(s.address)}
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontFamily: 'var(--mono)',
-                      fontSize: 10,
-                      color: 'var(--text-dim)',
-                      marginTop: 2,
-                    }}
-                  >
-                    {pinKey}
-                  </span>
-                </span>
-              </button>
-
-              {open && (
-                <div
-                  style={{
-                    background: 'var(--color-background-primary)',
-                    borderLeft: '3px solid #2d6a4f',
-                    borderBottom: '1px solid var(--border)',
-                  }}
-                >
-                  {showUnitSection && (
-                    <>
-                      <span style={SECTION_LABEL_STYLE}>Unit</span>
-                      <ExpandedDataRows
-                        rows={unitRows}
-                        globalOffset={0}
-                        isTerminal={!hasAssessmentBlock}
-                      />
-                    </>
-                  )}
-
-                  {hasAssessmentBlock && (
-                    <>
-                      <span style={SECTION_LABEL_STYLE}>Assessment</span>
-                      <ExpandedDataRows
-                        rows={assessmentRows}
-                        globalOffset={unitRowCount}
-                        isTerminal
-                      />
-                    </>
-                  )}
-                </div>
-              )}
+        {isMulti && (
+          <details
+            className="property-details-multiparcels"
+            onToggle={(e) => setMultiparcelsOpen((e.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary style={MULTIPARCEL_SUMMARY_STYLE}>
+              <span>{`Multiple Parcels (${siblings.length} PINs)`}</span>
+              <span style={{ fontSize: 14 }}>{multiparcelsOpen ? '\u2212' : '+'}</span>
+            </summary>
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              {siblings.map((s, index) => (
+                <MultiparcelPinRow key={s.pin} s={s} index={index} />
+              ))}
             </div>
-          )
-        })}
+          </details>
+        )}
       </div>
     </>
   )

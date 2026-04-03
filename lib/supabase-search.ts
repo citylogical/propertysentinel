@@ -213,6 +213,18 @@ export function normalizeAddress(raw: string): string {
 // Sibling PIN resolution
 // ---------------------------------------------------------------------------
 
+/** Data artifacts (not real entities) — never use for Path C or owner portfolio card */
+export const JUNK_MAILING_NAMES = new Set([
+  'STREET',
+  'ALLEY',
+  'TAXPAYER OF',
+  'TAX PAYER OF',
+  'CURRENT OWNER',
+  'RAILROAD',
+  'UNKNOWN',
+  '',
+])
+
 export async function fetchSiblingPins(
   pin: string,
   addressNormalized: string
@@ -220,7 +232,7 @@ export async function fetchSiblingPins(
   siblingPins: string[]
   siblingAddresses: string[]
   addressRange: string | null
-  resolvedVia: 'address' | 'commercial' | 'mailing' | 'none'
+  resolvedVia: 'address' | 'commercial' | 'mailing' | 'none' | 'user_range'
 }> {
   const supabaseAdmin = supabase
   const noSiblings = {
@@ -297,37 +309,17 @@ export async function fetchSiblingPins(
     if (userRange) {
       console.log('fetchSiblingPins Path D2 user range match for:', addressNormalized)
 
-      let allPins: string[] = [pin]
-      const { data: subject } = await supabaseAdmin.from('properties').select('mailing_name').eq('pin', pin).maybeSingle()
-      if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
-        const { data: mm } = await supabaseAdmin
-          .from('properties')
-          .select('pin, address_normalized')
-          .eq('mailing_name', subject.mailing_name)
-        if (mm && mm.length > 0) {
-          const rangeAddressSet = new Set(userRange.allAddresses)
-          const scopedPins = mm
-            .filter((r: { address_normalized?: string | null }) => {
-              const addr = r.address_normalized
-              if (!addr) return false
-              return (
-                rangeAddressSet.has(addr) ||
-                userRange.allAddresses.some((da) => addr.startsWith(da + ' '))
-              )
-            })
-            .map((r: { pin?: string | null }) => r.pin)
-            .filter(Boolean) as string[]
-          if (scopedPins.length > 0) {
-            allPins = [...new Set([pin, ...scopedPins])]
-          }
-        }
-      }
+      const allAddrs = userRange.allAddresses
+      const allPins = await collectPinsForUserRangeAddresses(allAddrs)
+      console.log('fetchSiblingPins Path D2 found', allPins.length, 'PINs across range')
 
-      return {
-        siblingPins: allPins,
-        siblingAddresses: userRange.allAddresses,
-        addressRange: buildAddressRange(userRange.displayAddresses),
-        resolvedVia: 'mailing',
+      if (allPins.length > 0) {
+        return {
+          siblingPins: allPins,
+          siblingAddresses: userRange.allAddresses,
+          addressRange: buildAddressRange(userRange.allAddresses),
+          resolvedVia: 'user_range',
+        }
       }
     }
 
@@ -401,6 +393,21 @@ export async function fetchSiblingPins(
     console.log('Path C subject:', JSON.stringify(subject), 'pin queried:', pin)
 
     if (subject?.mailing_name && subject.mailing_name.trim() !== '') {
+      const mailingKey = subject.mailing_name.trim().toUpperCase()
+      if (JUNK_MAILING_NAMES.has(mailingKey)) {
+        console.log('Path C skipped — junk mailing name:', mailingKey)
+        return noSiblings
+      }
+
+      const { count: mailingPinCount } = await supabaseAdmin
+        .from('properties')
+        .select('pin', { count: 'exact', head: true })
+        .eq('mailing_name', subject.mailing_name)
+      if (mailingPinCount != null && mailingPinCount > 500) {
+        console.log('Path C skipped — mega-entity mailing count:', mailingPinCount)
+        return noSiblings
+      }
+
       const parts = addressNormalized.split(' ')
       // Detect if second word is a direction (N/S/E/W) or part of the street name
       const hasDirection = parts.length >= 3 && /^[NSEW]$/.test(parts[1])
@@ -476,7 +483,7 @@ type UserBuildingRangeRow = {
   street4_high: string | null
 }
 
-async function findApprovedUserRange(
+export async function findApprovedUserRange(
   normalizedAddress: string
 ): Promise<{
   allAddresses: string[]
@@ -514,7 +521,7 @@ async function findApprovedUserRange(
   }
 }
 
-function buildAddressRange(addresses: string[]): string | null {
+export function buildAddressRange(addresses: string[]): string | null {
   if (addresses.length <= 1) return null
 
   const parsed = addresses.map(a => {
@@ -537,6 +544,29 @@ function buildAddressRange(addresses: string[]): string | null {
   })
 
   return parts.join(' & ')
+}
+
+/** PINs on `properties` matching any address in an approved user building range (exact + unit suffix). */
+export async function collectPinsForUserRangeAddresses(allAddrs: string[]): Promise<string[]> {
+  const supabaseAdmin = supabase
+  let allPins: string[] = []
+  for (let i = 0; i < allAddrs.length; i += 50) {
+    const batch = allAddrs.slice(i, i + 50)
+    const { data } = await supabaseAdmin.from('properties').select('pin').in('address_normalized', batch)
+    if (data) allPins.push(...data.map((r: { pin?: string | null }) => r.pin).filter(Boolean) as string[])
+  }
+  for (let i = 0; i < allAddrs.length; i += 10) {
+    const batch = allAddrs.slice(i, i + 10)
+    const orConditions = batch
+      .map((a) => {
+        const pattern = `${a} %`.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        return `address_normalized.like."${pattern}"`
+      })
+      .join(',')
+    const { data } = await supabaseAdmin.from('properties').select('pin').or(orConditions)
+    if (data) allPins.push(...data.map((r: { pin?: string | null }) => r.pin).filter(Boolean) as string[])
+  }
+  return [...new Set(allPins)]
 }
 
 // ---------------------------------------------------------------------------

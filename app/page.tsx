@@ -1,5 +1,4 @@
 import HomeSearch from './components/HomeSearch'
-import HowItWorks from './components/HowItWorks'
 import LiveTimestamp from './components/LiveTimestamp'
 
 export default function Home() {
@@ -20,10 +19,6 @@ export default function Home() {
           <HomeSearch apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
         </div>
       </section>
-
-      <HowItWorks />
-
-      <footer className="landing-footer">City Logical LLC &nbsp; © 2026</footer>
     </div>
   )
 }

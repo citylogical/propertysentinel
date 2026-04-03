@@ -1,6 +1,6 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
+import { SignInButton, useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -52,10 +52,15 @@ export default function BuildingDetectionModal({
   const [street2, setStreet2] = useState('')
   const [street3, setStreet3] = useState('')
   const [street4, setStreet4] = useState('')
+  const [needsSignIn, setNeedsSignIn] = useState(false)
 
   useEffect(() => {
     if (readDismissCookie()) setDismissed(true)
   }, [])
+
+  useEffect(() => {
+    if (isSignedIn) setNeedsSignIn(false)
+  }, [isSignedIn])
 
   useEffect(() => {
     if (isPartOfBuilding && addressRange && !dismissed && !isExpanded) {
@@ -66,6 +71,7 @@ export default function BuildingDetectionModal({
 
   const handleIconClick = () => {
     setSubmitted(false)
+    setNeedsSignIn(false)
     if (isPartOfBuilding) {
       if (isFullBuildingView) {
         setModalType('suggest')
@@ -97,7 +103,7 @@ export default function BuildingDetectionModal({
 
   const handleSubmit = async () => {
     if (!isSignedIn) {
-      window.location.href = '/sign-in'
+      setNeedsSignIn(true)
       return
     }
     if (!street1.trim()) return
@@ -267,14 +273,29 @@ export default function BuildingDetectionModal({
                       </a>
                     </div>
 
-                    <button
-                      type="button"
-                      className="building-modal-btn building-modal-btn-navy building-modal-btn-full"
-                      onClick={handleSubmit}
-                      disabled={submitting || !street1.trim()}
-                    >
-                      {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
-                    </button>
+                    {needsSignIn && (
+                      <div style={{ marginBottom: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: '12px', color: '#4a5568', marginBottom: 8 }}>
+                          Sign in to submit an address range
+                        </div>
+                        <SignInButton mode="modal">
+                          <button type="button" className="building-modal-btn building-modal-btn-navy building-modal-btn-full">
+                            Sign in
+                          </button>
+                        </SignInButton>
+                      </div>
+                    )}
+
+                    {!needsSignIn && (
+                      <button
+                        type="button"
+                        className="building-modal-btn building-modal-btn-navy building-modal-btn-full"
+                        onClick={handleSubmit}
+                        disabled={submitting || !street1.trim()}
+                      >
+                        {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
+                      </button>
+                    )}
                   </>
                 )}
               </div>

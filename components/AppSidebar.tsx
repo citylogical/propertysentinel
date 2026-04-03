@@ -2,14 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useClerk, useUser } from '@clerk/nextjs'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { getRecentSearches } from '@/lib/recent-searches'
 
 type NavItem = {
   label: string
   href: string
   icon: ReactNode
   active?: boolean
+  /** When true, link is shown only to signed-in users (e.g. Account). */
+  requiresAuth?: boolean
 }
 
 export default function AppSidebar() {
@@ -17,6 +21,33 @@ export default function AppSidebar() {
   const { isSignedIn, isLoaded } = useUser()
   const { signOut } = useClerk()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
+  const [recentSearches, setRecentSearches] = useState<{ address: string; slug: string }[]>([])
+  const [maxRecent, setMaxRecent] = useState(4)
+  const navRef = useRef<HTMLDivElement>(null)
+  const recentRef = useRef<HTMLDivElement>(null)
+  const footerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setRecentSearches(getRecentSearches())
+  }, [pathname])
+
+  useEffect(() => {
+    const calculateMax = () => {
+      if (!navRef.current || !footerRef.current) return
+      const sidebarHeight = window.innerHeight
+      const navBottom = navRef.current.getBoundingClientRect().bottom
+      const footerHeight = footerRef.current.getBoundingClientRect().height
+      const available = sidebarHeight - navBottom - footerHeight - 40
+      const perItem = 28
+      const fits = Math.max(0, Math.floor(available / perItem))
+      setMaxRecent(Math.min(4, fits))
+    }
+
+    calculateMax()
+    window.addEventListener('resize', calculateMax)
+    return () => window.removeEventListener('resize', calculateMax)
+  }, [recentSearches, isAdmin, isSignedIn])
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
@@ -110,6 +141,7 @@ export default function AppSidebar() {
       {
         label: 'Account',
         href: '/profile',
+        requiresAuth: true,
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
@@ -152,24 +184,42 @@ export default function AppSidebar() {
       </div>
 
       <nav className="app-sidebar-nav">
-        {navItems.map((item) => {
-          const active = item.active ?? isActive(item.href)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
-            >
-              <span className="app-sidebar-link-icon">{item.icon}</span>
-              <span className="app-sidebar-link-label">{item.label}</span>
-            </Link>
-          )
-        })}
+        <div ref={navRef}>
+          {navItems.filter((item) => !item.requiresAuth || isSignedIn).map((item) => {
+            const active = item.active ?? isActive(item.href)
+            const href =
+              item.href === '/search'
+                ? recentSearches.length > 0
+                  ? `/address/${recentSearches[0].slug}`
+                  : '/search'
+                : item.href
+            return (
+              <Link
+                key={item.href}
+                href={href}
+                className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
+              >
+                <span className="app-sidebar-link-icon">{item.icon}</span>
+                <span className="app-sidebar-link-label">{item.label}</span>
+              </Link>
+            )
+          })}
+        </div>
+        {recentSearches.length > 0 && maxRecent > 0 && (
+          <div className="app-sidebar-recent" ref={recentRef}>
+            <div className="app-sidebar-recent-label">Recent</div>
+            {recentSearches.slice(0, maxRecent).map((s) => (
+              <Link key={s.slug} href={`/address/${s.slug}`} className="app-sidebar-recent-link">
+                <span className="app-sidebar-recent-text">{s.address}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </nav>
 
-      <div className="app-sidebar-footer">
+      <div className="app-sidebar-footer" ref={footerRef}>
         {isSignedIn ? (
-          <button type="button" className="app-sidebar-footer-link" onClick={() => signOut({ redirectUrl: '/' })}>
+          <button type="button" className="app-sidebar-footer-link" onClick={() => setShowSignOutConfirm(true)}>
             <span className="app-sidebar-footer-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -180,18 +230,58 @@ export default function AppSidebar() {
             <span className="app-sidebar-footer-label">Sign out</span>
           </button>
         ) : (
-          <Link href="/sign-in" className="app-sidebar-footer-link">
-            <span className="app-sidebar-footer-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
-                <polyline points="10 17 15 12 10 7" />
-                <line x1="15" y1="12" x2="3" y2="12" />
-              </svg>
-            </span>
-            <span className="app-sidebar-footer-label">Sign in</span>
-          </Link>
+          <SignInButton mode="modal">
+            <button type="button" className="app-sidebar-footer-link">
+              <span className="app-sidebar-footer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
+                  <polyline points="10 17 15 12 10 7" />
+                  <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+              </span>
+              <span className="app-sidebar-footer-label">Sign in</span>
+            </button>
+          </SignInButton>
         )}
       </div>
+
+      {showSignOutConfirm &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="building-modal-overlay">
+            <div className="building-modal" style={{ maxWidth: 320 }}>
+              <button type="button" className="building-modal-x" onClick={() => setShowSignOutConfirm(false)} aria-label="Close">
+                &times;
+              </button>
+              <div className="building-modal-title" style={{ marginBottom: 8 }}>
+                Sign out?
+              </div>
+              <div className="building-modal-subtitle" style={{ marginBottom: 16 }}>
+                You&apos;ll need to sign in again to access your portfolio and saved properties.
+              </div>
+              <div className="building-modal-buttons">
+                <button
+                  type="button"
+                  className="building-modal-btn building-modal-btn-navy"
+                  onClick={() => {
+                    signOut({ redirectUrl: '/' })
+                    setShowSignOutConfirm(false)
+                  }}
+                >
+                  Sign out
+                </button>
+                <button
+                  type="button"
+                  className="building-modal-btn building-modal-btn-outline"
+                  onClick={() => setShowSignOutConfirm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

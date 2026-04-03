@@ -9,12 +9,28 @@ function getSupabase() {
   )
 }
 
+/** Strip trailing CHICAGO / IL / ZIP so ranges match `properties.address_normalized`. */
+function stripTrailingCityStateZip(street: string): string {
+  return street
+    .trim()
+    .replace(/[,\s]+(CHICAGO|IL|\d{5}(-\d{4})?)[\s,]*(CHICAGO|IL|\d{5}(-\d{4})?)*\s*$/i, '')
+    .trim()
+}
+
 function parseAddressRange(input: string): { low: string; high: string } | null {
   const t = input.trim().toUpperCase()
   const m = t.match(/^(\d+)\s*[-–—]\s*(\d+)\s+(.+)$/)
-  if (m) return { low: `${m[1]} ${m[3].trim()}`, high: `${m[2]} ${m[3].trim()}` }
+  if (m) {
+    const street = stripTrailingCityStateZip(m[3])
+    return { low: `${m[1]} ${street}`, high: `${m[2]} ${street}` }
+  }
   const m2 = t.match(/^(\d+\s+.+?)\s+to\s+(\d+\s+.+)$/i)
-  if (m2) return { low: m2[1].trim(), high: m2[2].trim() }
+  if (m2) {
+    return {
+      low: stripTrailingCityStateZip(m2[1]),
+      high: stripTrailingCityStateZip(m2[2]),
+    }
+  }
   return null
 }
 

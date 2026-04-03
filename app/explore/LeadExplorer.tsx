@@ -16,24 +16,22 @@ import {
 import { EXPLORE_TABLES, type ColumnDef as AppColumnDef, type TableDef } from '@/lib/explore-tables'
 
 const PBL_TABLE = 'pbl_intelligence_live' as const
+const LEAD_EXPLORER_TABLE_ID = 'lead_explorer' as const
 
-const LEAD_PREFS_KEY = 'ps-lead-explorer-cols'
-const LEAD_META_COLS = ['lead_contact', 'lead_status', 'lead_notes'] as const
+const LEAD_META_COLS = ['lead_contact', 'lead_status', 'lead_notes', 'lead_flagged'] as const
 
-type LeadTablePrefs = {
-  visibleKeys: string[]
-  columnOrder: string[]
-  columnWidths: Record<string, number>
+/** Stable row key for Supabase lead_annotations (per Clerk user). */
+function annotationRowKey(applicationId: number): string {
+  return `pbl_app_${applicationId}`
 }
 
-function readLeadPrefs(): LeadTablePrefs | null {
-  try {
-    const raw = localStorage.getItem(LEAD_PREFS_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as LeadTablePrefs
-  } catch {
-    return null
-  }
+type LeadAnnotation = {
+  row_key: string
+  status?: string | null
+  notes?: string | null
+  flagged?: boolean
+  flagged_count?: number
+  maybe_count?: number
 }
 
 function defaultLeadVisibility(tableDef: TableDef): VisibilityState {
@@ -49,6 +47,18 @@ function defaultLeadVisibility(tableDef: TableDef): VisibilityState {
 
 function allLeadColumnIds(tableDef: TableDef): string[] {
   return [...tableDef.columns.map((c) => c.key), ...LEAD_META_COLS]
+}
+
+function effectiveLeadRowStatus(
+  row: Record<string, unknown>,
+  annotations: Record<string, LeadAnnotation>,
+  leadsByAppId: Map<number, LeadRow>
+): string {
+  const appId = Number(row.application_id)
+  const rowKey = annotationRowKey(appId)
+  const ann = annotations[rowKey]
+  const lead = leadsByAppId.get(appId)
+  return (ann?.status as string) || (lead?.status as string) || 'not_started'
 }
 
 type QueryResponse = {
@@ -102,6 +112,7 @@ function useDebouncedValue<T>(value: T, ms: number): T {
 }
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'new', label: 'New' },
   { value: 'not_started', label: 'Not started' },
   { value: 'target', label: 'Target' },
   { value: 'letter_sent', label: 'Letter sent' },
@@ -111,10 +122,23 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ]
 
 type Props = {
-  onDrillClick: (lat: number, lng: number, type: 'shvr' | 'airbnb', address: string, flagFilter?: string) => void
+  onDrillClick: (
+    lat: number,
+    lng: number,
+    type: 'shvr' | 'airbnb',
+    address: string,
+    flagFilter?: string,
+    parentApplicationId?: number
+  ) => void
+  modalAnnotationMerge?: { rowKey: string; annotation: Record<string, unknown> } | null
+  clearModalAnnotationMerge?: () => void
 }
 
-export default function LeadExplorer({ onDrillClick }: Props) {
+export default function LeadExplorer({
+  onDrillClick,
+  modalAnnotationMerge,
+  clearModalAnnotationMerge,
+}: Props) {
   const tableDef: TableDef = EXPLORE_TABLES[PBL_TABLE]
 
   const [sorting, setSorting] = useState<SortingState>([
@@ -129,34 +153,79 @@ export default function LeadExplorer({ onDrillClick }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [prefsReady, setPrefsReady] = useState(false)
+  const [layoutSaveReady, setLayoutSaveReady] = useState(false)
+  const [annotations, setAnnotations] = useState<Record<string, LeadAnnotation>>({})
+  const annotationsRef = useRef<Record<string, LeadAnnotation>>({})
+
   const [leadsByAppId, setLeadsByAppId] = useState<Map<number, LeadRow>>(new Map())
   const [revealLoading, setRevealLoading] = useState<number | null>(null)
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
-    const prefs = readLeadPrefs()
-    const base = defaultLeadVisibility(tableDef)
-    if (prefs?.visibleKeys?.length) {
-      for (const id of allLeadColumnIds(tableDef)) {
-        base[id] = prefs.visibleKeys.includes(id)
-      }
-    }
-    return base
-  })
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(
-    () => readLeadPrefs()?.columnWidths ?? {}
-  )
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
-    const prefs = readLeadPrefs()
-    if (!prefs?.columnOrder?.length) return []
-    const valid = new Set(allLeadColumnIds(tableDef))
-    return prefs.columnOrder.filter((k) => valid.has(k))
-  })
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => defaultLeadVisibility(tableDef))
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([])
   const dragCol = useRef<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
-  const widthSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prefSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showColumnPicker, setShowColumnPicker] = useState(false)
   const colPickerRef = useRef<HTMLDivElement>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('All')
+
+  useEffect(() => {
+    annotationsRef.current = annotations
+  }, [annotations])
+
+  useEffect(() => {
+    if (!modalAnnotationMerge) return
+    const { rowKey, annotation } = modalAnnotationMerge
+    setAnnotations((prev) => {
+      const cur = prev[rowKey] ?? { row_key: rowKey }
+      const next = { ...prev, [rowKey]: { ...cur, ...annotation } as LeadAnnotation }
+      annotationsRef.current = next
+      return next
+    })
+    clearModalAnnotationMerge?.()
+  }, [modalAnnotationMerge, clearModalAnnotationMerge])
 
   const debouncedFilters = useDebouncedValue(columnFilters, 400)
+
+  const uniqueStatuses = useMemo(() => {
+    const statuses = new Set<string>()
+    Object.values(annotations).forEach((a) => {
+      if (a.status) statuses.add(String(a.status))
+    })
+    for (const row of data) {
+      statuses.add(effectiveLeadRowStatus(row, annotations, leadsByAppId))
+    }
+    return ['All', ...Array.from(statuses).sort()]
+  }, [data, annotations, leadsByAppId])
+
+  const filteredData = useMemo(() => {
+    if (!statusFilter || statusFilter === 'All') return data
+    return data.filter((row) => effectiveLeadRowStatus(row, annotations, leadsByAppId) === statusFilter)
+  }, [data, annotations, leadsByAppId, statusFilter])
+
+  const tableData = useMemo(() => {
+    const rows = [...filteredData]
+    const s = sorting[0]
+    if (!s || (s.id !== 'lead_flagged' && s.id !== 'lead_status')) return rows
+    rows.sort((rowA, rowB) => {
+      const appA = Number(rowA.application_id)
+      const appB = Number(rowB.application_id)
+      const keyA = annotationRowKey(appA)
+      const keyB = annotationRowKey(appB)
+      if (s.id === 'lead_flagged') {
+        const a = annotations[keyA]?.flagged ? 1 : 0
+        const b = annotations[keyB]?.flagged ? 1 : 0
+        const cmp = a - b
+        return s.desc ? -cmp : cmp
+      }
+      const a = effectiveLeadRowStatus(rowA, annotations, leadsByAppId)
+      const b = effectiveLeadRowStatus(rowB, annotations, leadsByAppId)
+      const cmp = a.localeCompare(b)
+      return s.desc ? -cmp : cmp
+    })
+    return rows
+  }, [filteredData, sorting, annotations, leadsByAppId])
 
   const refreshLeads = useCallback(() => {
     fetch('/api/explore/pbl-lead')
@@ -210,34 +279,65 @@ export default function LeadExplorer({ onDrillClick }: Props) {
   }, [showColumnPicker])
 
   useEffect(() => {
-    const keys = allLeadColumnIds(tableDef).filter((id) => columnVisibility[id])
-    try {
-      const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
-      localStorage.setItem(LEAD_PREFS_KEY, JSON.stringify({ ...existing, visibleKeys: keys }))
-    } catch {
-      /* ignore */
-    }
-  }, [columnVisibility, tableDef])
-
-  useEffect(() => {
-    if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
-    widthSaveTimer.current = setTimeout(() => {
-      if (Object.keys(columnSizing).length > 0) {
-        try {
-          const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
-          localStorage.setItem(
-            LEAD_PREFS_KEY,
-            JSON.stringify({ ...existing, columnWidths: columnSizing })
-          )
-        } catch {
-          /* ignore */
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [annRes, prefRes] = await Promise.all([
+          fetch('/api/leads/annotations').then((r) => r.json()),
+          fetch(`/api/leads/preferences?table_id=${encodeURIComponent(LEAD_EXPLORER_TABLE_ID)}`).then((r) => r.json()),
+        ])
+        if (cancelled) return
+        if (
+          annRes &&
+          typeof annRes === 'object' &&
+          'annotations' in annRes &&
+          annRes.annotations &&
+          typeof annRes.annotations === 'object' &&
+          !('error' in annRes && annRes.error)
+        ) {
+          setAnnotations(annRes.annotations as Record<string, LeadAnnotation>)
+        }
+        const prefs = prefRes.preferences as
+          | {
+              column_order?: string[] | null
+              column_visibility?: VisibilityState | null
+              column_widths?: ColumnSizingState | null
+              sort_state?: SortingState | null
+              filters?: ColumnFiltersState | null
+            }
+          | null
+          | undefined
+        if (prefs) {
+          const valid = new Set(allLeadColumnIds(tableDef))
+          if (prefs.column_visibility && typeof prefs.column_visibility === 'object') {
+            setColumnVisibility({ ...defaultLeadVisibility(tableDef), ...(prefs.column_visibility as VisibilityState) })
+          }
+          if (prefs.column_order && Array.isArray(prefs.column_order) && prefs.column_order.length > 0) {
+            setColumnOrder(prefs.column_order.filter((k) => valid.has(k)))
+          }
+          if (prefs.column_widths && typeof prefs.column_widths === 'object') {
+            setColumnSizing(prefs.column_widths)
+          }
+          if (prefs.sort_state && Array.isArray(prefs.sort_state) && prefs.sort_state.length > 0) {
+            setSorting(prefs.sort_state as SortingState)
+          }
+          if (prefs.filters && Array.isArray(prefs.filters)) {
+            setColumnFilters(prefs.filters as ColumnFiltersState)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load lead explorer state:', e)
+      } finally {
+        if (!cancelled) {
+          setPrefsReady(true)
+          setLayoutSaveReady(true)
         }
       }
-    }, 500)
+    })()
     return () => {
-      if (widthSaveTimer.current) clearTimeout(widthSaveTimer.current)
+      cancelled = true
     }
-  }, [columnSizing])
+  }, [tableDef])
 
   useEffect(() => {
     let cancelled = false
@@ -286,7 +386,7 @@ export default function LeadExplorer({ onDrillClick }: Props) {
   }, [pagination, sorting, debouncedFilters, queryColumns])
 
   const saveLead = useCallback(
-    async (applicationId: number, patch: { status?: string; notes?: string | null; reveal_contact?: boolean }) => {
+    async (applicationId: number, patch: { reveal_contact?: boolean }) => {
       const res = await fetch('/api/explore/pbl-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -308,6 +408,64 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     []
   )
 
+  const saveAnnotation = useCallback(
+    async (applicationId: number, patch: Partial<{ status: string; notes: string | null; flagged: boolean }>) => {
+      if (!Number.isFinite(applicationId)) return
+      const rowKey = annotationRowKey(applicationId)
+      const cur = annotationsRef.current[rowKey] || { row_key: rowKey }
+      const lead = leadsByAppId.get(applicationId)
+      const merged: LeadAnnotation = {
+        row_key: rowKey,
+        status: patch.status ?? cur.status ?? (lead?.status as string) ?? 'not_started',
+        notes: patch.notes !== undefined ? patch.notes : cur.notes ?? (lead?.notes as string | null) ?? null,
+        flagged: patch.flagged ?? cur.flagged ?? false,
+      }
+      setAnnotations((prev) => ({ ...prev, [rowKey]: merged }))
+      annotationsRef.current = { ...annotationsRef.current, [rowKey]: merged }
+      try {
+        await fetch('/api/leads/annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            row_key: rowKey,
+            status: merged.status ?? 'not_started',
+            notes: merged.notes ?? null,
+            flagged: merged.flagged ?? false,
+          }),
+        })
+      } catch (e) {
+        console.error('Failed to save annotation:', e)
+      }
+    },
+    [leadsByAppId]
+  )
+
+  useEffect(() => {
+    if (!prefsReady || !layoutSaveReady) return
+    if (prefSaveTimer.current) clearTimeout(prefSaveTimer.current)
+    prefSaveTimer.current = setTimeout(async () => {
+      try {
+        await fetch('/api/leads/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_id: LEAD_EXPLORER_TABLE_ID,
+            column_order: columnOrder.length > 0 ? columnOrder : null,
+            column_visibility: columnVisibility,
+            column_widths: Object.keys(columnSizing).length > 0 ? columnSizing : null,
+            sort_state: sorting,
+            filters: columnFilters.length > 0 ? columnFilters : null,
+          }),
+        })
+      } catch (e) {
+        console.error('Failed to save lead explorer preferences:', e)
+      }
+    }, 500)
+    return () => {
+      if (prefSaveTimer.current) clearTimeout(prefSaveTimer.current)
+    }
+  }, [prefsReady, layoutSaveReady, columnVisibility, columnOrder, columnSizing, sorting, columnFilters])
+
   const columns = useMemo<TanStackColumnDef<Record<string, unknown>>[]>(() => {
     const base: TanStackColumnDef<Record<string, unknown>>[] = visiblePblColDefs.map((col) => ({
       id: col.key,
@@ -316,8 +474,27 @@ export default function LeadExplorer({ onDrillClick }: Props) {
       cell: (info: { getValue: () => unknown; row: { original: Record<string, unknown> } }) => {
         const value = info.getValue()
         const drillCols = ['shvr_total', 'nearby_airbnb_count', 'flagged_yes', 'flagged_maybe']
-        if (drillCols.includes(col.key) && Number(value) > 0) {
-          const row = info.row.original
+        const row = info.row.original
+        const appId = Number(row.application_id)
+        const rowKey = Number.isFinite(appId) ? annotationRowKey(appId) : ''
+        const ann = rowKey ? annotations[rowKey] : undefined
+
+        let displayValue: unknown = value
+        if (col.key === 'flagged_yes') {
+          displayValue =
+            ann?.flagged_count !== undefined && ann?.flagged_count !== null ? ann.flagged_count : value
+        } else if (col.key === 'flagged_maybe') {
+          displayValue =
+            ann?.maybe_count !== undefined && ann?.maybe_count !== null ? ann.maybe_count : value
+        }
+
+        const numDisplay = Number(displayValue ?? 0)
+        const canDrillAirbnb =
+          (col.key === 'nearby_airbnb_count' || col.key === 'flagged_yes' || col.key === 'flagged_maybe') &&
+          numDisplay > 0
+        const canDrillShvr = col.key === 'shvr_total' && Number(value) > 0
+
+        if (canDrillShvr || canDrillAirbnb) {
           const type = col.key === 'shvr_total' ? 'shvr' : 'airbnb'
           const ff = col.key === 'flagged_yes' ? 'yes' : col.key === 'flagged_maybe' ? 'maybe' : undefined
           return (
@@ -331,15 +508,16 @@ export default function LeadExplorer({ onDrillClick }: Props) {
                   Number(row.lng),
                   type as 'shvr' | 'airbnb',
                   String(row.address_normalized ?? ''),
-                  ff
+                  ff,
+                  Number.isFinite(appId) ? appId : undefined
                 )
               }}
             >
-              {formatCell(value, col.type)}
+              {formatCell(displayValue, col.type)}
             </button>
           )
         }
-        return formatCell(info.getValue(), col.type)
+        return formatCell(displayValue, col.type)
       },
       enableSorting: true,
       meta: { type: col.type, sticky: col.sticky },
@@ -385,18 +563,62 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     const leadStatus: TanStackColumnDef<Record<string, unknown>> = {
       id: 'lead_status',
       accessorFn: (row) => row.application_id,
-      header: 'Status',
+      header: () => (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 6,
+            margin: 0,
+          }}
+        >
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              setPagination((p) => ({ ...p, pageIndex: 0 }))
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              fontSize: '9px',
+              padding: '1px 4px',
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.2)',
+              color: 'inherit',
+              borderRadius: 3,
+              maxWidth: '100px',
+            }}
+          >
+            {uniqueStatuses.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      ),
+      sortingFn: (rowA, rowB) => {
+        const a = effectiveLeadRowStatus(rowA.original, annotations, leadsByAppId)
+        const b = effectiveLeadRowStatus(rowB.original, annotations, leadsByAppId)
+        return a.localeCompare(b)
+      },
       cell: ({ row }) => {
         const appId = Number(row.original.application_id)
+        const rowKey = annotationRowKey(appId)
+        const ann = annotations[rowKey]
         const lead = leadsByAppId.get(appId)
-        const status = (lead?.status as string) || 'not_started'
+        const status = (ann?.status as string) || (lead?.status as string) || 'not_started'
         return (
           <select
             className={`explore-lead-status explore-lead-status-${status}`}
             value={status}
             onChange={(e) => {
               if (!Number.isFinite(appId)) return
-              saveLead(appId, { status: e.target.value }).catch(() => {})
+              void saveAnnotation(appId, { status: e.target.value })
             }}
           >
             {STATUS_OPTIONS.map((o) => (
@@ -407,7 +629,7 @@ export default function LeadExplorer({ onDrillClick }: Props) {
           </select>
         )
       },
-      enableSorting: false,
+      enableSorting: true,
       meta: { type: 'text', sticky: false },
     }
 
@@ -417,11 +639,13 @@ export default function LeadExplorer({ onDrillClick }: Props) {
       header: 'Notes',
       cell: ({ row }) => {
         const appId = Number(row.original.application_id)
+        const rowKey = annotationRowKey(appId)
+        const ann = annotations[rowKey]
         const lead = leadsByAppId.get(appId)
-        const v = (lead?.notes as string) ?? ''
+        const v = (ann?.notes as string) ?? (lead?.notes as string) ?? ''
         return (
           <input
-            key={appId}
+            key={`${rowKey}-${v}`}
             type="text"
             className="explore-lead-notes-input"
             defaultValue={v}
@@ -430,12 +654,46 @@ export default function LeadExplorer({ onDrillClick }: Props) {
               if (!Number.isFinite(appId)) return
               const next = e.target.value
               if (next === v) return
-              saveLead(appId, { notes: next || null }).catch(() => {})
+              void saveAnnotation(appId, { notes: next || null })
             }}
           />
         )
       },
       enableSorting: false,
+      meta: { type: 'text', sticky: false },
+    }
+
+    const leadFlagged: TanStackColumnDef<Record<string, unknown>> = {
+      id: 'lead_flagged',
+      accessorFn: (row) => row.application_id,
+      header: 'Flag',
+      sortingFn: (rowA, rowB) => {
+        const keyA = annotationRowKey(Number(rowA.original.application_id))
+        const keyB = annotationRowKey(Number(rowB.original.application_id))
+        const a = annotations[keyA]?.flagged ? 1 : 0
+        const b = annotations[keyB]?.flagged ? 1 : 0
+        return a - b
+      },
+      cell: ({ row }) => {
+        const appId = Number(row.original.application_id)
+        const rowKey = annotationRowKey(appId)
+        const ann = annotations[rowKey]
+        const flagged = ann?.flagged === true
+        return (
+          <input
+            type="checkbox"
+            className="explore-lead-flag-input"
+            checked={flagged}
+            disabled={!Number.isFinite(appId)}
+            title="Flag row"
+            onChange={(e) => {
+              if (!Number.isFinite(appId)) return
+              void saveAnnotation(appId, { flagged: e.target.checked })
+            }}
+          />
+        )
+      },
+      enableSorting: true,
       meta: { type: 'text', sticky: false },
     }
 
@@ -446,12 +704,14 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     if (columnVisibility.lead_contact) byId.set('lead_contact', leadContact)
     if (columnVisibility.lead_status) byId.set('lead_status', leadStatus)
     if (columnVisibility.lead_notes) byId.set('lead_notes', leadNotes)
+    if (columnVisibility.lead_flagged) byId.set('lead_flagged', leadFlagged)
 
     const defaultOrder: string[] = [
       ...visiblePblColDefs.map((c) => c.key),
       ...(columnVisibility.lead_contact ? ['lead_contact'] : []),
       ...(columnVisibility.lead_status ? ['lead_status'] : []),
       ...(columnVisibility.lead_notes ? ['lead_notes'] : []),
+      ...(columnVisibility.lead_flagged ? ['lead_flagged'] : []),
     ]
 
     let orderedIds: string[] = defaultOrder
@@ -476,15 +736,19 @@ export default function LeadExplorer({ onDrillClick }: Props) {
   }, [
     visiblePblColDefs,
     leadsByAppId,
+    annotations,
     onDrillClick,
     revealLoading,
     saveLead,
+    saveAnnotation,
     columnVisibility,
     columnOrder,
+    statusFilter,
+    uniqueStatuses,
   ])
 
   const table = useReactTable({
-    data,
+    data: tableData,
     columns,
     pageCount,
     state: { pagination, sorting, columnFilters, columnSizing, columnOrder },
@@ -494,6 +758,11 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     onColumnSizingChange: setColumnSizing,
     onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
+    getRowId: (originalRow, index) => {
+      const id = (originalRow as { application_id?: unknown }).application_id
+      if (id != null && Number.isFinite(Number(id))) return String(id)
+      return `row-${index}`
+    },
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,
@@ -522,10 +791,60 @@ export default function LeadExplorer({ onDrillClick }: Props) {
     lead_contact: 'Contact',
     lead_status: 'Status',
     lead_notes: 'Notes',
+    lead_flagged: 'Flag',
+  }
+
+  if (!prefsReady) {
+    return (
+      <div className="explore-toolbar explore-lead-toolbar">
+        <div className="explore-toolbar-left">
+          <span className="explore-row-count explore-lead-title">PBL Intelligence — leads</span>
+          <span className="explore-row-count">Loading your workspace…</span>
+        </div>
+      </div>
+    )
   }
 
   return (
     <>
+      <style>{`
+        .lead-explorer-table-scroll {
+          max-height: calc(100vh - 220px);
+          overflow-y: auto;
+          overflow-x: auto;
+          position: relative;
+        }
+        .lead-explorer-table-scroll .explore-table.lead-explorer-table thead .explore-th {
+          padding: 4px 8px;
+          font-size: 10px;
+          vertical-align: middle;
+          white-space: nowrap;
+          line-height: 1.2;
+        }
+        .lead-explorer-table-scroll .explore-table.lead-explorer-table thead .explore-th select {
+          font-size: 9px;
+          padding: 1px 4px;
+          max-width: 100px;
+        }
+        .lead-explorer-table-scroll .explore-table.lead-explorer-table thead .explore-filter-row .explore-filter-input {
+          font-size: 9px;
+          padding: 2px 4px;
+          max-width: 80px;
+        }
+        .lead-explorer-table-scroll .explore-table.lead-explorer-table thead tr:first-child .explore-th {
+          position: sticky;
+          top: 0;
+          z-index: 12;
+          background: #1a2332;
+        }
+        .lead-explorer-table-scroll .explore-table.lead-explorer-table thead tr.explore-filter-row .explore-filter-th {
+          position: sticky;
+          top: 28px;
+          z-index: 11;
+          background: #1e2b3a;
+          padding: 2px 4px;
+        }
+      `}</style>
       <div className="explore-toolbar explore-lead-toolbar">
         <div className="explore-toolbar-left">
           <span className="explore-row-count explore-lead-title">PBL Intelligence — leads</span>
@@ -581,8 +900,27 @@ export default function LeadExplorer({ onDrillClick }: Props) {
                       className="explore-reset-cols-btn"
                       title="Reset column layout"
                       onClick={() => {
-                        localStorage.removeItem(LEAD_PREFS_KEY)
-                        window.location.reload()
+                        const nextVis = defaultLeadVisibility(tableDef)
+                        const nextSort: SortingState = [
+                          { id: tableDef.defaultSort, desc: tableDef.defaultSortDesc ?? false },
+                        ]
+                        setColumnVisibility(nextVis)
+                        setColumnOrder([])
+                        setColumnSizing({})
+                        setSorting(nextSort)
+                        setColumnFilters([])
+                        void fetch('/api/leads/preferences', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            table_id: LEAD_EXPLORER_TABLE_ID,
+                            column_order: null,
+                            column_visibility: nextVis,
+                            column_widths: null,
+                            sort_state: nextSort,
+                            filters: null,
+                          }),
+                        }).catch((e) => console.error('Failed to reset preferences:', e))
                       }}
                     >
                       Reset columns
@@ -628,9 +966,9 @@ export default function LeadExplorer({ onDrillClick }: Props) {
 
       {error && <div className="explore-error">Error: {error}</div>}
 
-      <div className="explore-table-wrap">
+      <div className="explore-table-wrap lead-explorer-table-scroll">
         <table
-          className="explore-table"
+          className="explore-table lead-explorer-table"
           style={
             table.getState().columnSizing && Object.keys(table.getState().columnSizing).length > 0
               ? { tableLayout: 'fixed' as const, width: table.getTotalSize() }
@@ -676,15 +1014,6 @@ export default function LeadExplorer({ onDrillClick }: Props) {
                       currentOrder.splice(fromIdx, 1)
                       currentOrder.splice(toIdx, 0, dragCol.current)
                       setColumnOrder(currentOrder)
-                      try {
-                        const existing = JSON.parse(localStorage.getItem(LEAD_PREFS_KEY) || '{}')
-                        localStorage.setItem(
-                          LEAD_PREFS_KEY,
-                          JSON.stringify({ ...existing, columnOrder: currentOrder })
-                        )
-                      } catch {
-                        /* ignore */
-                      }
                       dragCol.current = null
                     }}
                     onDragEnd={() => {
@@ -755,6 +1084,12 @@ export default function LeadExplorer({ onDrillClick }: Props) {
               <tr>
                 <td colSpan={table.getVisibleFlatColumns().length} className="explore-empty-cell">
                   No results
+                </td>
+              </tr>
+            ) : tableData.length === 0 ? (
+              <tr>
+                <td colSpan={table.getVisibleFlatColumns().length} className="explore-empty-cell">
+                  No rows match this status filter
                 </td>
               </tr>
             ) : (

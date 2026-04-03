@@ -17,16 +17,27 @@ import {
   fetchCommercialChars,
   fetchExemptChars,
   fetchSiblingPins,
+  findApprovedUserRange,
+  buildAddressRange,
+  collectPinsForUserRangeAddresses,
   fetchComplaintsByAddresses,
   fetchViolationsByAddresses,
   fetchPermitsByAddresses,
   fetchPinAddressMap,
+  JUNK_MAILING_NAMES,
 } from '@/lib/supabase-search'
 import type { PropertyCharsResidentialRow, PropertyCharsCondoRow } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { getClassDescription } from '@/lib/class-codes'
 import PropertyFeed from './PropertyFeed'
 import PropertyDetailsExpanded from './PropertyDetailsExpanded'
+import {
+  CommercialCharacteristicRows,
+  CondoCharacteristicRemainderRows,
+  CondoCharacteristicTopRows,
+  ResidentialCharacteristicRemainderRows,
+  ResidentialCharacteristicTopRows,
+} from './PropertyDetailsCharBlocks'
 import type { SiblingPin } from './PropertyDetailsExpanded'
 import AddressBarButtons from './AddressBarButtons'
 import OwnerPortfolioCard from './OwnerPortfolioCard'
@@ -167,27 +178,14 @@ function showResidentialNumericAdditional(val: unknown): boolean {
 type AdditionalResidentialField = { key: string; label: string; kind: 'numeric' | 'string' | 'boolish' }
 
 const ADDITIONAL_RESIDENTIAL_FIELDS: AdditionalResidentialField[] = [
-  { key: 'num_bedrooms', label: 'Bedrooms', kind: 'numeric' },
-  { key: 'num_rooms', label: 'Rooms', kind: 'numeric' },
-  { key: 'num_full_baths', label: 'Full Baths', kind: 'numeric' },
-  { key: 'num_half_baths', label: 'Half Baths', kind: 'numeric' },
-  { key: 'num_fireplaces', label: 'Fireplaces', kind: 'numeric' },
-  { key: 'construction_quality', label: 'Construction Quality', kind: 'string' },
   { key: 'design_plan', label: 'Design Plan', kind: 'string' },
   { key: 'site_desirability', label: 'Site Desirability', kind: 'string' },
-  { key: 'ext_wall_material', label: 'Exterior Wall', kind: 'string' },
-  { key: 'roof_material', label: 'Roof Material', kind: 'string' },
-  { key: 'repair_condition', label: 'Repair Condition', kind: 'string' },
-  { key: 'basement_type', label: 'Basement Type', kind: 'string' },
   { key: 'basement_finish', label: 'Basement Finish', kind: 'string' },
   { key: 'attic_type', label: 'Attic Type', kind: 'string' },
   { key: 'attic_finish', label: 'Attic Finish', kind: 'string' },
   { key: 'garage_attached', label: 'Garage Attached', kind: 'boolish' },
   { key: 'garage_area_included', label: 'Garage Area Included', kind: 'numeric' },
-  { key: 'garage_size', label: 'Garage Size', kind: 'string' },
   { key: 'garage_ext_wall_material', label: 'Garage Ext Wall', kind: 'string' },
-  { key: 'central_heating', label: 'Central Heating', kind: 'boolish' },
-  { key: 'central_air', label: 'Central Air', kind: 'boolish' },
   { key: 'renovation', label: 'Renovation', kind: 'boolish' },
   { key: 'porch', label: 'Porch', kind: 'string' },
 ]
@@ -298,6 +296,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   let parcel: Awaited<ReturnType<typeof fetchParcelUniverse>>['parcel'] = null
   let commercialChars: any[] = []
   let exemptChars: any | null = null
+  let exemptOwnerName: string | null = null
   let addressRange: string | null = null
   let siblingAddresses: string[] = [normalizedAddress]
   let siblingPinsForPortfolio: string[] = []
@@ -305,15 +304,45 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   let buildingParcelCountForAv = 0
   let ownerOtherProperties: { address: string; address_normalized: string; pin: string; neighborhood: string | null }[] = []
   let ownerMailingName: string | null = null
+  let isJunkMailingName = false
   let localCondoPins: string[] | null = null
 
-  if (pin) {
-    const normalizedPin = normalizePin(pin)
-    if (normalizedPin) {
-      const siblings = await fetchSiblingPins(normalizedPin, normalizedAddress)
-      addressRange = siblings.addressRange
-      siblingAddresses = siblings.siblingAddresses
-      siblingPinsForPortfolio = siblings.siblingPins
+  if (!pin) {
+    const userRange = await findApprovedUserRange(normalizedAddress)
+    if (userRange) {
+      siblingAddresses = userRange.allAddresses
+      addressRange = buildAddressRange(userRange.allAddresses)
+      siblingPinsForPortfolio = await collectPinsForUserRangeAddresses(userRange.allAddresses)
+    }
+  }
+
+  /** Tier 1/2/2.5 only — never Tier 3 nearestParcel placeholder. */
+  const hasDirectPropertyMatch = !!property
+
+  let normalizedDataPin: string | null = null
+  if (hasDirectPropertyMatch && pin) {
+    const np = normalizePin(pin)
+    if (np) normalizedDataPin = np
+  } else if (!hasDirectPropertyMatch && isExpanded && siblingPinsForPortfolio.length > 0) {
+    const np = normalizePin(String(siblingPinsForPortfolio[0]))
+    if (np) normalizedDataPin = np
+  }
+
+  if (normalizedDataPin) {
+    const normalizedPin = normalizedDataPin
+    const siblings = hasDirectPropertyMatch
+        ? await fetchSiblingPins(normalizedPin, normalizedAddress)
+        : {
+            siblingPins: siblingPinsForPortfolio,
+            siblingAddresses,
+            addressRange,
+            resolvedVia: 'user_range' as const,
+          }
+      if (hasDirectPropertyMatch) {
+        addressRange = siblings.addressRange
+        siblingAddresses = siblings.siblingAddresses
+        siblingPinsForPortfolio = siblings.siblingPins
+      }
 
       // Auto-expand for unit-suffix condos (all PINs share same base address)
       if (!isExpanded && siblings.siblingPins.length > 1 && siblings.addressRange === normalizedAddress) {
@@ -452,8 +481,25 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       if (isExempt) {
         const { exempt } = await fetchExemptChars(normalizedPin)
         exemptChars = exempt
+        if (exempt?.owner_name != null && String(exempt.owner_name).trim() !== '') {
+          exemptOwnerName = String(exempt.owner_name).trim()
+        }
+
+        // Exempt parcels can still have characteristics in residential / commercial / condo tables.
+        // Residential and condo are already loaded in parallel above; commercial only runs for commercial classes.
+        if (charsResidential == null) {
+          const { chars: comChars } = await fetchCommercialChars(normalizedPin)
+          if (comChars && comChars.length > 0) {
+            commercialChars = comChars
+          }
+        }
+        if (charsResidential == null && commercialChars.length === 0 && charsCondo == null) {
+          const { chars: condChars } = await fetchPropertyCharsCondo(normalizedPin)
+          if (condChars != null) {
+            charsCondo = condChars
+          }
+        }
       }
-    }
   } else {
     const [complaintsResult, violationsResult, permitsResult] = await Promise.all([
       fetchComplaints(normalizedAddress),
@@ -465,61 +511,132 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     permits = permitsResult.permits ?? []
   }
 
-  if (property?.mailing_name && property.mailing_name.trim() !== '') {
-    ownerMailingName = property.mailing_name
-    const supabaseAdmin = getSupabaseAdmin()
-    const { data: ownerProps } = await supabaseAdmin
+  const pinsForMailingScan: string[] =
+    expandedSiblings.length > 0
+      ? expandedSiblings.map((s) => s.pin)
+      : siblingPinsForPortfolio.length > 0
+        ? [...siblingPinsForPortfolio]
+        : pin
+          ? [pin]
+          : []
+
+  const pinKeysForMailing = [
+    ...new Set(
+      pinsForMailingScan
+        .flatMap((p) => {
+          const s = String(p).trim()
+          const n = normalizePinSilent(s)
+          return n && n !== s ? [s, n] : [s]
+        })
+        .filter(Boolean)
+    ),
+  ]
+
+  let mailingRows: { mailing_name: string | null; pin: string | null }[] = []
+  if (pinKeysForMailing.length > 0) {
+    const { data } = await getSupabaseAdmin()
       .from('properties')
-      .select('address, address_normalized, pin')
-      .eq('mailing_name', property.mailing_name)
-      .order('address_normalized', { ascending: true })
-      .limit(200)
+      .select('mailing_name, pin')
+      .in('pin', pinKeysForMailing)
+    mailingRows = data ?? []
+  }
 
-    const ownerPins = (ownerProps ?? [])
-      .map((p: { pin?: string | null }) => normalizePinSilent(String(p.pin ?? '')))
-      .filter(Boolean) as string[]
-    const { data: ownerParcels } =
-      ownerPins.length > 0
-        ? await supabaseAdmin
-            .from('parcel_universe')
-            .select('pin, community_area_name, municipality_name')
-            .in('pin', ownerPins)
-            .order('tax_year', { ascending: false })
-        : { data: [] as { pin: string; community_area_name: string | null; municipality_name: string | null }[] }
-    const pinToNeighborhood: Record<string, string> = {}
-    for (const row of ownerParcels ?? []) {
-      const pk = row.pin ? normalizePinSilent(String(row.pin)) : ''
-      if (!pk) continue
-      const label = row.community_area_name || row.municipality_name || null
-      if (label && pinToNeighborhood[pk] === undefined) {
-        pinToNeighborhood[pk] = label
-      }
+  const firstNonJunkMailingForPins = (() => {
+    for (const p of pinsForMailingScan) {
+      const pk = normalizePinSilent(String(p))
+      const row = mailingRows.find((r) => normalizePinSilent(String(r.pin ?? '')) === pk)
+      const m = row?.mailing_name?.trim()
+      if (m && !JUNK_MAILING_NAMES.has(m.toUpperCase())) return m
     }
+    return null
+  })()
 
-    if (ownerProps && ownerProps.length > 0) {
-      const excludePins =
-        isExpanded && building === 'true'
-          ? siblingPinsForPortfolio.map((p) => p.replace(/-/g, '').padStart(14, '0'))
-          : isLocalCondoExpand && localCondoPins && localCondoPins.length > 0
-            ? localCondoPins.map((p) => p.replace(/-/g, '').padStart(14, '0'))
-            : pin
-              ? [pin.replace(/-/g, '').padStart(14, '0')]
-              : []
-      const excludePinSet = new Set(excludePins)
-      ownerOtherProperties = ownerProps
-        .filter((p: { pin?: string | null }) => {
-          const pPin = (p.pin || '').replace(/-/g, '').padStart(14, '0')
-          return !excludePinSet.has(pPin)
-        })
-        .map((p: { address?: string | null; address_normalized?: string | null; pin?: string | null }) => {
-          const pPin = normalizePinSilent(String(p.pin ?? ''))
-          return {
-            address: (p.address || p.address_normalized) as string,
-            address_normalized: (p.address_normalized || p.address) as string,
-            pin: String(p.pin ?? ''),
-            neighborhood: (pPin && pinToNeighborhood[pPin]) || null,
-          }
-        })
+  const firstAnyMailingForPins = (() => {
+    for (const p of pinsForMailingScan) {
+      const pk = normalizePinSilent(String(p))
+      const row = mailingRows.find((r) => normalizePinSilent(String(r.pin ?? '')) === pk)
+      const m = row?.mailing_name?.trim()
+      if (m) return m
+    }
+    return null
+  })()
+
+  const mProp = property?.mailing_name?.trim() ?? null
+  if (mProp && !JUNK_MAILING_NAMES.has(mProp.toUpperCase())) {
+    ownerMailingName = mProp
+    isJunkMailingName = false
+  } else if (firstNonJunkMailingForPins) {
+    ownerMailingName = firstNonJunkMailingForPins
+    isJunkMailingName = false
+  } else if (mProp) {
+    ownerMailingName = mProp
+    isJunkMailingName = true
+  } else if (firstAnyMailingForPins) {
+    ownerMailingName = firstAnyMailingForPins
+    isJunkMailingName = JUNK_MAILING_NAMES.has(firstAnyMailingForPins.toUpperCase())
+  }
+
+  if (ownerMailingName && !isJunkMailingName) {
+    const supabaseAdmin = getSupabaseAdmin()
+    const { count: ownerMailingPinCount } = await supabaseAdmin
+      .from('properties')
+      .select('pin', { count: 'exact', head: true })
+      .eq('mailing_name', ownerMailingName)
+
+    if (ownerMailingPinCount != null && ownerMailingPinCount <= 500) {
+      const { data: ownerProps } = await supabaseAdmin
+        .from('properties')
+        .select('address, address_normalized, pin')
+        .eq('mailing_name', ownerMailingName)
+        .order('address_normalized', { ascending: true })
+        .limit(200)
+
+      const ownerPins = (ownerProps ?? [])
+        .map((p: { pin?: string | null }) => normalizePinSilent(String(p.pin ?? '')))
+        .filter(Boolean) as string[]
+      const { data: ownerParcels } =
+        ownerPins.length > 0
+          ? await supabaseAdmin
+              .from('parcel_universe')
+              .select('pin, community_area_name, municipality_name')
+              .in('pin', ownerPins)
+              .order('tax_year', { ascending: false })
+          : { data: [] as { pin: string; community_area_name: string | null; municipality_name: string | null }[] }
+      const pinToNeighborhood: Record<string, string> = {}
+      for (const row of ownerParcels ?? []) {
+        const pk = row.pin ? normalizePinSilent(String(row.pin)) : ''
+        if (!pk) continue
+        const label = row.community_area_name || row.municipality_name || null
+        if (label && pinToNeighborhood[pk] === undefined) {
+          pinToNeighborhood[pk] = label
+        }
+      }
+
+      if (ownerProps && ownerProps.length > 0) {
+        const excludePins =
+          isExpanded && building === 'true'
+            ? siblingPinsForPortfolio.map((p) => p.replace(/-/g, '').padStart(14, '0'))
+            : isLocalCondoExpand && localCondoPins && localCondoPins.length > 0
+              ? localCondoPins.map((p) => p.replace(/-/g, '').padStart(14, '0'))
+              : pin
+                ? [pin.replace(/-/g, '').padStart(14, '0')]
+                : []
+        const excludePinSet = new Set(excludePins)
+        ownerOtherProperties = ownerProps
+          .filter((p: { pin?: string | null }) => {
+            const pPin = (p.pin || '').replace(/-/g, '').padStart(14, '0')
+            return !excludePinSet.has(pPin)
+          })
+          .map((p: { address?: string | null; address_normalized?: string | null; pin?: string | null }) => {
+            const pPin = normalizePinSilent(String(p.pin ?? ''))
+            return {
+              address: (p.address || p.address_normalized) as string,
+              address_normalized: (p.address_normalized || p.address) as string,
+              pin: String(p.pin ?? ''),
+              neighborhood: (pPin && pinToNeighborhood[pPin]) || null,
+            }
+          })
+      }
     }
   }
 
@@ -619,6 +736,12 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
 
   const displayClass = (parcel?.['class'] ?? assessed?.class) as string | null | undefined
   const classDescription = getClassDescription(displayClass)
+  const isExemptParcel =
+    displayClass != null &&
+    (() => {
+      const s = String(displayClass).trim().toUpperCase()
+      return s.startsWith('4') || s.startsWith('EX')
+    })()
 
   const municipalityName = parcel?.municipality_name ?? null
   const isChicago =
@@ -684,9 +807,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const portfolioSaveData = {
     currentAddress: displayAddress || addressBarHeadline,
     canonicalAddress: normalizedAddress,
-    isPartOfBuilding: !!(addressRange && addressRange !== displayAddress),
-    buildingAddressRange:
-      isLocalCondoExpand && addressRange ? formatRangeForDisplay(addressRange) : addressBarHeadline || null,
+    isPartOfBuilding: !!(addressRange && (addressRange !== displayAddress || !pin)),
+    buildingAddressRange: addressRange
+      ? formatRangeForDisplay(addressRange)
+      : addressBarHeadline || null,
     additionalStreets:
       addressBarHeadline.includes(' & ') ? addressBarHeadline.split(' & ').slice(1).map((s) => s.trim()).filter(Boolean) : [],
     allPins: portfolioPins,
@@ -791,7 +915,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
               </div>
             )}
 
-            {!property && nearestParcel && (
+            {!property && nearestParcel && !isExpanded && (
               <div className="nearest-parcel-note">
                 <div className="nearest-parcel-heading">No Assessor record at this address</div>
                 <div className="nearest-parcel-sub">
@@ -808,7 +932,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                 </div>
               </div>
             )}
-            {!property && !nearestParcel && (
+            {!property && !nearestParcel && !isExpanded && (
               <div className="nearest-parcel-note">
                 <div className="nearest-parcel-heading">No Assessor record at this address</div>
                 <div className="nearest-parcel-sub">
@@ -822,149 +946,108 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                 key={expandedSiblings.map((s) => s.pin).join(',')}
                 siblings={expandedSiblings}
                 serverSharedChars={{
-                  year_built: charsResidential?.year_built ?? charsCondo?.year_built ?? (commercialChars.length > 0 ? commercialChars[0].year_built : null),
-                  building_sqft: charsResidential?.building_sqft ?? charsCondo?.building_sqft ?? (commercialChars.length > 0 ? commercialChars[0].building_sqft : null),
-                  land_sqft: charsResidential?.land_sqft ?? charsCondo?.land_sqft ?? (commercialChars.length > 0 ? commercialChars[0].land_sqft : null),
-                  property_type: residentialPropertyTypeLine ?? (commercialChars.length > 0 ? commercialChars[0].property_type_use : null) ?? null,
+                  year_built:
+                    commercialChars.length > 0
+                      ? commercialChars[0].year_built
+                      : charsResidential?.year_built ?? charsCondo?.year_built ?? null,
+                  building_sqft:
+                    commercialChars.length > 0
+                      ? commercialChars[0].building_sqft
+                      : charsResidential?.building_sqft ?? charsCondo?.building_sqft ?? null,
+                  land_sqft:
+                    commercialChars.length > 0
+                      ? commercialChars[0].land_sqft
+                      : charsResidential?.land_sqft ?? charsCondo?.land_sqft ?? null,
+                  property_type:
+                    (commercialChars.length > 0 ? commercialChars[0].property_type_use : null) ??
+                    residentialPropertyTypeLine ??
+                    null,
                 }}
               />
             ) : (
               <div className="detail-list">
-
-                {/* Flat row order: Year Built, Building Sqft, Land Sqft, Property Type, Class, PIN */}
                 {charsResidential != null ? (
-                  <>
-                    {detailVal(charsResidential.year_built ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{detailVal(charsResidential.year_built ?? null).text}</span></div>}
-                    {detailNumericLocale(charsResidential.building_sqft ?? null).text !== 'N/A' && (
-                      <div className="detail-row">
-                        <span className="detail-key">Building Sqft</span>
-                        <span className="detail-val">{detailNumericLocale(charsResidential.building_sqft ?? null).text}</span>
-                      </div>
-                    )}
-                    {detailNumericLocale(charsResidential.land_sqft ?? null).text !== 'N/A' && Number(charsResidential.land_sqft) > 0 && (
-                      <div className="detail-row">
-                        <span className="detail-key">Land Sqft</span>
-                        <span className="detail-val">{detailNumericLocale(charsResidential.land_sqft ?? null).text}</span>
-                      </div>
-                    )}
-                    {residentialPropertyTypeLine != null && (
-                      <div className="detail-row">
-                        <span className="detail-key">Property Type</span>
-                        <span className="detail-val">{residentialPropertyTypeLine}</span>
-                      </div>
-                    )}
-                  </>
+                  <ResidentialCharacteristicTopRows chars={charsResidential} />
                 ) : charsCondo != null ? (
-                  <>
-                    {detailVal(charsCondo.year_built ?? null).text !== 'N/A' && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{detailVal(charsCondo.year_built ?? null).text}</span></div>}
-                    {detailVal(charsCondo.building_sqft ?? null).text !== 'N/A' && (
-                      <div className="detail-row">
-                        <span className="detail-key">Building Sqft</span>
-                        <span className="detail-val">{detailNumericLocale(charsCondo.building_sqft ?? null).text}</span>
-                      </div>
-                    )}
-                    {detailVal(charsCondo.unit_sqft ?? null).text !== 'N/A' && (
-                      <div className="detail-row">
-                        <span className="detail-key">Unit Sqft</span>
-                        <span className="detail-val">{detailNumericLocale(charsCondo.unit_sqft ?? null).text}</span>
-                      </div>
-                    )}
-                    {detailVal(charsCondo.land_sqft ?? null).text !== 'N/A' && Number(charsCondo.land_sqft) > 0 && (
-                      <div className="detail-row">
-                        <span className="detail-key">Land Sqft</span>
-                        <span className="detail-val">{detailNumericLocale(charsCondo.land_sqft ?? null).text}</span>
-                      </div>
-                    )}
-                  </>
+                  <CondoCharacteristicTopRows chars={charsCondo} />
                 ) : commercialChars.length > 0 ? (
-                  <>
-                    {commercialChars[0].year_built != null && Number(commercialChars[0].year_built) > 0 && <div className="detail-row"><span className="detail-key">Year Built</span><span className="detail-val">{commercialChars[0].year_built}</span></div>}
-                    {commercialChars[0].building_sqft != null && Number(commercialChars[0].building_sqft) > 0 && (
-                      <div className="detail-row">
-                        <span className="detail-key">Building Sqft</span>
-                        <span className="detail-val">{Number(commercialChars[0].building_sqft).toLocaleString('en-US')}</span>
-                      </div>
-                    )}
-                    {commercialChars[0].land_sqft != null && Number(commercialChars[0].land_sqft) > 0 && (
-                      <div className="detail-row">
-                        <span className="detail-key">Land Sqft</span>
-                        <span className="detail-val">{Number(commercialChars[0].land_sqft).toLocaleString('en-US')}</span>
-                      </div>
-                    )}
-                    {commercialChars[0].property_type_use && <div className="detail-row"><span className="detail-key">Property Type</span><span className="detail-val">{commercialChars[0].property_type_use}</span></div>}
-                  </>
+                  <CommercialCharacteristicRows row={commercialChars[0] as Record<string, unknown>} />
                 ) : null}
 
-                {/* Class and PIN always last */}
                 <div className="detail-row">
                   <span className="detail-key">Class</span>
-                  <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>{displayClass ?? 'N/A'}{classDescription ? ` — ${classDescription}` : ''}</span>
-                </div>
-                {charsResidential != null &&
-                  charsResidential.num_apartments != null &&
-                  Number(charsResidential.num_apartments) > 0 && (
-                    <div className="detail-row">
-                      <span className="detail-key">Apartments</span>
-                      <span className="detail-val">{detailNumericLocale(charsResidential.num_apartments).text}</span>
-                    </div>
-                  )}
-                <div className="detail-row">
-                  <span className="detail-key">PIN</span>
-                  <span className={detailVal(displayPin ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(displayPin ?? null).text}</span>
+                  <span className={detailVal(displayClass ?? null).isNa ? 'detail-val na' : 'detail-val'}>
+                    {isExemptParcel ? 'EX — Tax-Exempt Property' : `${displayClass ?? 'N/A'}${classDescription ? ` — ${classDescription}` : ''}`}
+                  </span>
                 </div>
 
-                {charsResidential != null && (
-                  <details>
-                    <summary style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--text-dim)', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const }}>
-                      {'Additional Characteristics'}
-                      <span style={{ fontSize: '16px' }}>{'▾'}</span>
-                    </summary>
-                    {additionalResidentialDetailRows(charsResidential)}
-                  </details>
-                )}
-
-                  <details>
-                  <summary style={{ fontFamily: 'var(--mono)', fontSize: '8px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: '#2d6a4f', padding: '7px 14px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid rgba(45,106,79,0.15)', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const }}>
-                    {'Assessment'}
-                    <span style={{ fontSize: '14px', color: '#2d6a4f' }}>{'▾'}</span>
+                <details>
+                  <summary
+                    style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase' as const,
+                      color: 'var(--text-dim)',
+                      padding: '8px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      listStyle: 'none',
+                      userSelect: 'none' as const,
+                    }}
+                  >
+                    {'Additional Characteristics'}
+                    <span style={{ fontSize: '16px' }}>{'▾'}</span>
                   </summary>
-                  <div className="detail-row">
-                    <span className="detail-key">AV Tax Year</span>
-                    <span className={detailVal(assessed?.taxYear ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.taxYear ?? null).text}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-key">AV Class</span>
-                    <span className={detailVal(assessed?.class ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.class ?? null).text}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-key">AV Value Source</span>
-                    <span className={detailVal(assessed?.valueType ?? null).isNa ? 'detail-val na' : 'detail-val'}>{detailVal(assessed?.valueType ?? null).text}</span>
-                  </div>
-                  {assessed?.displayValue != null && (
+
+                  {exemptOwnerName && (
                     <div className="detail-row">
-                      <span className="detail-key">Assessed Value</span>
-                      <span className="detail-val">{currencyZero.format(assessed.displayValue)}</span>
+                      <span className="detail-key">Owner</span>
+                      <span className="detail-val">{exemptOwnerName}</span>
                     </div>
                   )}
-                  {assessed?.class != null && (
-                    <div className="detail-row">
-                      <span className="detail-key">Assessment Level</span>
-                      <span className="detail-val">{getAssessmentLevelForImplied(assessed.class) === 0.25 ? '25%' : '10%'}</span>
-                    </div>
+
+                  {charsResidential != null && (
+                    <ResidentialCharacteristicRemainderRows chars={charsResidential} />
                   )}
-                  {assessed?.displayValue != null && assessed?.class != null && (
-                    <div className="detail-row">
-                      <span className="detail-key">Implied Market Value</span>
-                      <span className="detail-val">{currencyZero.format(assessed.displayValue / getAssessmentLevelForImplied(assessed.class))}</span>
-                    </div>
-                  )}
+                  {charsCondo != null && <CondoCharacteristicRemainderRows chars={charsCondo} />}
+
+                  {assessed?.displayValue != null &&
+                    assessed.displayValue > 0 &&
+                    assessed?.class != null &&
+                    assessed?.taxYear != null && (
+                      <div className="detail-row">
+                        <span className="detail-key">Implied Value ({assessed.taxYear})</span>
+                        <span className="detail-val">
+                          $
+                          {Math.round(
+                            assessed.displayValue / getAssessmentLevelForImplied(assessed.class)
+                          ).toLocaleString('en-US')}
+                        </span>
+                      </div>
+                    )}
+
+                  <div className="detail-row">
+                    <span className="detail-key">PIN</span>
+                    <span className={detailVal(displayPin ?? null).isNa ? 'detail-val na' : 'detail-val'}>
+                      {detailVal(displayPin ?? null).text}
+                    </span>
+                  </div>
+
+                  {charsResidential != null && additionalResidentialDetailRows(charsResidential)}
                 </details>
 
                 {exemptChars && (
                   <>
                     <span style={SECTION_LABEL}>Tax Exempt</span>
-                    <div className="detail-row"><span className="detail-key">Owner</span><span className="detail-val">{exemptChars.owner_name}</span></div>
-                    <div className="detail-row"><span className="detail-key">Township</span><span className="detail-val">{exemptChars.township_name}</span></div>
+                    <div className="detail-row">
+                      <span className="detail-key">Township</span>
+                      <span className="detail-val">{exemptChars.township_name}</span>
+                    </div>
                   </>
                 )}
 
@@ -972,8 +1055,21 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
             )}
           </div>
 
-          {ownerOtherProperties.length > 0 && ownerMailingName && (
-            <OwnerPortfolioCard mailingName={ownerMailingName} properties={ownerOtherProperties} />
+          {ownerMailingName && (
+            <OwnerPortfolioCard
+              mailingName={ownerMailingName}
+              isJunkName={isJunkMailingName}
+              parcelsAtAddress={
+                expandedSiblings.length > 0
+                  ? expandedSiblings.length
+                  : siblingPinsForPortfolio.length > 0
+                    ? siblingPinsForPortfolio.length
+                    : pin
+                      ? 1
+                      : 0
+              }
+              otherParcelsCount={ownerOtherProperties.length}
+            />
           )}
         </div>
 

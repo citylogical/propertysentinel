@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
+  getSortedRowModel,
   flexRender,
   type ColumnDef as TanStackColumnDef,
   type SortingState,
@@ -90,6 +91,737 @@ function exploreVisibilityFromKeys(def: TableDef, keys: string[]): VisibilitySta
   return vis
 }
 
+const AIRBNB_NEARBY_TABLE_ID = 'airbnb_nearby' as const
+const AIRBNB_COL_IDS = [
+  'flag',
+  'listing',
+  'host',
+  'type',
+  'price',
+  'license',
+  'noncompliant',
+  'reviews',
+  'host_listings',
+  'verified_address',
+  'notes',
+] as const
+
+type AirbnbNearbyColId = (typeof AIRBNB_COL_IDS)[number]
+
+type AirbnbStoredAnnotation = {
+  row_key?: string
+  status?: string | null
+  notes?: string | null
+  flagged?: boolean
+}
+
+function airbnbAnnotationRowKey(listingId: number): string {
+  return `airbnb_${listingId}`
+}
+
+/** Pack verified address + freeform notes into lead_annotations.notes (JSON). */
+function parseAirbnbPackedNotes(raw: string | null | undefined): { va: string; n: string } {
+  if (raw == null || raw === '') return { va: '', n: '' }
+  const s = String(raw).trim()
+  if (s.startsWith('{')) {
+    try {
+      const o = JSON.parse(s) as { va?: unknown; n?: unknown }
+      return {
+        va: o.va != null ? String(o.va) : '',
+        n: o.n != null ? String(o.n) : '',
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return { va: '', n: s }
+}
+
+function airbnbFlagFromAnnotation(ann: AirbnbStoredAnnotation | undefined): string {
+  if (!ann) return ''
+  if (ann.flagged === true) return 'yes'
+  if (ann.status === 'target') return 'maybe'
+  if (ann.status === 'new') return 'no'
+  return ''
+}
+
+function airbnbFlagToApi(flag: string): { flagged: boolean; status: string } {
+  if (flag === 'yes') return { flagged: true, status: 'not_started' }
+  if (flag === 'maybe') return { flagged: false, status: 'target' }
+  if (flag === 'no') return { flagged: false, status: 'new' }
+  return { flagged: false, status: 'not_started' }
+}
+
+function defaultAirbnbNearbyVisibility(): VisibilityState {
+  const v: VisibilityState = {}
+  for (const id of AIRBNB_COL_IDS) v[id] = true
+  return v
+}
+
+/** Row key for PBL application annotations (`lead_annotations.row_key`). */
+function pblLeadAnnotationKeyFromRow(row: Record<string, unknown>): string | null {
+  const raw = row.application_id ?? row.pin
+  if (raw === null || raw === undefined || raw === '') return null
+  const n = Number(raw)
+  if (Number.isFinite(n)) return `pbl_app_${n}`
+  return `pbl_app_${String(raw).trim()}`
+}
+
+function AirbnbNearbyDrillTable({
+  rows,
+  countSourceRows,
+  parentApplicationId,
+  onPblCountsSaved,
+}: {
+  rows: Record<string, unknown>[]
+  /** Full nearby listing set (unfiltered) for Yes/Maybe recounts */
+  countSourceRows: Record<string, unknown>[]
+  parentApplicationId: number | null
+  onPblCountsSaved?: (rowKey: string, annotation: Record<string, unknown>) => void
+}) {
+  const [prefsReady, setPrefsReady] = useState(false)
+  const [layoutSaveReady, setLayoutSaveReady] = useState(false)
+  const [annotations, setAnnotations] = useState<Record<string, AirbnbStoredAnnotation>>({})
+  const annotationsRef = useRef<Record<string, AirbnbStoredAnnotation>>({})
+  const prefSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultAirbnbNearbyVisibility)
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([])
+  const dragCol = useRef<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null)
+  const [showColumnPicker, setShowColumnPicker] = useState(false)
+  const colPickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    annotationsRef.current = annotations
+  }, [annotations])
+
+  const rowByListingId = useMemo(() => {
+    const m = new Map<number, Record<string, unknown>>()
+    for (const r of rows) {
+      const id = Number(r.id)
+      if (Number.isFinite(id)) m.set(id, r)
+    }
+    return m
+  }, [rows])
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setShowColumnPicker(false)
+      }
+    }
+    if (showColumnPicker) {
+      document.addEventListener('mousedown', onClickOutside)
+      return () => document.removeEventListener('mousedown', onClickOutside)
+    }
+  }, [showColumnPicker])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [annRes, prefRes] = await Promise.all([
+          fetch('/api/leads/annotations').then((r) => r.json()),
+          fetch(`/api/leads/preferences?table_id=${encodeURIComponent(AIRBNB_NEARBY_TABLE_ID)}`).then((r) =>
+            r.json()
+          ),
+        ])
+        if (cancelled) return
+        if (
+          annRes &&
+          typeof annRes === 'object' &&
+          'annotations' in annRes &&
+          annRes.annotations &&
+          typeof annRes.annotations === 'object' &&
+          !('error' in annRes && annRes.error)
+        ) {
+          const next: Record<string, AirbnbStoredAnnotation> = {}
+          for (const [k, v] of Object.entries(annRes.annotations as Record<string, AirbnbStoredAnnotation>)) {
+            if (k.startsWith('airbnb_')) next[k] = v
+          }
+          setAnnotations(next)
+          annotationsRef.current = next
+        }
+        const prefs = prefRes.preferences as
+          | {
+              column_order?: string[] | null
+              column_visibility?: VisibilityState | null
+              column_widths?: ColumnSizingState | null
+              sort_state?: SortingState | null
+            }
+          | null
+          | undefined
+        if (prefs) {
+          const valid = new Set<string>(AIRBNB_COL_IDS)
+          if (prefs.column_visibility && typeof prefs.column_visibility === 'object') {
+            setColumnVisibility({ ...defaultAirbnbNearbyVisibility(), ...prefs.column_visibility })
+          }
+          if (prefs.column_order && Array.isArray(prefs.column_order) && prefs.column_order.length > 0) {
+            setColumnOrder(prefs.column_order.filter((k) => valid.has(k)))
+          }
+          if (prefs.column_widths && typeof prefs.column_widths === 'object') {
+            setColumnSizing(prefs.column_widths)
+          }
+          if (prefs.sort_state && Array.isArray(prefs.sort_state)) {
+            setSorting(prefs.sort_state as SortingState)
+          }
+        }
+      } catch (e) {
+        console.error('[airbnb nearby] Failed to load workspace state:', e)
+      } finally {
+        if (!cancelled) {
+          setPrefsReady(true)
+          setLayoutSaveReady(true)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!prefsReady || !layoutSaveReady) return
+    if (prefSaveTimer.current) clearTimeout(prefSaveTimer.current)
+    prefSaveTimer.current = setTimeout(async () => {
+      try {
+        await fetch('/api/leads/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_id: AIRBNB_NEARBY_TABLE_ID,
+            column_order: columnOrder.length > 0 ? columnOrder : null,
+            column_visibility: columnVisibility,
+            column_widths: Object.keys(columnSizing).length > 0 ? columnSizing : null,
+            sort_state: sorting.length > 0 ? sorting : null,
+            filters: null,
+          }),
+        })
+      } catch (e) {
+        console.error('[airbnb nearby] Failed to save preferences:', e)
+      }
+    }, 500)
+    return () => {
+      if (prefSaveTimer.current) clearTimeout(prefSaveTimer.current)
+    }
+  }, [prefsReady, layoutSaveReady, columnVisibility, columnOrder, columnSizing, sorting])
+
+  const savePblListingFlagCounts = useCallback(() => {
+    if (parentApplicationId == null || !Number.isFinite(parentApplicationId)) return
+    window.setTimeout(async () => {
+      const map = annotationsRef.current
+      let yesCount = 0
+      let maybeCount = 0
+      for (const listing of countSourceRows) {
+        const id = Number(listing.id)
+        if (!Number.isFinite(id)) continue
+        const key = airbnbAnnotationRowKey(id)
+        const flag = airbnbFlagFromAnnotation(map[key])
+        if (flag === 'yes') yesCount++
+        else if (flag === 'maybe') maybeCount++
+      }
+      const pblKey = `pbl_app_${parentApplicationId}`
+      try {
+        const res = await fetch('/api/leads/annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            row_key: pblKey,
+            flagged_count: yesCount,
+            maybe_count: maybeCount,
+          }),
+        })
+        const json = (await res.json()) as { annotation?: Record<string, unknown>; error?: string }
+        if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+        if (json.annotation && onPblCountsSaved) onPblCountsSaved(pblKey, json.annotation)
+      } catch (e) {
+        console.error('[airbnb nearby] Failed to save PBL flag counts:', e)
+      }
+    }, 100)
+  }, [parentApplicationId, countSourceRows, onPblCountsSaved])
+
+  const saveAnnotation = useCallback(
+    async (listingId: number, patch: Partial<{ flag: string; va: string | null; notesText: string | null }>) => {
+      if (!Number.isFinite(listingId)) return
+      const rowKey = airbnbAnnotationRowKey(listingId)
+      const row = rowByListingId.get(listingId) ?? {}
+      const cur = annotationsRef.current[rowKey]
+      const flag =
+        patch.flag !== undefined
+          ? patch.flag
+          : cur
+            ? airbnbFlagFromAnnotation(cur)
+            : String(row.flag ?? '')
+      const curPacked = parseAirbnbPackedNotes((cur?.notes as string) ?? null)
+      const va =
+        patch.va !== undefined
+          ? (patch.va ?? '')
+          : cur != null
+            ? curPacked.va
+            : String(row.verified_address ?? '')
+      const n =
+        patch.notesText !== undefined
+          ? (patch.notesText ?? '')
+          : cur != null
+            ? curPacked.n
+            : String(row.notes ?? '')
+      const { flagged, status } = airbnbFlagToApi(flag)
+      const notesOut = va === '' && n === '' ? null : JSON.stringify({ va, n })
+      const merged: AirbnbStoredAnnotation = {
+        row_key: rowKey,
+        status,
+        notes: notesOut,
+        flagged,
+      }
+      setAnnotations((prev) => ({ ...prev, [rowKey]: merged }))
+      annotationsRef.current = { ...annotationsRef.current, [rowKey]: merged }
+      try {
+        const res = await fetch('/api/leads/annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            row_key: rowKey,
+            status: merged.status ?? 'not_started',
+            notes: merged.notes ?? null,
+            flagged: merged.flagged ?? false,
+          }),
+        })
+        if (!res.ok) {
+          const errJson = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(errJson.error || `HTTP ${res.status}`)
+        }
+        savePblListingFlagCounts()
+      } catch (e) {
+        console.error('[airbnb nearby] Failed to save annotation:', e)
+      }
+    },
+    [rowByListingId, savePblListingFlagCounts]
+  )
+
+  const airbnbColLabels: Record<AirbnbNearbyColId, string> = {
+    flag: 'Flag',
+    listing: 'Listing',
+    host: 'Host',
+    type: 'Type',
+    price: 'Price',
+    license: 'License',
+    noncompliant: 'Noncompliant',
+    reviews: 'Reviews',
+    host_listings: 'Host Listings',
+    verified_address: 'Verified Address',
+    notes: 'Notes',
+  }
+
+  const columns = useMemo<TanStackColumnDef<Record<string, unknown>>[]>(() => {
+    const base: TanStackColumnDef<Record<string, unknown>>[] = [
+      {
+        id: 'flag',
+        accessorFn: (r) => r.id,
+        header: 'Flag',
+        size: 100,
+        cell: ({ row }) => {
+          const listingId = Number(row.original.id)
+          const rowKey = airbnbAnnotationRowKey(listingId)
+          const ann = annotations[rowKey]
+          const effFlag = ann ? airbnbFlagFromAnnotation(ann) : String(row.original.flag ?? '')
+          return (
+            <select
+              className={`explore-annotation-select ${
+                effFlag === 'yes' ? 'ann-yes' : effFlag === 'maybe' ? 'ann-maybe' : effFlag === 'no' ? 'ann-no' : ''
+              }`}
+              value={effFlag}
+              onChange={(e) => {
+                if (!Number.isFinite(listingId)) return
+                void saveAnnotation(listingId, { flag: e.target.value })
+              }}
+            >
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="maybe">Maybe</option>
+              <option value="no">No</option>
+            </select>
+          )
+        },
+        enableSorting: false,
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'listing',
+        accessorKey: 'id',
+        header: 'Listing',
+        size: 96,
+        cell: ({ row }) => {
+          const id = row.original.id
+          return row.original.listing_url ? (
+            <a
+              href={String(row.original.listing_url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="explore-drill-link"
+            >
+              {String(id ?? '—')}
+            </a>
+          ) : (
+            String(id ?? '—')
+          )
+        },
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'host',
+        accessorKey: 'host_name',
+        header: 'Host',
+        size: 140,
+        cell: (info) => String(info.row.original.host_name ?? '—'),
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'type',
+        accessorKey: 'property_type',
+        header: 'Type',
+        size: 120,
+        cell: (info) => String(info.row.original.property_type ?? '—'),
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'price',
+        accessorKey: 'price',
+        header: 'Price',
+        size: 80,
+        cell: (info) => String(info.row.original.price ?? '—'),
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'license',
+        accessorKey: 'license',
+        header: 'License',
+        size: 140,
+        cell: (info) => (
+          <span style={{ display: 'block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {String(info.row.original.license ?? '—')}
+          </span>
+        ),
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'noncompliant',
+        accessorKey: 'is_potentially_noncompliant',
+        header: 'Noncompliant',
+        size: 110,
+        cell: ({ row }) => (
+          <span
+            className={`explore-modal-badge ${row.original.is_potentially_noncompliant ? 'badge-open' : 'badge-closed'}`}
+          >
+            {row.original.is_potentially_noncompliant ? 'Yes' : 'No'}
+          </span>
+        ),
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'reviews',
+        accessorKey: 'number_of_reviews',
+        header: 'Reviews',
+        size: 88,
+        cell: (info) =>
+          info.row.original.number_of_reviews != null
+            ? Number(info.row.original.number_of_reviews).toLocaleString()
+            : '—',
+        meta: { type: 'number', sticky: false },
+      },
+      {
+        id: 'host_listings',
+        accessorKey: 'host_listings_count',
+        header: 'Host Listings',
+        size: 110,
+        cell: (info) =>
+          info.row.original.host_listings_count != null ? String(info.row.original.host_listings_count) : '—',
+        meta: { type: 'number', sticky: false },
+      },
+      {
+        id: 'verified_address',
+        accessorFn: (r) => r.id,
+        header: 'Verified Address',
+        size: 200,
+        cell: ({ row }) => {
+          const listingId = Number(row.original.id)
+          const rowKey = airbnbAnnotationRowKey(listingId)
+          const ann = annotations[rowKey]
+          const packed = parseAirbnbPackedNotes((ann?.notes as string) ?? null)
+          const v =
+            ann != null
+              ? packed.va
+              : String(row.original.verified_address ?? '')
+          return (
+            <input
+              key={`${rowKey}-va-${v}`}
+              type="text"
+              className="explore-annotation-input"
+              defaultValue={v}
+              placeholder="Address…"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+              onBlur={(e) => {
+                if (!Number.isFinite(listingId)) return
+                const next = e.target.value
+                if (next === v) return
+                void saveAnnotation(listingId, { va: next || null })
+              }}
+            />
+          )
+        },
+        enableSorting: false,
+        meta: { type: 'text', sticky: false },
+      },
+      {
+        id: 'notes',
+        accessorFn: (r) => r.id,
+        header: 'Notes',
+        size: 160,
+        cell: ({ row }) => {
+          const listingId = Number(row.original.id)
+          const rowKey = airbnbAnnotationRowKey(listingId)
+          const ann = annotations[rowKey]
+          const packed = parseAirbnbPackedNotes((ann?.notes as string) ?? null)
+          const v = ann != null ? packed.n : String(row.original.notes ?? '')
+          return (
+            <input
+              key={`${rowKey}-n-${v}`}
+              type="text"
+              className="explore-annotation-input explore-annotation-notes"
+              defaultValue={v}
+              placeholder="Notes…"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+              onBlur={(e) => {
+                if (!Number.isFinite(listingId)) return
+                const next = e.target.value
+                if (next === v) return
+                void saveAnnotation(listingId, { notesText: next || null })
+              }}
+            />
+          )
+        },
+        enableSorting: false,
+        meta: { type: 'text', sticky: false },
+      },
+    ]
+
+    const byId = new Map<string, TanStackColumnDef<Record<string, unknown>>>()
+    for (const c of base) {
+      if (c.id) byId.set(c.id, c)
+    }
+
+    const defaultOrder: string[] = [...AIRBNB_COL_IDS]
+    let orderedIds: string[] = defaultOrder
+    if (columnOrder.length > 0) {
+      const seen = new Set<string>()
+      orderedIds = []
+      for (const id of columnOrder) {
+        if (byId.has(id) && columnVisibility[id] !== false && !seen.has(id)) {
+          orderedIds.push(id)
+          seen.add(id)
+        }
+      }
+      for (const id of defaultOrder) {
+        if (columnVisibility[id] !== false && !seen.has(id)) {
+          orderedIds.push(id)
+          seen.add(id)
+        }
+      }
+    } else {
+      orderedIds = defaultOrder.filter((id) => columnVisibility[id] !== false)
+    }
+
+    const result = orderedIds
+      .map((id) => byId.get(id))
+      .filter((c): c is TanStackColumnDef<Record<string, unknown>> => Boolean(c))
+    return result.length > 0 ? result : base
+  }, [annotations, saveAnnotation, columnVisibility, columnOrder])
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { sorting, columnSizing, columnOrder },
+    onSortingChange: setSorting,
+    onColumnSizingChange: setColumnSizing,
+    onColumnOrderChange: setColumnOrder,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
+  })
+
+  const colVisible = AIRBNB_COL_IDS.filter((id) => columnVisibility[id] !== false).length
+
+  if (!prefsReady) {
+    return <div className="explore-modal-loading">Loading…</div>
+  }
+
+  return (
+    <>
+      <div className="explore-toolbar explore-lead-toolbar" style={{ marginBottom: 8 }}>
+        <div className="explore-toolbar-left">
+          <div className="explore-col-picker-wrap" ref={colPickerRef}>
+            <button
+              type="button"
+              className="explore-btn"
+              onClick={() => setShowColumnPicker(!showColumnPicker)}
+            >
+              Columns {colVisible}/{AIRBNB_COL_IDS.length}
+            </button>
+            {showColumnPicker && (
+              <div className="explore-col-picker">
+                <div className="explore-col-picker-header">
+                  <span>Toggle columns</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="explore-col-picker-action"
+                      onClick={() => {
+                        setColumnVisibility(defaultAirbnbNearbyVisibility())
+                      }}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      className="explore-col-picker-action"
+                      onClick={() => {
+                        const none: VisibilityState = {}
+                        for (const id of AIRBNB_COL_IDS) none[id] = false
+                        setColumnVisibility(none)
+                      }}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+                <div className="explore-col-picker-list">
+                  {AIRBNB_COL_IDS.map((id) => (
+                    <label key={id} className="explore-col-picker-item">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility[id] !== false}
+                        onChange={(e) =>
+                          setColumnVisibility((prev) => ({
+                            ...prev,
+                            [id]: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{airbnbColLabels[id]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="explore-table-wrap explore-modal-table-wrap">
+        <table
+          className="explore-table explore-modal-table"
+          style={
+            table.getState().columnSizing && Object.keys(table.getState().columnSizing).length > 0
+              ? { tableLayout: 'fixed' as const, width: table.getTotalSize() }
+              : undefined
+          }
+        >
+          <thead>
+            <tr>
+              {table.getHeaderGroups()[0]?.headers.map((header) => {
+                const sortDir = header.column.getIsSorted()
+                return (
+                  <th
+                    key={header.id}
+                    className={`explore-th ${dragOverCol === header.id ? 'explore-th-dragover' : ''}`}
+                    onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+                    style={{
+                      cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      width: header.getSize(),
+                    }}
+                    draggable
+                    onDragStart={(e) => {
+                      dragCol.current = header.id
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      if (dragCol.current && dragCol.current !== header.id) {
+                        setDragOverCol(header.id)
+                      }
+                    }}
+                    onDragLeave={() => setDragOverCol(null)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setDragOverCol(null)
+                      if (!dragCol.current || dragCol.current === header.id) return
+                      const allCols = table.getAllLeafColumns().map((c) => c.id)
+                      const currentOrder = columnOrder.length > 0 ? [...columnOrder] : [...allCols]
+                      const fromIdx = currentOrder.indexOf(dragCol.current)
+                      const toIdx = currentOrder.indexOf(header.id)
+                      if (fromIdx === -1 || toIdx === -1) return
+                      currentOrder.splice(fromIdx, 1)
+                      currentOrder.splice(toIdx, 0, dragCol.current)
+                      setColumnOrder(currentOrder)
+                      dragCol.current = null
+                    }}
+                    onDragEnd={() => {
+                      dragCol.current = null
+                      setDragOverCol(null)
+                    }}
+                  >
+                    <div className="explore-th-inner">
+                      <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                      {header.column.getCanSort() && (
+                        <span className="explore-sort-icon">
+                          {sortDir === 'asc' ? '↑' : sortDir === 'desc' ? '↓' : '⇅'}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      className={`explore-resize-handle ${header.column.getIsResizing() ? 'isResizing' : ''}`}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((rrow, rowIdx) => (
+              <tr key={rrow.id} className={rowIdx % 2 === 0 ? 'explore-row-even' : 'explore-row-odd'}>
+                {rrow.getVisibleCells().map((cell) => {
+                  const sizing = table.getState().columnSizing
+                  const hasSizing = sizing && Object.keys(sizing).length > 0
+                  return (
+                    <td
+                      key={cell.id}
+                      className="explore-td"
+                      style={hasSizing ? { width: cell.column.getSize() } : undefined}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function ExploreClient() {
   const [activeExploreTab, setActiveExploreTab] = useState<'data' | 'leads'>('data')
@@ -150,16 +882,46 @@ export default function ExploreClient() {
     data: Record<string, unknown>[]
     loading: boolean
     flagFilter?: string
-  }>({ open: false, type: 'shvr', address: '', data: [], loading: false })
+    parentApplicationId: number | null
+  }>({ open: false, type: 'shvr', address: '', data: [], loading: false, parentApplicationId: null })
 
-  const [pendingAnnotations, setPendingAnnotations] = useState<
-    Record<number, { flag?: string; verified_address?: string; notes?: string }>
+  /** Lead annotations for PBL grid cells (Flagged Yes / Maybe). */
+  const [pblExploreAnnotations, setPblExploreAnnotations] = useState<
+    Record<string, Record<string, unknown>>
   >({})
-  const [annotationSaving, setAnnotationSaving] = useState(false)
-  const [annotationSaved, setAnnotationSaved] = useState(false)
+
+  /** Notify Lead Explorer to merge an annotation row updated from the Airbnb modal. */
+  const [leadModalAnnMerge, setLeadModalAnnMerge] = useState<{
+    rowKey: string
+    annotation: Record<string, unknown>
+  } | null>(null)
+
+  const clearLeadModalAnnMerge = useCallback(() => setLeadModalAnnMerge(null), [])
+
+  const handlePblCountsSavedFromModal = useCallback((rowKey: string, annotation: Record<string, unknown>) => {
+    setPblExploreAnnotations((prev) => ({ ...prev, [rowKey]: { ...prev[rowKey], ...annotation } }))
+    setLeadModalAnnMerge({ rowKey, annotation })
+  }, [])
 
   // Debounce filters so we don't fire on every keystroke
   const debouncedFilters = useDebouncedValue(columnFilters, 400)
+
+  useEffect(() => {
+    if (activeExploreTab !== 'data' || selectedTable !== 'pbl_intelligence_live') return
+    let cancelled = false
+    fetch('/api/leads/annotations')
+      .then((r) => r.json())
+      .then((json: { annotations?: Record<string, Record<string, unknown>>; error?: unknown }) => {
+        if (cancelled || json.error) return
+        if (json.annotations && typeof json.annotations === 'object') {
+          setPblExploreAnnotations(json.annotations)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [activeExploreTab, selectedTable])
 
   // ── Reset state on table change ──────────────────────────────────────
   const handleTableChange = useCallback((tableName: string) => {
@@ -188,8 +950,24 @@ export default function ExploreClient() {
 
   // ── Drill-down handler ───────────────────────────────────────────────
   const handleDrillClick = useCallback(
-    (lat: number, lng: number, type: 'shvr' | 'airbnb', address: string, flagFilter?: string) => {
-      setDrillModal({ open: true, type, address, data: [], loading: true, flagFilter })
+    (
+      lat: number,
+      lng: number,
+      type: 'shvr' | 'airbnb',
+      address: string,
+      flagFilter?: string,
+      parentApplicationId?: number
+    ) => {
+      setDrillModal({
+        open: true,
+        type,
+        address,
+        data: [],
+        loading: true,
+        flagFilter,
+        parentApplicationId:
+          parentApplicationId != null && Number.isFinite(parentApplicationId) ? parentApplicationId : null,
+      })
       fetch('/api/explore/pbl-nearby', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,97 +984,8 @@ export default function ExploreClient() {
     []
   )
 
-  const updatePendingAnnotation = useCallback(
-    (listingId: number, field: 'flag' | 'verified_address' | 'notes', value: string) => {
-      setPendingAnnotations((prev) => ({
-        ...prev,
-        [listingId]: {
-          ...prev[listingId],
-          [field]: value,
-        },
-      }))
-      setAnnotationSaved(false)
-    },
-    []
-  )
-
-  const saveAllAnnotations = useCallback(async () => {
-    const snapshot = pendingAnnotations
-    const entries = Object.entries(snapshot)
-    if (entries.length === 0) return
-
-    const rowById = new Map(drillModal.data.map((r) => [Number(r.id), r]))
-
-    setAnnotationSaving(true)
-    try {
-      const results = await Promise.allSettled(
-        entries.map(async ([listingId, fields]) => {
-          const id = Number(listingId)
-          const row = rowById.get(id) ?? {}
-          const flagRaw =
-            fields.flag !== undefined ? fields.flag : String(row.flag ?? '')
-          const addrRaw =
-            fields.verified_address !== undefined
-              ? fields.verified_address
-              : String(row.verified_address ?? '')
-          const notesRaw =
-            fields.notes !== undefined ? fields.notes : String(row.notes ?? '')
-          const res = await fetch('/api/explore/pbl-annotate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              listing_id: id,
-              flag: flagRaw ? flagRaw : null,
-              verified_address: addrRaw ? addrRaw : null,
-              notes: notesRaw ? notesRaw : null,
-            }),
-          })
-          const json = (await res.json().catch(() => ({}))) as { error?: string }
-          if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
-          return Number(listingId)
-        })
-      )
-
-      const ok: number[] = []
-      const failed: number[] = []
-      results.forEach((r, i) => {
-        const id = Number(entries[i][0])
-        if (r.status === 'fulfilled') ok.push(id)
-        else failed.push(id)
-      })
-      if (failed.length > 0) {
-        console.error(`[annotations] ${failed.length} saves failed`)
-      }
-
-      if (ok.length > 0) {
-        setDrillModal((prev) => ({
-          ...prev,
-          data: prev.data.map((row) => {
-            const id = Number(row.id)
-            if (!ok.includes(id)) return row
-            const patch = snapshot[id] ?? {}
-            return { ...row, ...patch }
-          }),
-        }))
-        setPendingAnnotations((prev) => {
-          const next = { ...prev }
-          for (const id of ok) delete next[id]
-          return next
-        })
-        setAnnotationSaved(true)
-        setTimeout(() => setAnnotationSaved(false), 3000)
-      }
-    } catch (err) {
-      console.error('[annotations] Save failed:', err)
-    } finally {
-      setAnnotationSaving(false)
-    }
-  }, [pendingAnnotations, drillModal.data])
-
   const closeDrillModal = useCallback(() => {
     setDrillModal((p) => ({ ...p, open: false }))
-    setPendingAnnotations({})
-    setAnnotationSaved(false)
   }, [])
 
   // ── Fetch data ───────────────────────────────────────────────────────
@@ -408,10 +1097,36 @@ export default function ExploreClient() {
         const value = info.getValue()
         const isPbl = selectedTable === 'pbl_intelligence_live'
         const drillCols = ['shvr_total', 'nearby_airbnb_count', 'flagged_yes', 'flagged_maybe']
-        if (isPbl && drillCols.includes(col.key) && Number(value) > 0) {
-          const row = info.row.original
+        const row = info.row.original
+        const annKey = isPbl ? pblLeadAnnotationKeyFromRow(row) : null
+        const pblAnn = annKey ? pblExploreAnnotations[annKey] : null
+
+        let displayValue: unknown = value
+        if (isPbl && col.key === 'flagged_yes') {
+          displayValue =
+            pblAnn?.flagged_count !== undefined && pblAnn?.flagged_count !== null
+              ? pblAnn.flagged_count
+              : value
+        } else if (isPbl && col.key === 'flagged_maybe') {
+          displayValue =
+            pblAnn?.maybe_count !== undefined && pblAnn?.maybe_count !== null
+              ? pblAnn.maybe_count
+              : value
+        }
+
+        const numDisplay = Number(displayValue ?? 0)
+        const canDrillAirbnb =
+          isPbl &&
+          (col.key === 'nearby_airbnb_count' ||
+            col.key === 'flagged_yes' ||
+            col.key === 'flagged_maybe') &&
+          numDisplay > 0
+        const canDrillShvr = isPbl && col.key === 'shvr_total' && Number(value) > 0
+
+        if (canDrillShvr || canDrillAirbnb) {
           const type = col.key === 'shvr_total' ? 'shvr' : 'airbnb'
           const ff = col.key === 'flagged_yes' ? 'yes' : col.key === 'flagged_maybe' ? 'maybe' : undefined
+          const appId = Number(row.application_id)
           return (
             <button
               type="button"
@@ -423,20 +1138,21 @@ export default function ExploreClient() {
                   Number(row.lng),
                   type as 'shvr' | 'airbnb',
                   String(row.address_normalized ?? ''),
-                  ff
+                  ff,
+                  Number.isFinite(appId) ? appId : undefined
                 )
               }}
             >
-              {formatCell(value, col.type)}
+              {formatCell(displayValue, col.type)}
             </button>
           )
         }
-        return formatCell(info.getValue(), col.type)
+        return formatCell(displayValue, col.type)
       },
       enableSorting: true,
       meta: { type: col.type, sticky: col.sticky },
     }))
-  }, [tableDef, selectedTable, handleDrillClick])
+  }, [tableDef, selectedTable, handleDrillClick, pblExploreAnnotations])
 
   // ── TanStack table instance ──────────────────────────────────────────
   const table = useReactTable({
@@ -864,7 +1580,11 @@ export default function ExploreClient() {
 
         {activeExploreTab === 'leads' && (
           <div className="explore-card">
-            <LeadExplorer onDrillClick={handleDrillClick} />
+            <LeadExplorer
+              onDrillClick={handleDrillClick}
+              modalAnnotationMerge={leadModalAnnMerge}
+              clearModalAnnotationMerge={clearLeadModalAnnMerge}
+            />
           </div>
         )}
       </div>
@@ -942,95 +1662,12 @@ export default function ExploreClient() {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="explore-modal-table">
-                    <thead>
-                      <tr>
-                        <th>Flag</th>
-                        <th>Listing</th>
-                        <th>Host</th>
-                        <th>Type</th>
-                        <th>Price</th>
-                        <th>License</th>
-                        <th>Noncompliant</th>
-                        <th>Reviews</th>
-                        <th>Host Listings</th>
-                        <th>Verified Address</th>
-                        <th>Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayData.map((row) => {
-                        const rowId = Number(row.id)
-                        const effFlag =
-                            pendingAnnotations[rowId]?.flag ?? String(row.flag ?? '')
-                        return (
-                        <tr key={rowId}>
-                          <td>
-                            <select
-                              className={`explore-annotation-select ${
-                                effFlag === 'yes' ? 'ann-yes' : effFlag === 'maybe' ? 'ann-maybe' : effFlag === 'no' ? 'ann-no' : ''
-                              }`}
-                              value={effFlag}
-                              onChange={(e) => updatePendingAnnotation(rowId, 'flag', e.target.value)}
-                            >
-                              <option value="">—</option>
-                              <option value="yes">Yes</option>
-                              <option value="maybe">Maybe</option>
-                              <option value="no">No</option>
-                            </select>
-                          </td>
-                          <td>
-                            {row.listing_url ? (
-                              <a href={String(row.listing_url)} target="_blank" rel="noopener noreferrer" className="explore-drill-link">
-                                {String(row.id ?? '—')}
-                              </a>
-                            ) : (
-                              String(row.id ?? '—')
-                            )}
-                          </td>
-                          <td>{String(row.host_name ?? '—')}</td>
-                          <td>{String(row.property_type ?? '—')}</td>
-                          <td>{String(row.price ?? '—')}</td>
-                          <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {String(row.license ?? '—')}
-                          </td>
-                          <td>
-                            <span className={`explore-modal-badge ${row.is_potentially_noncompliant ? 'badge-open' : 'badge-closed'}`}>
-                              {row.is_potentially_noncompliant ? 'Yes' : 'No'}
-                            </span>
-                          </td>
-                          <td>{row.number_of_reviews != null ? Number(row.number_of_reviews).toLocaleString() : '—'}</td>
-                          <td>{row.host_listings_count != null ? String(row.host_listings_count) : '—'}</td>
-                          <td>
-                            <input
-                              type="text"
-                              className="explore-annotation-input"
-                              value={
-                                pendingAnnotations[rowId]?.verified_address ??
-                                String(row.verified_address ?? '')
-                              }
-                              placeholder="Address…"
-                              onChange={(e) =>
-                                updatePendingAnnotation(rowId, 'verified_address', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="explore-annotation-input explore-annotation-notes"
-                              value={
-                                pendingAnnotations[rowId]?.notes ?? String(row.notes ?? '')
-                              }
-                              placeholder="Notes…"
-                              onChange={(e) => updatePendingAnnotation(rowId, 'notes', e.target.value)}
-                            />
-                          </td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <AirbnbNearbyDrillTable
+                    rows={displayData}
+                    countSourceRows={drillModal.data}
+                    parentApplicationId={drillModal.parentApplicationId}
+                    onPblCountsSaved={handlePblCountsSavedFromModal}
+                  />
                 )}
               </div>
               <div className="explore-modal-footer">
@@ -1039,29 +1676,6 @@ export default function ExploreClient() {
                   {displayData.length !== 1 ? 's' : ''} within {drillModal.type === 'shvr' ? '40m' : '150m'}
                   {drillModal.flagFilter ? ` (filtered: ${drillModal.flagFilter})` : ''}
                 </span>
-                {drillModal.type === 'airbnb' && (
-                  <div className="explore-modal-save-row">
-                    {Object.keys(pendingAnnotations).length > 0 && !annotationSaved && (
-                      <span className="explore-modal-unsaved">
-                        {Object.keys(pendingAnnotations).length} unsaved{' '}
-                        {Object.keys(pendingAnnotations).length === 1 ? 'change' : 'changes'}
-                      </span>
-                    )}
-                    {annotationSaved && (
-                      <span className="explore-modal-saved">Saved ✓</span>
-                    )}
-                    <button
-                      type="button"
-                      className="explore-modal-save-btn"
-                      onClick={saveAllAnnotations}
-                      disabled={
-                        annotationSaving || Object.keys(pendingAnnotations).length === 0
-                      }
-                    >
-                      {annotationSaving ? 'Saving…' : 'Save all'}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
