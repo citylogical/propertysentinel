@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import PropertySidebar from '@/components/PropertySidebar'
 import { addressToSlug } from '@/lib/address-slug'
 import SearchHero from './SearchHero'
 
@@ -25,7 +24,6 @@ export default async function SearchPage({ searchParams }: PageProps) {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="search" />
         <div className="prop-main-content search-page-content">
           <SearchHero apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY} />
         </div>

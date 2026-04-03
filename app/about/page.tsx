@@ -1,4 +1,3 @@
-import PropertySidebar from '@/components/PropertySidebar'
 import AboutClient from './AboutClient'
 import './about.css'
 
@@ -11,7 +10,6 @@ export default function AboutPage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="about" />
         <div className="prop-main-content">
           <AboutClient />
         </div>

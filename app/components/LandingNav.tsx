@@ -28,7 +28,8 @@ export default function LandingNav({ apiKey }: LandingNavProps) {
     <>
       <nav className="landing-nav home-nav homepage-nav">
         <Link className="nav-brand" href="/">
-          Property Sentinel
+          <span className="brand-wordmark-line">Property</span>
+          <span className="brand-wordmark-line">Sentinel</span>
         </Link>
         <div
           ref={menuRef}

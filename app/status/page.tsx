@@ -1,6 +1,5 @@
 // app/status/page.tsx
 import { createClient } from '@supabase/supabase-js'
-import PropertySidebar from '@/components/PropertySidebar'
 
 export const dynamic = 'force-dynamic'
 
@@ -250,7 +249,6 @@ export default async function StatusPage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar />
         <div className="prop-main-content">
           <div style={{ fontFamily: '"DM Sans", system-ui, sans-serif', background: '#f0f0ed', minHeight: '100vh', color: '#1a1a1a' }}>
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 24px 80px' }}>

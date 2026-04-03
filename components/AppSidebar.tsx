@@ -1,0 +1,197 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useClerk, useUser } from '@clerk/nextjs'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+
+type NavItem = {
+  label: string
+  href: string
+  icon: ReactNode
+  active?: boolean
+}
+
+export default function AppSidebar() {
+  const pathname = usePathname()
+  const { isSignedIn, isLoaded } = useUser()
+  const { signOut } = useClerk()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      setIsAdmin(false)
+      return
+    }
+    fetch('/api/profile/update')
+      .then((res) => res.json())
+      .then((data: { profile?: { role?: string | null } | null }) => {
+        setIsAdmin(data.profile?.role === 'admin')
+      })
+      .catch(() => setIsAdmin(false))
+  }, [isLoaded, isSignedIn])
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+
+  const navItems = useMemo((): NavItem[] => {
+    const items: NavItem[] = [
+      {
+        label: 'Property search',
+        href: '/search',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+        ),
+        active: pathname === '/search' || pathname.startsWith('/address/'),
+      },
+      {
+        label: 'Portfolio',
+        href: '/portfolio',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+        ),
+      },
+    ]
+
+    if (isAdmin) {
+      items.push({
+        label: 'Explore',
+        href: '/explore',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18" />
+            <path d="M9 21V9" />
+          </svg>
+        ),
+      })
+    }
+
+    items.push(
+      {
+        label: 'Blog',
+        href: '/blog',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <path d="M14 2v6h6" />
+            <path d="M16 13H8" />
+            <path d="M16 17H8" />
+          </svg>
+        ),
+      },
+      {
+        label: 'About',
+        href: '/about',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" />
+            <path d="M12 8h.01" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Status',
+        href: '/status',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Account',
+        href: '/profile',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        ),
+      }
+    )
+
+    return items
+  }, [isAdmin, pathname])
+
+  return (
+    <div className="app-sidebar">
+      <div className="app-sidebar-logo">
+        <Link href="/" className="app-sidebar-logo-link" aria-label="Property Sentinel home">
+          <span className="app-sidebar-logo-icon" aria-hidden="true">
+            <svg width="22" height="38" viewBox="0 0 50 90" fill="none" stroke="white" strokeWidth="1.2" xmlns="http://www.w3.org/2000/svg">
+              <line x1="25" y1="0" x2="25" y2="8" />
+              <path d="M19 14 Q25 5 31 14" />
+              <rect x="18" y="14" width="14" height="24" />
+              <line x1="23" y1="14" x2="23" y2="38" />
+              <line x1="27" y1="14" x2="27" y2="38" />
+              <line x1="7" y1="34" x2="7" y2="38" />
+              <path d="M4 38 Q7 32 10 38" />
+              <line x1="43" y1="34" x2="43" y2="38" />
+              <path d="M40 38 Q43 32 46 38" />
+              <rect x="4" y="38" width="42" height="42" />
+              <line x1="14" y1="38" x2="14" y2="80" />
+              <line x1="25" y1="38" x2="25" y2="80" />
+              <line x1="36" y1="38" x2="36" y2="80" />
+              <line x1="4" y1="80" x2="46" y2="80" />
+            </svg>
+          </span>
+          <span className="app-sidebar-logo-text">
+            <span className="brand-wordmark-line">Property</span>
+            <span className="brand-wordmark-line">Sentinel</span>
+          </span>
+        </Link>
+      </div>
+
+      <nav className="app-sidebar-nav">
+        {navItems.map((item) => {
+          const active = item.active ?? isActive(item.href)
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
+            >
+              <span className="app-sidebar-link-icon">{item.icon}</span>
+              <span className="app-sidebar-link-label">{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
+
+      <div className="app-sidebar-footer">
+        {isSignedIn ? (
+          <button type="button" className="app-sidebar-footer-link" onClick={() => signOut({ redirectUrl: '/' })}>
+            <span className="app-sidebar-footer-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </span>
+            <span className="app-sidebar-footer-label">Sign out</span>
+          </button>
+        ) : (
+          <Link href="/sign-in" className="app-sidebar-footer-link">
+            <span className="app-sidebar-footer-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+              </svg>
+            </span>
+            <span className="app-sidebar-footer-label">Sign in</span>
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}

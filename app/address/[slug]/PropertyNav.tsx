@@ -99,7 +99,8 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
           />
         )}
         <Link className="nav-brand" href="/">
-          Property Sentinel
+          <span className="brand-wordmark-line">Property</span>
+          <span className="brand-wordmark-line">Sentinel</span>
         </Link>
 
         {/* Mobile: hamburger only */}

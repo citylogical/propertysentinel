@@ -25,6 +25,10 @@
   --mono: "DM Mono", monospace;
   --serif: "Merriweather", Georgia, serif;
   --sans: "DM Sans", system-ui, sans-serif;
+  --bg: #f0f0ed;
+  /* App rail: icon 18px centered → equal inset from edges and icon-to-label gap */
+  --app-rail-w: 48px;
+  --app-rail-expanded-w: 200px;
 }
 
 @theme inline {
@@ -34,9 +38,227 @@
 
 body {
   font-family: var(--sans);
-  background: var(--grey-hero);
+  background: var(--bg);
   color: var(--ink);
   overflow-x: hidden;
+}
+
+/* ── App layout: fixed icon rail + main column (margin shifts when rail hovered) ── */
+.app-layout-main {
+  margin-left: var(--app-rail-w);
+  min-height: 100vh;
+  transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body:has(.app-sidebar:hover) .app-layout-main {
+  margin-left: var(--app-rail-expanded-w);
+}
+
+@media (max-width: 768px) {
+  .app-layout-main {
+    margin-left: 0 !important;
+    transition: margin-left 0.2s ease;
+  }
+}
+
+/* ── App Sidebar — icon rail with hover expand ──────────────── */
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--app-rail-w);
+  background: #0f2744;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar:hover {
+  width: var(--app-rail-expanded-w);
+}
+
+.app-sidebar-logo {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 14px 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.app-sidebar-logo-link {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app-sidebar-logo-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.app-sidebar-logo-icon {
+  width: var(--app-rail-w);
+  min-width: var(--app-rail-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-wordmark-line {
+  display: block;
+  line-height: 1.05;
+}
+
+.app-sidebar-logo-text {
+  font-family: "Merriweather", Georgia, serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.18s ease 0.08s;
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.app-sidebar:hover .app-sidebar-logo-text {
+  opacity: 1;
+}
+
+.app-sidebar-nav {
+  flex: 1;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.app-sidebar-link {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.45);
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
+  position: relative;
+}
+
+.app-sidebar-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-sidebar-link-active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-sidebar-link-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: #fff;
+  border-radius: 0 2px 2px 0;
+}
+
+.app-sidebar-link-icon {
+  width: var(--app-rail-w);
+  min-width: var(--app-rail-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-sidebar-link-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.app-sidebar-link-label {
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.18s ease 0.08s;
+}
+
+.app-sidebar:hover .app-sidebar-link-label {
+  opacity: 1;
+}
+
+.app-sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.app-sidebar-footer-link {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.3);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  background: none;
+  border: none;
+  width: 100%;
+  font-family: inherit;
+}
+
+.app-sidebar-footer-link:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-sidebar-footer-icon {
+  width: var(--app-rail-w);
+  min-width: var(--app-rail-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-sidebar-footer-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.app-sidebar-footer-label {
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.18s ease 0.08s;
+}
+
+.app-sidebar:hover .app-sidebar-footer-label {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .app-sidebar {
+    display: none !important;
+  }
 }
 
 /* Landing: Nav */
@@ -57,11 +279,15 @@ body {
 .nav-brand,
 .address-page .prop-nav .nav-brand {
   font-family: "Merriweather", Georgia, serif;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: #ffffff;
   text-decoration: none;
   letter-spacing: -0.01em;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
 }
 
 .nav-menu-btn {
@@ -92,7 +318,7 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 54px 24px 0;
+  padding: 24px 24px 0;
   position: relative;
   text-align: center;
 }
@@ -641,10 +867,12 @@ body {
 .address-page .alert-btn:hover { background: #a93226; }
 .address-page .alert-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-/* Page layout — navy sidebar + main (cream) + light address header */
+/* Page layout — main column (cream) + light address header; app rail is fixed outside shell */
 .address-page .prop-page-shell {
   display: flex;
-  height: 100vh;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100vh;
   overflow: hidden;
 }
 
@@ -809,330 +1037,6 @@ body {
   border-color: #235440;
 }
 
-.address-page .prop-sidebar {
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  z-index: 60;
-  overflow: visible;
-}
-
-.address-page .prop-sidebar-toggle {
-  position: absolute;
-  top: 53px;
-  right: -8px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #0f2744;
-  border: 2px solid rgba(255,255,255,0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  transition: border-color 0.15s;
-  padding: 0;
-  outline: none;
-}
-
-.address-page .prop-sidebar-toggle:hover {
-  border-color: rgba(255,255,255,0.2);
-}
-
-.address-page .prop-sidebar-toggle-minus {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1;
-  margin-top: -1px;
-  font-family: var(--sans);
-}
-
-.address-page .prop-sidebar-toggle-ps-wrap {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.address-page .prop-sidebar-toggle-ps {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  font-weight: 700;
-  font-family: "Merriweather", Georgia, serif;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-  transition: opacity 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.address-page .prop-sidebar-toggle-plus {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 18px;
-  font-weight: 300;
-  font-family: var(--sans);
-  line-height: 1;
-  opacity: 0;
-  transform: scale(0.5) rotate(90deg);
-  transition: opacity 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* Collapsed toggle only — PS/+ swap on button hover */
-.address-page .prop-sidebar-toggle:hover .prop-sidebar-toggle-ps {
-  opacity: 0;
-  transform: scale(0.5) rotate(-90deg);
-}
-
-.address-page .prop-sidebar-toggle:hover .prop-sidebar-toggle-plus {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-}
-
-.address-page .prop-sidebar-collapsed {
-  width: 32px;
-  background: var(--navy);
-  cursor: default;
-  box-sizing: border-box;
-  border-radius: 0 6px 6px 0;
-  position: relative;
-  transition: width 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.address-page .prop-sidebar-expanded {
-  width: 220px;
-  background: var(--navy);
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  position: relative;
-  overflow: hidden;
-  transition: width 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.address-page .prop-sidebar-expanded .prop-sidebar-header,
-.address-page .prop-sidebar-expanded .prop-sidebar-nav,
-.address-page .prop-sidebar-expanded .prop-sidebar-content,
-.address-page .prop-sidebar-expanded .prop-sidebar-footer {
-  min-width: 220px;
-}
-
-.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-header,
-.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-nav,
-.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-content,
-.address-page .prop-sidebar-expanded.sidebar-animating .prop-sidebar-footer {
-  animation: sidebarContentIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
-}
-
-@keyframes sidebarContentIn {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.address-page .prop-sidebar-expanded.sidebar-ready {
-  overflow: visible;
-}
-
-.address-page .prop-sidebar-header {
-  padding: 19px 18px 21px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.address-page .prop-sidebar-brand {
-  font-family: "Merriweather", Georgia, serif;
-  font-size: 20px;
-  font-weight: 700;
-  color: #ffffff;
-  text-decoration: none;
-  letter-spacing: -0.01em;
-}
-
-.address-page .prop-sidebar-brand:hover {
-  opacity: 0.8;
-}
-
-.address-page .prop-sidebar-nav {
-  padding: 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.address-page .prop-sidebar-nav-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.3);
-  padding: 0 10px 6px;
-}
-
-.address-page .prop-sidebar-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  padding: 9px 14px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-  font-family: var(--sans);
-}
-
-.address-page .prop-sidebar-nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.address-page .prop-sidebar-nav-item.active {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.12);
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.address-page .prop-sidebar-nav-item svg {
-  flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.address-page .prop-sidebar-nav-item.active svg {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.address-page .prop-sidebar-content {
-  padding: 0 18px;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.address-page .prop-sidebar-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 14px;
-  margin-top: 8px;
-}
-
-.address-page .prop-sidebar-section-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.3);
-  margin-bottom: 10px;
-}
-
-.address-page .prop-sidebar-recent-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.address-page .prop-sidebar-recent-item {
-  padding: 7px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-  cursor: pointer;
-  text-decoration: none;
-  display: block;
-  transition: color 0.12s;
-}
-
-.address-page .prop-sidebar-recent-item:last-child {
-  border-bottom: none;
-}
-
-.address-page .prop-sidebar-recent-item:hover {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.address-page .prop-sidebar-footer {
-  margin-top: auto;
-  padding: 14px 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.address-page .prop-sidebar-user {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.address-page .prop-sidebar-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 500;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.address-page .prop-sidebar-username {
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.address-page .prop-sidebar-signout {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.35);
-  text-decoration: underline;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: var(--sans);
-}
-
-.address-page .prop-sidebar-signout:hover {
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.address-page .prop-sidebar-signin {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.65);
-  text-decoration: none;
-  font-family: var(--sans);
-  transition: color 0.12s;
-}
-
-.address-page .prop-sidebar-signin:hover {
-  color: rgba(255, 255, 255, 0.95);
-}
 
 /* Left profile */
 .address-page .profile {
@@ -1509,15 +1413,9 @@ body {
 .address-page .rail-link:hover { color: var(--red); }
 .address-page .rail-link-arrow { font-size: 10px; opacity: 0.4; flex-shrink: 0; }
 
-/* ── Mobile header bar ── */
-.address-page .prop-mobile-header {
-  display: none;
-}
-
 @media (max-width: 900px) {
   .address-page .alert-btn { align-self: stretch; justify-content: center; }
   .address-page .prop-page-shell { flex-direction: column; }
-  .address-page .prop-sidebar { display: none; }
   .address-page .address-header-search-wrap { display: none !important; }
   .address-page .address-header { padding: 12px 16px; margin-left: 0; }
   .address-page .prop-page { grid-template-columns: 1fr; padding: 16px 12px 48px; gap: 14px; }
@@ -1527,57 +1425,6 @@ body {
   .address-page .rail-alert-card,
   .address-page .rail-link-card { display: none; }
   .address-page .unlock-input { width: 160px; }
-
-  .address-page .prop-mobile-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #0f2744;
-    padding: 0 16px;
-    height: 50px;
-    position: sticky;
-    top: 0;
-    z-index: 90;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-
-  .address-page .prop-mobile-brand {
-    font-family: "Merriweather", Georgia, serif;
-    font-size: 17px;
-    font-weight: 700;
-    color: #ffffff;
-    text-decoration: none;
-    letter-spacing: -0.01em;
-  }
-
-  .address-page .prop-mobile-hamburger {
-    background: none;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    padding: 8px 4px;
-  }
-
-  .address-page .prop-mobile-hamburger span {
-    display: block;
-    width: 20px;
-    height: 2px;
-    background: rgba(255,255,255,0.7);
-    border-radius: 1px;
-    transition: background 0.15s;
-  }
-
-  .address-page .prop-mobile-hamburger:hover span {
-    background: #ffffff;
-  }
-
-  .address-page .address-header {
-    position: sticky;
-    top: 50px;
-  }
 }
 
 /* Homepage MobileNav — hidden ≥769px; shown only in mobile block below */
@@ -1585,64 +1432,11 @@ body {
   display: none;
 }
 
-/* ── Address page mobile (≤768px): 48px fixed navy bar, right-hand nav drawer, address header not sticky ── */
+/* ── Address page mobile (≤768px): global MobileNav bar + full-width main ── */
 @media (max-width: 768px) {
-  /* Do not set .prop-sidebar to display:none here — .prop-mobile-header and drawer live inside it. */
   .address-page .prop-page-shell {
     padding-left: 0 !important;
     margin-left: 0 !important;
-  }
-
-  .address-page .prop-sidebar {
-    display: flex !important;
-    flex-direction: column;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    width: 100% !important;
-    height: 0;
-    min-height: 0;
-    max-height: none;
-    z-index: 200;
-    overflow: visible;
-    pointer-events: none;
-    background: transparent !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-  }
-
-  .address-page .prop-sidebar-collapsed,
-  .address-page .prop-sidebar-expanded {
-    width: 100% !important;
-    max-width: 100%;
-    background: transparent !important;
-    border-radius: 0 !important;
-    overflow: visible !important;
-  }
-
-  .address-page .prop-sidebar > *:not(.prop-mobile-header):not(.prop-mobile-overlay) {
-    display: none !important;
-  }
-
-  .address-page .prop-mobile-header {
-    display: flex !important;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 48px;
-    padding: 0 14px;
-    z-index: 210;
-    pointer-events: auto;
-    background: #0f2744;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .address-page .prop-mobile-brand {
-    font-size: 16px;
   }
 
   .address-page .prop-main-content {
@@ -1656,158 +1450,6 @@ body {
     position: static !important;
     top: auto !important;
     z-index: 1;
-  }
-
-  .address-page .prop-mobile-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 220;
-    pointer-events: auto;
-    display: flex;
-    justify-content: flex-end;
-    align-items: stretch;
-    background: rgba(0, 0, 0, 0);
-    animation: psMobileNavBackdropIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
-
-  .address-page .prop-mobile-overlay-panel {
-    width: min(300px, 90vw);
-    max-width: 100%;
-    height: 100%;
-    background: #0f2744;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
-    display: flex;
-    flex-direction: column;
-    animation: psMobileNavDrawerIn 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  }
-
-  @keyframes psMobileNavBackdropIn {
-    from {
-      background: rgba(0, 0, 0, 0);
-    }
-    to {
-      background: rgba(0, 0, 0, 0.45);
-    }
-  }
-
-  @keyframes psMobileNavDrawerIn {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
-  }
-
-  .address-page .prop-mobile-overlay-top {
-    padding: 16px 16px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-
-  .address-page .prop-mobile-overlay-brand {
-    font-family: "Merriweather", Georgia, serif;
-    font-size: 17px;
-    font-weight: 700;
-    color: #fff;
-    text-decoration: none;
-    letter-spacing: -0.01em;
-  }
-
-  .address-page .prop-mobile-overlay-close {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 22px;
-    cursor: pointer;
-    padding: 4px 8px;
-    line-height: 1;
-    transition: color 0.15s;
-  }
-
-  .address-page .prop-mobile-overlay-close:hover {
-    color: #fff;
-  }
-
-  .address-page .prop-mobile-overlay-nav {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .address-page .prop-mobile-overlay-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    text-align: left;
-    padding: 14px 12px;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.92);
-    font-family: var(--sans);
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.12s;
-  }
-
-  .address-page .prop-mobile-overlay-item:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .address-page .prop-mobile-overlay-chevron {
-    font-size: 18px;
-    color: rgba(255, 255, 255, 0.35);
-    font-weight: 300;
-  }
-
-  .address-page .prop-mobile-overlay-footer {
-    padding: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    flex-shrink: 0;
-  }
-
-  .address-page .prop-mobile-overlay-signout {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.85);
-    font-family: var(--sans);
-    font-size: 14px;
-    cursor: pointer;
-  }
-
-  .address-page .prop-mobile-overlay-signout:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .address-page .prop-mobile-overlay-signin {
-    display: block;
-    width: 100%;
-    padding: 12px;
-    text-align: center;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font-family: var(--sans);
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .address-page .prop-mobile-overlay-signin:hover {
-    background: rgba(255, 255, 255, 0.2);
   }
 
   /* LiveTimestamp — fixed + centered on viewport; clears inline absolute/bottom */
@@ -1833,11 +1475,15 @@ body {
   /* Fixed bar for MobileNav */
   .mobile-nav-brand {
     font-family: "Merriweather", Georgia, serif;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
     color: #ffffff;
     text-decoration: none;
     letter-spacing: -0.01em;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
   }
 
   .mobile-nav-hamburger {

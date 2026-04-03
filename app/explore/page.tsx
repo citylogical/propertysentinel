@@ -2,7 +2,6 @@ import { currentUser } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import ExploreClient from './ExploreClient'
-import PropertySidebar from '@/components/PropertySidebar'
 import './explore.css'
 
 export const metadata = {
@@ -28,7 +27,6 @@ export default async function ExplorePage() {
   return (
     <div className="address-page explore-page-stack">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="explore" />
         <div className="prop-main-content explore-page-main">
           <div className="address-header">
             <div style={{ flex: 1, minWidth: 0 }}>

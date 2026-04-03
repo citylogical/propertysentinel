@@ -16,7 +16,8 @@ export default function MobileNav({ apiKey }: Props) {
     <>
       <header className="mobile-nav-bar" role="banner">
         <Link href="/" className="mobile-nav-brand">
-          Property Sentinel
+          <span className="brand-wordmark-line">Property</span>
+          <span className="brand-wordmark-line">Sentinel</span>
         </Link>
         <button
           type="button"

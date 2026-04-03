@@ -25,7 +25,6 @@ import {
 import type { PropertyCharsResidentialRow, PropertyCharsCondoRow } from '@/lib/supabase-search'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { getClassDescription } from '@/lib/class-codes'
-import PropertySidebar from '@/components/PropertySidebar'
 import PropertyFeed from './PropertyFeed'
 import PropertyDetailsExpanded from './PropertyDetailsExpanded'
 import type { SiblingPin } from './PropertyDetailsExpanded'
@@ -726,7 +725,6 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     <div className="address-page">
       <RecordSearch address={displayAddress || addressBarHeadline} slug={decodedSlug} />
       <div className="prop-page-shell">
-        <PropertySidebar />
         <div className="prop-main-content">
           <div className="address-header">
             <div style={{ flex: 1, minWidth: 0 }}>

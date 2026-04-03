@@ -1,4 +1,3 @@
-import PropertySidebar from '@/components/PropertySidebar'
 import BlogPageClient from './BlogPageClient'
 import '../about/about.css'
 import './blog.css'
@@ -30,7 +29,6 @@ export default function BlogPage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="blog" />
         <div className="prop-main-content blog-container">
           <BlogPageClient />
         </div>

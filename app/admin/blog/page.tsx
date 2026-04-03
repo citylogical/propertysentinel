@@ -1,7 +1,6 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
-import PropertySidebar from '@/components/PropertySidebar'
 import BlogEditor from './BlogEditor'
 import '../../about/about.css'
 
@@ -34,7 +33,6 @@ export default async function AdminBlogPage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="explore" />
         <div className="prop-main-content">
           <div className="address-header" style={{ justifyContent: 'center', textAlign: 'center' }}>
             <div>

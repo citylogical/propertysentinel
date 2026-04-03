@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import AppSidebar from "@/components/AppSidebar";
+import MobileNav from "@/components/MobileNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,6 +15,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const placesKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY;
+
   return (
     <ClerkProvider>
       <html lang="en">
@@ -29,7 +33,13 @@ export default function RootLayout({
             rel="stylesheet"
           />
         </head>
-        <body className="antialiased">{children}</body>
+        <body className="antialiased">
+          <AppSidebar />
+          <div className="app-layout-main">
+            <MobileNav apiKey={placesKey} />
+            {children}
+          </div>
+        </body>
       </html>
     </ClerkProvider>
   );

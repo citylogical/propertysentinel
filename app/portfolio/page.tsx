@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import PropertySidebar from '@/components/PropertySidebar'
 import PortfolioTable from './PortfolioTable'
 
 export const metadata = {
@@ -17,7 +16,6 @@ export default async function PortfolioPage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="portfolio" />
         <div className="prop-main-content">
           <PortfolioTable />
         </div>

@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import PropertySidebar from '@/components/PropertySidebar'
 import ProfileContent from './ProfileContent'
 
 export const metadata = {
@@ -17,7 +16,6 @@ export default async function ProfilePage() {
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="account" />
         <div className="prop-main-content">
           <div className="address-header">
             <div style={{ flex: 1, minWidth: 0 }}>

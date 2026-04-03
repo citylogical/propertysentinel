@@ -1,7 +1,6 @@
 import { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
-import PropertySidebar from '@/components/PropertySidebar'
 import BlogPostPage from './BlogPostPage'
 import '../../about/about.css'
 import '../blog.css'
@@ -87,7 +86,6 @@ export default async function BlogSlugPage({
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <PropertySidebar initialTab="blog" />
         <div className="prop-main-content blog-container">
           <BlogPostPage post={post} otherPosts={otherPosts} />
 
