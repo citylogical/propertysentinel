@@ -12,6 +12,7 @@ type NavItem = {
   href: string
   icon: ReactNode
   active?: boolean
+  badge?: 'beta' | 'admin'
   /** When true, link is shown only to signed-in users (e.g. Account). */
   requiresAuth?: boolean
 }
@@ -95,6 +96,7 @@ export default function AppSidebar() {
       items.push({
         label: 'Explore',
         href: '/explore',
+        badge: 'admin',
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -104,6 +106,19 @@ export default function AppSidebar() {
         ),
       })
     }
+
+    items.push({
+      label: 'Leads',
+      href: '/leads',
+      badge: 'beta',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+        </svg>
+      ),
+    })
 
     items.push(
       {
@@ -123,9 +138,11 @@ export default function AppSidebar() {
         href: '/about',
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4" />
-            <path d="M12 8h.01" />
+            <path d="M16 10h2" />
+            <path d="M16 14h2" />
+            <path d="M6.17 15a3 3 0 0 1 5.66 0" />
+            <circle cx="9" cy="11" r="2" />
+            <rect x="2" y="5" width="20" height="14" rx="2" />
           </svg>
         ),
       },
@@ -134,7 +151,8 @@ export default function AppSidebar() {
         href: '/status',
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
           </svg>
         ),
       },
@@ -156,6 +174,26 @@ export default function AppSidebar() {
 
   return (
     <div className="app-sidebar">
+      <style>{`
+        .sidebar-badge {
+          font-family: var(--mono, 'DM Mono', monospace);
+          font-size: 8px;
+          font-weight: 500;
+          letter-spacing: 0.08em;
+          padding: 1px 5px;
+          border-radius: 3px;
+          margin-left: 6px;
+          vertical-align: middle;
+        }
+        .sidebar-badge-beta {
+          background: rgba(45, 122, 58, 0.15);
+          color: #4ade80;
+        }
+        .sidebar-badge-admin {
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.4);
+        }
+      `}</style>
       <div className="app-sidebar-logo">
         <Link href="/" className="app-sidebar-logo-link" aria-label="Property Sentinel home">
           <span className="app-sidebar-logo-icon" aria-hidden="true">
@@ -200,7 +238,15 @@ export default function AppSidebar() {
                 className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
               >
                 <span className="app-sidebar-link-icon">{item.icon}</span>
-                <span className="app-sidebar-link-label">{item.label}</span>
+                <span className="app-sidebar-link-label">
+                  {item.label}
+                  {item.badge === 'beta' ? (
+                    <span className="sidebar-badge sidebar-badge-beta">BETA</span>
+                  ) : null}
+                  {item.badge === 'admin' ? (
+                    <span className="sidebar-badge sidebar-badge-admin">ADMIN</span>
+                  ) : null}
+                </span>
               </Link>
             )
           })}
