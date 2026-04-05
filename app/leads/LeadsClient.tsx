@@ -1,26 +1,17 @@
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { CHICAGO_COMMUNITY_AREAS, getCommunityAreaName } from '@/lib/chicago-community-areas'
-
-const TRADE_CATEGORIES: Record<string, { label: string; codes: string[] }> = {
-  plumbing: {
-    label: 'Plumbing & Water',
-    codes: ['BBC', 'AAF', 'WBJ', 'WBK', 'WCA'],
-  },
-  pest: {
-    label: 'Pest Control',
-    codes: ['SGA', 'SGG', 'EAB', 'EBD'],
-  },
-  building: {
-    label: 'Building & Code',
-    codes: ['BBA', 'BBD', 'SCB', 'BPI', 'BBK', 'FAC', 'HDF', 'NAC'],
-  },
-}
-
-const ALL_TRADE_CODES = Object.values(TRADE_CATEGORIES).flatMap((c) => c.codes)
+import {
+  ALL_MAPPED_CODES,
+  getCategoryForCode,
+  getCodesForCategory,
+  LEAD_CATEGORIES,
+  type LeadCategory,
+} from '@/lib/lead-categories'
+import LitigatorCreditModal from '@/components/LitigatorCreditModal'
+import HoverTooltip from '@/components/HoverTooltip'
 
 const NEIGHBORHOOD_OPTIONS = Object.entries(CHICAGO_COMMUNITY_AREAS)
   .map(([num, name]) => ({ num, name }))
@@ -74,6 +65,48 @@ function normalizeLead(r: Record<string, unknown>): LeadRow {
   }
 }
 
+function ComplaintTypeCell({
+  srType,
+  srShortCode,
+}: {
+  srType: string | null | undefined
+  srShortCode: string | null | undefined
+}) {
+  const cat = getCategoryForCode(srShortCode)
+  const categoryLabel = cat ? LEAD_CATEGORIES[cat].label : null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <div
+        style={{
+          whiteSpace: 'normal',
+          wordBreak: 'normal',
+          overflowWrap: 'break-word',
+          lineHeight: 1.35,
+          fontSize: '14px',
+          fontWeight: 500,
+          color: '#0f2744',
+        }}
+      >
+        {srType ?? '—'}
+      </div>
+      {categoryLabel ? (
+        <span
+          style={{
+            fontFamily: "'DM Mono', monospace",
+            fontSize: '9px',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#7a7a7a',
+            fontWeight: 500,
+          }}
+        >
+          {categoryLabel}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function freshnessClass(n: number): string {
   if (n <= 0) return 'leads-freshness-green'
   if (n <= 2) return 'leads-freshness-amber'
@@ -121,8 +154,319 @@ function maskedStreetLine(addr: string | null | undefined): string {
   return `?? ${parts.slice(1).join(' ')}`
 }
 
-const MOCK_UNLOCK_OWNER = 'Jim McMahon'
-const MOCK_UNLOCK_PHONE = '555-545-5595'
+type UnlockStatusEntry =
+  | { unlocked: true; unlock: Record<string, unknown>; contact: Record<string, unknown> | null }
+  | { unlocked: false; unavailable?: boolean }
+
+type LeadWithUnlock = LeadRow & {
+  unlocked_at?: string | null
+  owner_email?: string | null
+  phone_type?: string | null
+  phone_dnc?: boolean
+  owner_litigator?: boolean
+}
+
+function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnlock {
+  return {
+    ...normalizeLead({
+      sr_number: u.sr_number,
+      sr_type: u.sr_type,
+      sr_short_code: u.sr_short_code,
+      address_normalized: u.address_normalized,
+      community_area: u.community_area,
+      ward: u.ward,
+      created_date: u.created_date,
+      status: u.status,
+      pin: u.pin,
+      owner_name: u.owner_name,
+      owner_phone: u.owner_phone,
+      owner_address: u.owner_address,
+    }),
+    unlocked_at: (u.created_at as string) ?? null,
+    owner_email: (u.owner_email as string) ?? null,
+    phone_type: (u.phone_type as string) ?? null,
+    phone_dnc: Boolean(u.phone_dnc),
+    owner_litigator: Boolean(u.owner_litigator),
+  }
+}
+
+/** DNC + TCPA litigator badges; tooltips render via portal to avoid scroll clipping. */
+function LeadsPhoneRiskBadges({ phoneDnc, ownerLitigator }: { phoneDnc: boolean; ownerLitigator: boolean }) {
+  return (
+    <>
+      {phoneDnc ? (
+        <HoverTooltip
+          variant="navy"
+          width={280}
+          content={
+            <>
+              <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12px' }}>DNC Registered</strong>
+              This number is on the National Do Not Call registry. DNC restrictions apply to unsolicited
+              telemarketing. Calls about specific documented issues at the property (e.g. this recent 311
+              complaint) should qualify for exemptions. Consult your own compliance policies.
+            </>
+          }
+        >
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '9px',
+              fontWeight: 500,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              background: '#fde68a',
+              color: '#92400e',
+              padding: '2px 6px',
+              borderRadius: '3px',
+              marginLeft: '6px',
+              verticalAlign: 'middle',
+            }}
+          >
+            DNC
+          </span>
+        </HoverTooltip>
+      ) : null}
+      {ownerLitigator ? (
+        <HoverTooltip
+          variant="red"
+          width={280}
+          content={
+            <>
+              <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: '#fecaca' }}>
+                TCPA Litigator Warning
+              </strong>
+              This phone number belongs to a known TCPA litigator — an individual with a documented pattern of
+              filing lawsuits against businesses for phone outreach violations. We strongly recommend you do not
+              call this number.
+            </>
+          }
+        >
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '9px',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              background: '#fecaca',
+              color: '#991b1b',
+              padding: '2px 6px',
+              borderRadius: '3px',
+              marginLeft: '6px',
+              verticalAlign: 'middle',
+              border: '1px solid #ef4444',
+            }}
+          >
+            ⚠ TCPA Litigator — Do Not Call
+          </span>
+        </HoverTooltip>
+      ) : null}
+    </>
+  )
+}
+
+function ContactUnlockedBlock({
+  unlock,
+  contact,
+}: {
+  unlock: Record<string, unknown>
+  contact: Record<string, unknown> | null
+}) {
+  const name =
+    (unlock.owner_name as string) ||
+    (contact?.primary_owner_full_name as string) ||
+    '—'
+  const phone =
+    (unlock.owner_phone as string) || (contact?.primary_phone as string) || ''
+  const phoneType =
+    (unlock.phone_type as string) || (contact?.primary_phone_type as string) || ''
+  const dnc = Boolean(unlock.phone_dnc ?? contact?.primary_phone_dnc)
+  const litigator = Boolean(unlock.owner_litigator ?? contact?.primary_owner_litigator)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>{name}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        {phone ? (
+          <span style={{ fontSize: 11, color: '#8a94a0', fontFamily: 'var(--mono, ui-monospace, monospace)' }}>
+            {phone}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>—</span>
+        )}
+        {phoneType ? (
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: '#5c6570',
+              background: '#f3f4f6',
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+          >
+            {phoneType}
+          </span>
+        ) : null}
+        <LeadsPhoneRiskBadges phoneDnc={dnc} ownerLitigator={litigator} />
+      </div>
+    </div>
+  )
+}
+
+function LeadsEmailCellUnlocked({ ownerEmail }: { ownerEmail: string | null | undefined }) {
+  if (!ownerEmail?.trim()) {
+    return <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>
+  }
+  return (
+    <a
+      href={`mailto:${ownerEmail}`}
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        fontSize: '13px',
+        color: '#0f2744',
+        textDecoration: 'none',
+        wordBreak: 'break-all',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.textDecoration = 'underline'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.textDecoration = 'none'
+      }}
+    >
+      {ownerEmail}
+    </a>
+  )
+}
+
+function LeadsEmailCellLocked() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9ca3af', fontSize: 12 }}>
+      <svg
+        viewBox="0 0 24 24"
+        width="12"
+        height="12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0110 0v4" />
+      </svg>
+      —
+    </span>
+  )
+}
+
+function unlockRowEmail(uSt: UnlockStatusEntry | undefined): string {
+  if (!uSt || !uSt.unlocked) return ''
+  const u = uSt.unlock
+  const c = uSt.contact
+  const fromUnlock = (u.owner_email as string)?.trim()
+  if (fromUnlock) return fromUnlock
+  const fromCache = (c?.primary_email as string)?.trim()
+  return fromCache || ''
+}
+
+function formatUnlockedAtDisplay(iso: string | null | undefined): { dateStr: string; timeStr: string } {
+  if (!iso) return { dateStr: '—', timeStr: '' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { dateStr: '—', timeStr: '' }
+  const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const timeStr = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  return { dateStr, timeStr }
+}
+
+function LeadsLocationBlock({
+  displayAddress,
+  neighborhood,
+  addressNormalized,
+  showPropertyLink,
+}: {
+  displayAddress: string
+  neighborhood: string
+  addressNormalized: string | null | undefined
+  showPropertyLink: boolean
+}) {
+  const slug = addressNormalized?.trim() ? slugifyAddress(addressNormalized) : ''
+  const canLink = showPropertyLink && Boolean(slug)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            fontSize: '14px',
+            fontWeight: 500,
+            color: '#0f2744',
+          }}
+        >
+          {displayAddress}
+        </span>
+        {canLink ? (
+          <a
+            href={`/address/${slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Open property page"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#0f2744',
+              opacity: 0.5,
+              transition: 'opacity 0.15s ease',
+              textDecoration: 'none',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '0.5'
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </a>
+        ) : null}
+      </div>
+      <span
+        style={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: '12px',
+          color: '#7a7a7a',
+          fontWeight: 400,
+        }}
+      >
+        {neighborhood}
+      </span>
+    </div>
+  )
+}
 
 function NeighborhoodFilter({
   neighborhoodOptions,
@@ -203,7 +547,7 @@ function NeighborhoodFilter({
 export default function LeadsClient() {
   const { isSignedIn, isLoaded } = useUser()
   const [view, setView] = useState<'public' | 'watchlist' | 'unlocked'>('public')
-  const [category, setCategory] = useState<string>('all')
+  const [category, setCategory] = useState<LeadCategory | 'all'>('all')
   const [neighborhoods, setNeighborhoods] = useState<string[]>([])
   const [timeWindow, setTimeWindow] = useState<number>(14)
   const [page, setPage] = useState(1)
@@ -217,19 +561,22 @@ export default function LeadsClient() {
   const [watchlistSrNumbers, setWatchlistSrNumbers] = useState<Set<string>>(new Set())
   const [watchlistRows, setWatchlistRows] = useState<LeadRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [unlockedSrNumbers, setUnlockedSrNumbers] = useState<Set<string>>(() => new Set())
-  const [unlockedLeadsList, setUnlockedLeadsList] = useState<LeadRow[]>([])
+  const [unlockStatus, setUnlockStatus] = useState<Record<string, UnlockStatusEntry>>({})
+  const [unlockLoadingSr, setUnlockLoadingSr] = useState<string | null>(null)
+  const [litigatorModalOpen, setLitigatorModalOpen] = useState(false)
+  const [litigatorModalAddress, setLitigatorModalAddress] = useState('')
+  const [unlockedLeadsList, setUnlockedLeadsList] = useState<LeadWithUnlock[]>([])
 
   const codesForCategory = useMemo(() => {
-    if (category === 'all') return ALL_TRADE_CODES
-    return TRADE_CATEGORIES[category]?.codes ?? ALL_TRADE_CODES
+    if (category === 'all') return ALL_MAPPED_CODES
+    return getCodesForCategory(category)
   }, [category])
 
   const codesSet = useMemo(() => new Set(codesForCategory), [codesForCategory])
 
   const filterLeadByFilters = useCallback(
     (row: LeadRow) => {
-      if (row.sr_short_code && !codesSet.has(row.sr_short_code)) return false
+      if (!row.sr_short_code || !codesSet.has(row.sr_short_code)) return false
       if (
         neighborhoods.length > 0 &&
         neighborhoods.length < NEIGHBORHOOD_COUNT
@@ -274,6 +621,69 @@ export default function LeadsClient() {
     refetchWatchlist()
   }, [isLoaded, isSignedIn, refetchWatchlist])
 
+  useEffect(() => {
+    if (!isLoaded) return
+    if (!isSignedIn) {
+      setUnlockStatus({})
+      setUnlockedLeadsList([])
+      setUnlockLoadingSr(null)
+    }
+  }, [isLoaded, isSignedIn])
+
+  const refetchMyUnlocks = useCallback(async () => {
+    if (!isSignedIn) {
+      setUnlockedLeadsList([])
+      return
+    }
+    const res = await fetch('/api/leads/unlock/my')
+    if (!res.ok) return
+    const json = (await res.json()) as { unlocks?: Record<string, unknown>[] }
+    const raw = json.unlocks ?? []
+    setUnlockedLeadsList(raw.map(mapMyUnlockRowToLeadWithUnlock))
+    setUnlockStatus((prev) => {
+      const next = { ...prev }
+      for (const u of raw) {
+        const sr = String(u.sr_number ?? '')
+        if (sr) next[sr] = { unlocked: true, unlock: u, contact: null }
+      }
+      return next
+    })
+  }, [isSignedIn])
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || view !== 'unlocked') return
+    void refetchMyUnlocks()
+  }, [isLoaded, isSignedIn, view, refetchMyUnlocks])
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || view === 'unlocked') return
+    if (leads.length === 0) return
+    const visibleSr = leads.map((l) => l.sr_number).filter(Boolean)
+    let cancelled = false
+    void (async () => {
+      const res = await fetch(`/api/leads/unlock/status?sr_numbers=${encodeURIComponent(visibleSr.join(','))}`)
+      if (!res.ok || cancelled) return
+      const json = (await res.json()) as { unlocks?: Record<string, UnlockStatusEntry> }
+      const batch = json.unlocks ?? {}
+      if (cancelled) return
+      setUnlockStatus((prev) => {
+        const next = { ...prev }
+        for (const [sr, incoming] of Object.entries(batch)) {
+          const old = prev[sr]
+          if (old && !old.unlocked && old.unavailable && !incoming.unlocked) {
+            next[sr] = { unlocked: false, unavailable: true }
+          } else {
+            next[sr] = incoming
+          }
+        }
+        return next
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isLoaded, isSignedIn, view, leads])
+
   const enrichCounts = useCallback(async (pageLeads: LeadRow[]) => {
     const addrs = [...new Set(pageLeads.map((l) => l.address_normalized).filter(Boolean) as string[])]
     const srs = pageLeads.map((l) => l.sr_number).filter(Boolean)
@@ -310,7 +720,7 @@ export default function LeadsClient() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            codes: codesForCategory,
+            category,
             days: timeWindow,
             neighborhoods:
               neighborhoods.length > 0 && neighborhoods.length < NEIGHBORHOOD_COUNT
@@ -339,7 +749,7 @@ export default function LeadsClient() {
     return () => {
       cancelled = true
     }
-  }, [view, category, neighborhoods, timeWindow, page, codesForCategory, enrichCounts])
+  }, [view, category, neighborhoods, timeWindow, page, enrichCounts])
 
   useEffect(() => {
     if (view !== 'watchlist') return
@@ -438,20 +848,124 @@ export default function LeadsClient() {
   }
 
   const handleUnlock = async (lead: LeadRow) => {
-    if (unlockedSrNumbers.has(lead.sr_number)) return
-    setUnlockedSrNumbers((prev) => new Set([...prev, lead.sr_number]))
-    setUnlockedLeadsList((prev) => (prev.some((l) => l.sr_number === lead.sr_number) ? prev : [...prev, lead]))
-    setUnlockCounts((prev) => ({
-      ...prev,
-      [lead.sr_number]: (prev[lead.sr_number] ?? 0) + 1,
-    }))
-    if (isSignedIn) {
-      const res = await fetch('/api/leads/watchlist', {
+    if (!isSignedIn) {
+      window.alert('Sign in to unlock contact info.')
+      return
+    }
+    const st = unlockStatus[lead.sr_number]
+    if (st?.unlocked) return
+    if (st && !st.unlocked && st.unavailable) return
+    if (unlockLoadingSr === lead.sr_number) return
+
+    setUnlockLoadingSr(lead.sr_number)
+    try {
+      const res = await fetch('/api/leads/unlock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads: [lead] }),
+        body: JSON.stringify({ sr_number: lead.sr_number }),
       })
-      if (res.ok) await refetchWatchlist()
+      const data = (await res.json()) as {
+        success?: boolean
+        reason?: string
+        message?: string
+        unlock?: Record<string, unknown>
+        contact_cache?: Record<string, unknown> | null
+      }
+
+      if (res.status === 401 || data.reason === 'unauthorized') {
+        window.alert('Sign in to unlock contact info.')
+        return
+      }
+
+      if (data.success && data.unlock) {
+        const unlock = data.unlock
+        const contact = (data.contact_cache ?? null) as Record<string, unknown> | null
+        setUnlockStatus((prev) => ({
+          ...prev,
+          [lead.sr_number]: { unlocked: true, unlock, contact },
+        }))
+        setUnlockedLeadsList((prev) => {
+          if (prev.some((l) => l.sr_number === lead.sr_number)) return prev
+          const row: LeadWithUnlock = {
+            ...lead,
+            unlocked_at: String(unlock.created_at ?? new Date().toISOString()),
+            owner_name: (unlock.owner_name as string) ?? null,
+            owner_phone: (unlock.owner_phone as string) ?? null,
+            owner_address: (unlock.owner_address as string) ?? null,
+            owner_email: (unlock.owner_email as string) ?? null,
+            phone_type: (unlock.phone_type as string) ?? null,
+            phone_dnc: Boolean(unlock.phone_dnc),
+            owner_litigator: Boolean(unlock.owner_litigator),
+          }
+          return [row, ...prev]
+        })
+        if (data.reason !== 'already_unlocked') {
+          const srs = leads.map((l) => l.sr_number).filter(Boolean)
+          if (srs.length > 0) {
+            const ucRes = await fetch('/api/leads/unlock-counts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sr_numbers: srs }),
+            })
+            const ucJson = (await ucRes.json()) as { counts?: Record<string, number> }
+            if (ucJson.counts) setUnlockCounts((prev) => ({ ...prev, ...ucJson.counts }))
+          }
+        }
+        const watchRes = await fetch('/api/leads/watchlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leads: [lead] }),
+        })
+        if (watchRes.ok) await refetchWatchlist()
+
+        // LITIGATOR AUTO-CREDIT FLOW
+        // When a litigator-flagged contact is unlocked, show the free-unlock modal.
+        //
+        // TODO (Stripe integration): Once billing is wired up, check the
+        // contact_cache.primary_owner_litigator flag BEFORE firing the Stripe
+        // charge. If the flag is true, skip the charge entirely and show this
+        // modal. Do not insert a refund flow — the charge should never fire.
+        //
+        // Backend TODO in app/api/leads/unlock/route.ts:
+        //   After computing cacheRow and before calling stripe.paymentIntents.create(),
+        //   if cacheRow.primary_owner_litigator === true, skip billing and return
+        //   { success: true, unlock, contact_cache, litigator_credit: true }
+        //
+        // The modal below is non-destructive tonight (all unlocks are currently
+        // free anyway) and serves as a UX signal that sets expectations for when
+        // billing IS live.
+        const isLitigatorFlagged =
+          Boolean(unlock.owner_litigator) || Boolean(contact?.primary_owner_litigator)
+        if (data.reason !== 'already_unlocked' && isLitigatorFlagged) {
+          setLitigatorModalAddress(lead.address_normalized?.trim() || '—')
+          setLitigatorModalOpen(true)
+        }
+        return
+      }
+
+      if (data.reason === 'miss') {
+        window.alert(data.message || 'No owner information available for this address.')
+        setUnlockStatus((prev) => ({
+          ...prev,
+          [lead.sr_number]: { unlocked: false, unavailable: true },
+        }))
+        return
+      }
+      if (data.reason === 'deceased_owner') {
+        window.alert(data.message || 'Owner of record is deceased. This lead is not available.')
+        setUnlockStatus((prev) => ({
+          ...prev,
+          [lead.sr_number]: { unlocked: false, unavailable: true },
+        }))
+        return
+      }
+      if (data.reason === 'tracerfy_error') {
+        window.alert(data.message || 'Temporarily unavailable, please try again shortly.')
+        return
+      }
+      window.alert(data.message || 'Unlock failed. Please try again.')
+    } finally {
+      setUnlockLoadingSr((s) => (s === lead.sr_number ? null : s))
     }
   }
 
@@ -460,8 +974,13 @@ export default function LeadsClient() {
       <style>{`
         .leads-page { padding: 32px 40px; max-width: 1400px; margin: 0 auto; }
         .leads-title { font-family: Merriweather, Georgia, serif; font-size: 22px; font-weight: 600; color: #162d47; margin: 0 0 8px; }
-        .leads-subtitle { font-size: 13px; color: #6b7280; margin: 0 0 24px; line-height: 1.45; }
         .leads-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .leads-toolbar-filters {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 12px;
+        }
         .leads-select { font-size: 13px; padding: 8px 12px; border-radius: 6px; border: 1px solid #e5e7eb; background: #fff; color: #1a1a1a; min-height: 36px; }
         .toolbar-divider { width: 1px; height: 24px; background: #e5e7eb; }
         .leads-meta { font-size: 13px; color: #6b7280; }
@@ -475,7 +994,11 @@ export default function LeadsClient() {
         .leads-nb-item:hover { background: #f9fafb; }
         .leads-nb-item-all { font-weight: 600; border-bottom: 1px solid #f3f4f6; }
         .watchlist-bar { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: #f0faf2; border: 1px solid #c5e6c8; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-        .watchlist-bar button:first-of-type { background: #2d7a3a; color: #fff; border: 0; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .watchlist-bar-btn { border: 0; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #fff; }
+        .watchlist-bar-btn-add { background: #2d7a3a; }
+        .watchlist-bar-btn-add:hover { background: #256d31; }
+        .watchlist-bar-btn-remove { background: #b83232; }
+        .watchlist-bar-btn-remove:hover { background: #a02828; }
         .watchlist-bar button:last-of-type { background: transparent; border: 0; font-size: 18px; cursor: pointer; color: #374151; line-height: 1; }
         .leads-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
         .leads-table-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
@@ -483,7 +1006,7 @@ export default function LeadsClient() {
         .leads-table thead th {
           position: sticky;
           top: 0;
-          z-index: 5;
+          z-index: 10;
           font-family: var(--font-dm-sans, 'DM Sans', system-ui, sans-serif);
           font-size: 13px;
           font-weight: 600;
@@ -502,18 +1025,13 @@ export default function LeadsClient() {
         .leads-table thead th.record-col-first {
           border-left: 1px solid rgba(255,255,255,0.1);
         }
-        .leads-table thead th.leads-col-cb { text-align: center; }
+        .leads-table thead th.leads-col-cb { text-align: center; vertical-align: middle; }
         .col-sub-record {
           display: block;
           font-size: 9px;
           font-weight: 400;
           color: rgba(255,255,255,0.3);
           margin-top: 1px;
-        }
-        .leads-table tbody td:nth-child(2) {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
         }
         .leads-col-sub { display: block; font-size: 10px; font-weight: 500; opacity: 0.85; margin-top: 2px; }
         .leads-th-center { text-align: center; }
@@ -530,14 +1048,16 @@ export default function LeadsClient() {
         td.record-col-first {
           border-left: 1px solid #e5e2dc;
         }
-        .leads-table tbody td { padding: 10px; vertical-align: middle; border-bottom: 1px solid #f3f4f6; }
+        .leads-table tbody td { padding: 10px; vertical-align: top; border-bottom: 1px solid #f3f4f6; height: auto; }
         .leads-table tbody tr.leads-row-checked { background: #f7fbf8; }
         .leads-col-cb { width: 44px; text-align: center; }
-        .leads-col-type { width: 160px; font-weight: 700; color: #162d47; }
+        .leads-table tbody td.leads-col-cb { vertical-align: middle; }
+        .leads-col-type { width: 160px; color: #162d47; }
         .leads-col-time { width: 90px; }
         .leads-time-date { display: block; color: #111827; }
         .leads-time-h { display: block; font-size: 11px; color: #9ca3af; margin-top: 2px; }
         .leads-col-contact { width: 150px; }
+        .leads-col-email { width: 180px; max-width: 180px; vertical-align: top; }
         .leads-unlock-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; background: #f0eeea; border: 1px solid #e7e2db; border-radius: 6px; font-size: 12px; color: #374151; cursor: pointer; font-weight: 500; }
         .leads-unlock-btn:hover { background: #e8e4de; }
         .leads-col-fresh { width: 90px; text-align: center; font-family: ui-monospace, monospace; font-weight: 700; }
@@ -559,46 +1079,101 @@ export default function LeadsClient() {
 
       <div className="leads-page">
         <h1 className="leads-title">311 Service Leads</h1>
-        <p className="leads-subtitle">Recent complaints in Chicago. Unlock contact info to claim a lead.</p>
+        <div style={{ marginBottom: '16px' }}>
+          <p
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '14px',
+              color: '#0f2744',
+              lineHeight: 1.5,
+              margin: '0 0 10px 0',
+            }}
+          >
+            Recent complaints in Chicago. Unlock contact info to claim a lead.
+          </p>
+
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              background: '#e8e4db',
+              border: '1px solid #d4cfc4',
+              borderRadius: '6px',
+              padding: '10px 14px',
+              maxWidth: '720px',
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#0f2744"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ flexShrink: 0, marginTop: '2px', opacity: 0.7 }}
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: '13px',
+                color: '#3a3a3a',
+                lineHeight: 1.5,
+              }}
+            >
+              Building owners are typically unaware of a 311 complaint at their address until a city inspector shows up
+              — <strong>you will be the first person to let them know.</strong> Make sure they know where you heard it from.
+            </span>
+          </div>
+        </div>
 
         <div className="leads-toolbar">
-          <select
-            className="leads-select"
-            value={view}
-            onChange={(e) => handleViewChange(e.target.value as 'public' | 'watchlist' | 'unlocked')}
-          >
-            <option value="public">Public Leads</option>
-            <option value="watchlist">Watchlist ({watchlistSrNumbers.size})</option>
-            <option value="unlocked">Unlocked Leads ({unlockedLeadsList.length})</option>
-          </select>
+          <div className="leads-toolbar-filters">
+            <select
+              className="leads-select"
+              value={view}
+              onChange={(e) => handleViewChange(e.target.value as 'public' | 'watchlist' | 'unlocked')}
+            >
+              <option value="public">Public Leads</option>
+              <option value="watchlist">Watchlist ({watchlistSrNumbers.size})</option>
+              <option value="unlocked">Unlocked Leads ({unlockedLeadsList.length})</option>
+            </select>
 
-          <div className="toolbar-divider" />
+            <div className="toolbar-divider" aria-hidden />
 
-          <select
-            className="leads-select"
-            value={category}
-            disabled={view === 'unlocked'}
-            onChange={(e) => {
-              setCategory(e.target.value)
-              onFilterChange()
-            }}
-          >
-            <option value="all">All Categories</option>
-            {Object.entries(TRADE_CATEGORIES).map(([key, cat]) => (
-              <option key={key} value={key}>
-                {cat.label}
-              </option>
-            ))}
-          </select>
+            <select
+              className="leads-select"
+              value={category}
+              disabled={view === 'unlocked'}
+              onChange={(e) => {
+                setCategory(e.target.value as LeadCategory | 'all')
+                onFilterChange()
+              }}
+            >
+              <option value="all">All Categories</option>
+              <option value="plumbing_water">{LEAD_CATEGORIES.plumbing_water.label}</option>
+              <option value="building_code">{LEAD_CATEGORIES.building_code.label}</option>
+              <option value="property_maintenance">{LEAD_CATEGORIES.property_maintenance.label}</option>
+            </select>
 
-          <NeighborhoodFilter
-            neighborhoodOptions={NEIGHBORHOOD_OPTIONS}
-            neighborhoods={neighborhoods}
-            onChange={(n) => {
-              setNeighborhoods(n)
-              onFilterChange()
-            }}
-          />
+            <div className="toolbar-divider" aria-hidden />
+
+            <NeighborhoodFilter
+              neighborhoodOptions={NEIGHBORHOOD_OPTIONS}
+              neighborhoods={neighborhoods}
+              onChange={(n) => {
+                setNeighborhoods(n)
+                onFilterChange()
+              }}
+            />
+          </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {view !== 'unlocked' && (
@@ -625,11 +1200,11 @@ export default function LeadsClient() {
         {view !== 'unlocked' && selectedSrNumbers.size > 0 && (
           <div className="watchlist-bar">
             {view === 'watchlist' ? (
-              <button type="button" onClick={() => void removeFromWatchlist()}>
+              <button type="button" className="watchlist-bar-btn watchlist-bar-btn-remove" onClick={() => void removeFromWatchlist()}>
                 − Remove from Watchlist
               </button>
             ) : (
-              <button type="button" onClick={() => void addToWatchlist()}>
+              <button type="button" className="watchlist-bar-btn watchlist-bar-btn-add" onClick={() => void addToWatchlist()}>
                 + Add to Watchlist
               </button>
             )}
@@ -644,47 +1219,102 @@ export default function LeadsClient() {
           <div className="leads-table-wrap">
             <div className="leads-table-scroll">
               <table className="leads-table" style={{ tableLayout: 'fixed' as const }}>
+                <colgroup>
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: 'auto' }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Complaint Type</th>
                     <th>Recorded</th>
-                    <th>Address</th>
+                    <th>Date Unlocked</th>
+                    <th>Location</th>
                     <th>Owner</th>
+                    <th>Email</th>
                     <th>Phone</th>
-                    <th>Property Page</th>
                   </tr>
                 </thead>
                 <tbody>
                   {unlockedLeadsList.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="leads-empty">
+                      <td colSpan={7} className="leads-empty">
                         No unlocked leads yet. Unlock a lead from the Public Leads view to see contact info here.
                       </td>
                     </tr>
                   ) : (
                     unlockedLeadsList.map((lead) => {
                       const rec = formatLeadDate(lead.created_date ?? undefined)
-                      const slug = slugifyAddress(lead.address_normalized)
+                      const hoodUnlocked =
+                        getCommunityAreaName(lead.community_area) ||
+                        (lead.community_area != null ? `Area ${lead.community_area}` : '—')
+                      const unlockedDisp = formatUnlockedAtDisplay(lead.unlocked_at)
                       return (
                         <tr key={lead.sr_number}>
-                          <td>
-                            <span className="leads-type-pill">{lead.sr_type ?? '—'}</span>
+                          <td className="leads-col-type">
+                            <ComplaintTypeCell srType={lead.sr_type} srShortCode={lead.sr_short_code} />
                           </td>
                           <td className="leads-col-time">
                             <span className="leads-time-date">{rec.date}</span>
                             {rec.time ? <span className="leads-time-h">{rec.time}</span> : null}
                           </td>
-                          <td>
-                            <div className="street">{lead.address_normalized?.trim() || '—'}</div>
+                          <td className="leads-col-time">
+                            <span className="leads-time-date">{unlockedDisp.dateStr}</span>
+                            {unlockedDisp.timeStr ? (
+                              <span className="leads-time-h">{unlockedDisp.timeStr}</span>
+                            ) : null}
                           </td>
-                          <td style={{ fontWeight: 500 }}>{MOCK_UNLOCK_OWNER}</td>
-                          <td style={{ fontFamily: 'var(--mono, ui-monospace, monospace)', color: '#8a94a0' }}>
-                            {MOCK_UNLOCK_PHONE}
+                          <td>
+                            <LeadsLocationBlock
+                              displayAddress={lead.address_normalized?.trim() || '—'}
+                              neighborhood={hoodUnlocked}
+                              addressNormalized={lead.address_normalized}
+                              showPropertyLink
+                            />
+                          </td>
+                          <td style={{ fontWeight: 500 }}>{lead.owner_name ?? '—'}</td>
+                          <td className="leads-col-email">
+                            <LeadsEmailCellUnlocked ownerEmail={lead.owner_email} />
                           </td>
                           <td>
-                            <Link href={`/address/${slug}`} style={{ color: '#0f2744', textDecoration: 'underline', fontSize: 12 }}>
-                              View Property →
-                            </Link>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontFamily: 'var(--mono, ui-monospace, monospace)',
+                                color: '#8a94a0',
+                                fontSize: 13,
+                              }}
+                            >
+                              {lead.owner_phone ?? '—'}
+                              {lead.phone_type ? (
+                                <span
+                                  style={{
+                                    fontSize: 9,
+                                    fontWeight: 600,
+                                    letterSpacing: '0.06em',
+                                    textTransform: 'uppercase',
+                                    color: '#5c6570',
+                                    background: '#f3f4f6',
+                                    padding: '2px 6px',
+                                    borderRadius: 4,
+                                    fontFamily: "'Inter', sans-serif",
+                                  }}
+                                >
+                                  {lead.phone_type}
+                                </span>
+                              ) : null}
+                              <LeadsPhoneRiskBadges
+                                phoneDnc={Boolean(lead.phone_dnc)}
+                                ownerLitigator={Boolean(lead.owner_litigator)}
+                              />
+                            </div>
                           </td>
                         </tr>
                       )
@@ -700,14 +1330,15 @@ export default function LeadsClient() {
               <table className="leads-table" style={{ tableLayout: 'fixed' as const }}>
                 <colgroup>
                   <col style={{ width: '44px' }} />
-                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '19%' }} />
                   <col style={{ width: '8%' }} />
-                  <col style={{ width: '16%' }} />
                   <col style={{ width: '14%' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '12%' }} />
                   <col style={{ width: '7%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '8%' }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -727,6 +1358,7 @@ export default function LeadsClient() {
                     <th>Complaint Type</th>
                     <th>Recorded</th>
                     <th>Location</th>
+                    <th>Email</th>
                     <th>
                       Contact
                       <span className="leads-col-sub">Name, Address &amp; Phone #</span>
@@ -736,29 +1368,53 @@ export default function LeadsClient() {
                       <span className="leads-col-sub"># of Unlocks</span>
                     </th>
                     <th className="record-col record-col-first">
-                      311
-                      <span className="col-sub-record">complaints</span>
+                      <HoverTooltip
+                        variant="navy"
+                        width={240}
+                        content="Public records at the same address over the last 365 days"
+                      >
+                        <div style={{ textAlign: 'center' }}>
+                          <div>311</div>
+                          <div style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>complaints</div>
+                        </div>
+                      </HoverTooltip>
                     </th>
                     <th className="record-col">
-                      Violations
-                      <span className="col-sub-record">issued</span>
+                      <HoverTooltip
+                        variant="navy"
+                        width={240}
+                        content="Public records at the same address over the last 365 days"
+                      >
+                        <div style={{ textAlign: 'center' }}>
+                          <div>Violations</div>
+                          <div style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>issued</div>
+                        </div>
+                      </HoverTooltip>
                     </th>
                     <th className="record-col">
-                      Permits
-                      <span className="col-sub-record">filed</span>
+                      <HoverTooltip
+                        variant="navy"
+                        width={240}
+                        content="Public records at the same address over the last 365 days"
+                      >
+                        <div style={{ textAlign: 'center' }}>
+                          <div>Permits</div>
+                          <div style={{ fontSize: '10px', fontWeight: 400, opacity: 0.7 }}>filed</div>
+                        </div>
+                      </HoverTooltip>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="leads-empty">
+                      <td colSpan={10} className="leads-empty">
                         Loading…
                       </td>
                     </tr>
                   ) : leads.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="leads-empty">
+                      <td colSpan={10} className="leads-empty">
                         No leads match your filters.
                       </td>
                     </tr>
@@ -772,7 +1428,9 @@ export default function LeadsClient() {
                         getCommunityAreaName(row.community_area) ||
                         (row.community_area != null ? `Area ${row.community_area}` : '—')
                       const checked = selectedSrNumbers.has(row.sr_number)
-                      const isUnlocked = unlockedSrNumbers.has(row.sr_number)
+                      const uSt = unlockStatus[row.sr_number]
+                      const isUnlocked = uSt?.unlocked === true
+                      const isUnavailable = Boolean(uSt && !uSt.unlocked && uSt.unavailable)
                       const locLine = isUnlocked
                         ? row.address_normalized?.trim() || '—'
                         : maskedStreetLine(row.address_normalized)
@@ -786,27 +1444,55 @@ export default function LeadsClient() {
                               onChange={() => toggleRow(row.sr_number)}
                             />
                           </td>
-                          <td className="leads-col-type">{row.sr_type ?? '—'}</td>
+                          <td className="leads-col-type">
+                            <ComplaintTypeCell srType={row.sr_type} srShortCode={row.sr_short_code} />
+                          </td>
                           <td className="leads-col-time">
                             <span className="leads-time-date">{rec.date}</span>
                             {rec.time ? <span className="leads-time-h">{rec.time}</span> : null}
                           </td>
                           <td>
-                            <div className="street">{locLine}</div>
-                            <div className="hood">{hood}</div>
+                            <LeadsLocationBlock
+                              displayAddress={locLine}
+                              neighborhood={hood}
+                              addressNormalized={row.address_normalized}
+                              showPropertyLink={isUnlocked}
+                            />
+                          </td>
+                          <td className="leads-col-email">
+                            {isUnlocked && uSt.unlocked ? (
+                              (() => {
+                                const em = unlockRowEmail(uSt)
+                                return em ? (
+                                  <LeadsEmailCellUnlocked ownerEmail={em} />
+                                ) : (
+                                  <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>
+                                )
+                              })()
+                            ) : (
+                              <LeadsEmailCellLocked />
+                            )}
                           </td>
                           <td className="leads-col-contact">
-                            {isUnlocked ? (
-                              <div>
-                                <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>{MOCK_UNLOCK_OWNER}</div>
-                                <div style={{ fontSize: 11, color: '#8a94a0', fontFamily: 'var(--mono, ui-monospace, monospace)' }}>
-                                  {MOCK_UNLOCK_PHONE}
-                                </div>
+                            {isUnlocked && uSt.unlocked ? (
+                              <ContactUnlockedBlock unlock={uSt.unlock} contact={uSt.contact} />
+                            ) : isUnavailable ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>No data</span>
+                                <button
+                                  type="button"
+                                  className="leads-unlock-btn"
+                                  disabled
+                                  style={{ opacity: 0.55, cursor: 'not-allowed' }}
+                                >
+                                  Unlock
+                                </button>
                               </div>
                             ) : (
                               <button
                                 type="button"
                                 className="leads-unlock-btn"
+                                disabled={unlockLoadingSr === row.sr_number}
                                 onClick={() => void handleUnlock(row)}
                               >
                                 <svg
@@ -821,7 +1507,7 @@ export default function LeadsClient() {
                                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                                   <path d="M7 11V7a5 5 0 0110 0v4" />
                                 </svg>
-                                Unlock
+                                {unlockLoadingSr === row.sr_number ? 'Unlocking…' : 'Unlock'}
                               </button>
                             )}
                           </td>
@@ -877,6 +1563,12 @@ export default function LeadsClient() {
           </div>
         )}
       </div>
+
+      <LitigatorCreditModal
+        isOpen={litigatorModalOpen}
+        onClose={() => setLitigatorModalOpen(false)}
+        address={litigatorModalAddress}
+      />
     </>
   )
 }

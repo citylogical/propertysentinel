@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  ALL_MAPPED_CODES,
+  getCodesForCategory,
+  LEAD_CATEGORIES,
+  type LeadCategory,
+} from '@/lib/lead-categories'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
 
 type QueryBody = {
   mode?: string
+  /** @deprecated Prefer `category`; still honored if `category` omitted. */
   codes?: string[]
+  category?: string
   days?: number
   neighborhoods?: string[]
   page?: number
@@ -39,8 +47,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ neighborhoods: [...set].sort((a, b) => a.localeCompare(b)) })
   }
 
-  const codes = body.codes ?? []
-  if (codes.length === 0) {
+  const categoryParam = body.category
+  let codesToFilter: string[]
+  if (categoryParam != null && categoryParam !== '' && categoryParam !== 'all') {
+    if (!(categoryParam in LEAD_CATEGORIES)) {
+      return NextResponse.json({ error: 'Invalid category' }, { status: 400 })
+    }
+    codesToFilter = getCodesForCategory(categoryParam as LeadCategory)
+  } else {
+    codesToFilter = ALL_MAPPED_CODES
+  }
+
+  if (codesToFilter.length === 0) {
     return NextResponse.json({ leads: [], total: 0 })
   }
 
@@ -56,7 +74,7 @@ export async function POST(req: NextRequest) {
     .select('sr_number, sr_type, sr_short_code, address_normalized, community_area, ward, created_date, status', {
       count: 'exact',
     })
-    .in('sr_short_code', codes)
+    .in('sr_short_code', codesToFilter)
     .gte('created_date', sinceStr)
     .order('created_date', { ascending: false })
 

@@ -29,8 +29,8 @@ export default function MobileNav({ apiKey }: Props) {
           letter-spacing: 0.08em;
           padding: 1px 5px;
           border-radius: 3px;
-          margin-left: 6px;
-          vertical-align: middle;
+          flex-shrink: 0;
+          margin-left: auto;
         }
         .sidebar-badge-beta {
           background: rgba(45, 122, 58, 0.15);
@@ -51,15 +51,15 @@ export default function MobileNav({ apiKey }: Props) {
             href="/leads"
             className="mobile-nav-leads-link"
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               gap: 6,
+              flex: 1,
+              minWidth: 0,
               fontSize: 14,
               fontWeight: 500,
               color: 'rgba(255,255,255,0.88)',
               textDecoration: 'none',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
             }}
           >
             <svg
@@ -72,12 +72,13 @@ export default function MobileNav({ apiKey }: Props) {
               strokeLinecap="round"
               strokeLinejoin="round"
               aria-hidden
+              style={{ flexShrink: 0 }}
             >
               <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
               <path d="M9 18h6" />
               <path d="M10 22h4" />
             </svg>
-            Leads
+            <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap' }}>Leads</span>
             <span className="sidebar-badge sidebar-badge-beta">BETA</span>
           </Link>
         </div>

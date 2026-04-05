@@ -194,16 +194,34 @@ body:has(.app-sidebar:hover) .app-layout-main {
   height: 18px;
 }
 
-.app-sidebar-link-label {
-  font-size: 13px;
-  font-weight: 400;
-  white-space: nowrap;
+.app-sidebar-link-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-right: 12px;
   opacity: 0;
   transition: opacity 0.18s ease 0.08s;
 }
 
-.app-sidebar:hover .app-sidebar-link-label {
+.app-sidebar:hover .app-sidebar-link-body {
   opacity: 1;
+}
+
+.app-sidebar-link-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.app-sidebar-link-body .sidebar-badge {
+  margin-left: auto;
 }
 
 .app-sidebar-footer {
@@ -758,6 +776,11 @@ body:has(.app-sidebar:hover) .app-layout-main {
   text-decoration: underline;
   text-underline-offset: 2px;
   font-weight: 500;
+}
+.nearest-parcel-city-verify-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
 }
 .nearest-parcel-link:hover { opacity: 0.8; }
 

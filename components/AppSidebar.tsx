@@ -182,8 +182,8 @@ export default function AppSidebar() {
           letter-spacing: 0.08em;
           padding: 1px 5px;
           border-radius: 3px;
-          margin-left: 6px;
-          vertical-align: middle;
+          flex-shrink: 0;
+          margin-left: auto;
         }
         .sidebar-badge-beta {
           background: rgba(45, 122, 58, 0.15);
@@ -238,8 +238,8 @@ export default function AppSidebar() {
                 className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
               >
                 <span className="app-sidebar-link-icon">{item.icon}</span>
-                <span className="app-sidebar-link-label">
-                  {item.label}
+                <span className="app-sidebar-link-body">
+                  <span className="app-sidebar-link-label">{item.label}</span>
                   {item.badge === 'beta' ? (
                     <span className="sidebar-badge sidebar-badge-beta">BETA</span>
                   ) : null}

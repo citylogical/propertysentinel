@@ -929,6 +929,15 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
                     {nearestParcel.pin ? ` · PIN ${nearestParcel.pin}` : ''}
                     {' →'}
                   </Link>
+                  <br />
+                  <a
+                    href="https://webapps1.chicago.gov/hallofrecords/addressSearch"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="nearest-parcel-link nearest-parcel-city-verify-link"
+                  >
+                    Or verify address on City website →
+                  </a>
                 </div>
               </div>
             )}
