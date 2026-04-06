@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   let query = supabase
     .from('complaints_311')
     .select('sr_number, sr_type, sr_short_code, address_normalized, community_area, ward, created_date, status', {
-      count: 'exact',
+      count: 'estimated',
     })
     .in('sr_short_code', codesToFilter)
     .gte('created_date', sinceStr)

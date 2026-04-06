@@ -3,6 +3,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { getClassDescription } from '@/lib/class-codes'
 import type { PropertyCharsCondoRow, PropertyCharsResidentialRow } from '@/lib/supabase-search'
+import { formatAddressForDisplay } from '@/lib/formatAddress'
 import {
   pickPinCharacteristicsSource,
   renderPickedPinCharacteristics,
@@ -34,14 +35,6 @@ function numericGtZero(val: unknown): boolean {
   if (val === null || val === undefined) return false
   const n = Number(val)
   return Number.isFinite(n) && n > 0
-}
-
-function formatTitleCaseAddress(address: string): string {
-  if (!address) return '—'
-  return address
-    .split(' ')
-    .map((w, i) => (i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
-    .join(' ')
 }
 
 /** 25% level for Cook County class major 4 or 5; 10% otherwise (incl. EX). */
@@ -348,7 +341,7 @@ function MultiparcelPinRow({ s, index }: { s: SiblingPin; index: number }) {
               color: 'var(--text)',
             }}
           >
-            {formatTitleCaseAddress(s.address)}
+            {formatAddressForDisplay(s.address) || '—'}
           </span>
           <span
             style={{

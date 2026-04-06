@@ -155,7 +155,12 @@ function maskedStreetLine(addr: string | null | undefined): string {
 }
 
 type UnlockStatusEntry =
-  | { unlocked: true; unlock: Record<string, unknown>; contact: Record<string, unknown> | null }
+  | {
+      unlocked: true
+      unlock: Record<string, unknown>
+      contact: Record<string, unknown> | null
+      taxpayer_name?: string | null
+    }
   | { unlocked: false; unavailable?: boolean }
 
 type LeadWithUnlock = LeadRow & {
@@ -164,6 +169,11 @@ type LeadWithUnlock = LeadRow & {
   phone_type?: string | null
   phone_dnc?: boolean
   owner_litigator?: boolean
+  taxpayer_name?: string | null
+  taxpayer_address?: string | null
+  taxpayer_city?: string | null
+  taxpayer_state?: string | null
+  taxpayer_zip?: string | null
 }
 
 function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnlock {
@@ -187,6 +197,11 @@ function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnl
     phone_type: (u.phone_type as string) ?? null,
     phone_dnc: Boolean(u.phone_dnc),
     owner_litigator: Boolean(u.owner_litigator),
+    taxpayer_name: (u.taxpayer_name as string) ?? null,
+    taxpayer_address: (u.taxpayer_address as string) ?? null,
+    taxpayer_city: (u.taxpayer_city as string) ?? null,
+    taxpayer_state: (u.taxpayer_state as string) ?? null,
+    taxpayer_zip: (u.taxpayer_zip as string) ?? null,
   }
 }
 
@@ -268,9 +283,13 @@ function LeadsPhoneRiskBadges({ phoneDnc, ownerLitigator }: { phoneDnc: boolean;
 function ContactUnlockedBlock({
   unlock,
   contact,
+  srNumber,
+  onSeeMore,
 }: {
   unlock: Record<string, unknown>
   contact: Record<string, unknown> | null
+  srNumber: string
+  onSeeMore: (sr: string) => void
 }) {
   const name =
     (unlock.owner_name as string) ||
@@ -278,8 +297,6 @@ function ContactUnlockedBlock({
     '—'
   const phone =
     (unlock.owner_phone as string) || (contact?.primary_phone as string) || ''
-  const phoneType =
-    (unlock.phone_type as string) || (contact?.primary_phone_type as string) || ''
   const dnc = Boolean(unlock.phone_dnc ?? contact?.primary_phone_dnc)
   const litigator = Boolean(unlock.owner_litigator ?? contact?.primary_owner_litigator)
 
@@ -294,22 +311,28 @@ function ContactUnlockedBlock({
         ) : (
           <span style={{ fontSize: 11, color: '#9ca3af' }}>—</span>
         )}
-        {phoneType ? (
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              color: '#5c6570',
-              background: '#f3f4f6',
-              padding: '2px 6px',
-              borderRadius: 4,
-            }}
-          >
-            {phoneType}
-          </span>
-        ) : null}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSeeMore(srNumber)
+          }}
+          style={{
+            fontFamily: "'DM Mono', monospace",
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: '#0f2744',
+            background: 'transparent',
+            border: '1px solid #0f2744',
+            padding: '2px 6px',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          See More Info →
+        </button>
         <LeadsPhoneRiskBadges phoneDnc={dnc} ownerLitigator={litigator} />
       </div>
     </div>
@@ -340,38 +363,6 @@ function LeadsEmailCellUnlocked({ ownerEmail }: { ownerEmail: string | null | un
       {ownerEmail}
     </a>
   )
-}
-
-function LeadsEmailCellLocked() {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#9ca3af', fontSize: 12 }}>
-      <svg
-        viewBox="0 0 24 24"
-        width="12"
-        height="12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0110 0v4" />
-      </svg>
-      —
-    </span>
-  )
-}
-
-function unlockRowEmail(uSt: UnlockStatusEntry | undefined): string {
-  if (!uSt || !uSt.unlocked) return ''
-  const u = uSt.unlock
-  const c = uSt.contact
-  const fromUnlock = (u.owner_email as string)?.trim()
-  if (fromUnlock) return fromUnlock
-  const fromCache = (c?.primary_email as string)?.trim()
-  return fromCache || ''
 }
 
 function formatUnlockedAtDisplay(iso: string | null | undefined): { dateStr: string; timeStr: string } {
@@ -409,6 +400,10 @@ function LeadsLocationBlock({
             fontSize: '14px',
             fontWeight: 500,
             color: '#0f2744',
+            whiteSpace: 'normal',
+            wordBreak: 'normal',
+            overflowWrap: 'break-word',
+            lineHeight: 1.35,
           }}
         >
           {displayAddress}
@@ -566,6 +561,21 @@ export default function LeadsClient() {
   const [litigatorModalOpen, setLitigatorModalOpen] = useState(false)
   const [litigatorModalAddress, setLitigatorModalAddress] = useState('')
   const [unlockedLeadsList, setUnlockedLeadsList] = useState<LeadWithUnlock[]>([])
+  const [highlightedSrNumber, setHighlightedSrNumber] = useState<string | null>(null)
+
+  const navigateToUnlockedRow = useCallback((srNumber: string) => {
+    setView('unlocked')
+    setPage(1)
+    setSelectedSrNumbers(new Set())
+    setHighlightedSrNumber(srNumber)
+    setTimeout(() => {
+      setHighlightedSrNumber((current) => (current === srNumber ? null : current))
+    }, 2500)
+    setTimeout(() => {
+      const el = document.getElementById(`unlocked-row-${srNumber}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+  }, [])
 
   const codesForCategory = useMemo(() => {
     if (category === 'all') return ALL_MAPPED_CODES
@@ -640,14 +650,6 @@ export default function LeadsClient() {
     const json = (await res.json()) as { unlocks?: Record<string, unknown>[] }
     const raw = json.unlocks ?? []
     setUnlockedLeadsList(raw.map(mapMyUnlockRowToLeadWithUnlock))
-    setUnlockStatus((prev) => {
-      const next = { ...prev }
-      for (const u of raw) {
-        const sr = String(u.sr_number ?? '')
-        if (sr) next[sr] = { unlocked: true, unlock: u, contact: null }
-      }
-      return next
-    })
   }, [isSignedIn])
 
   useEffect(() => {
@@ -880,25 +882,27 @@ export default function LeadsClient() {
       if (data.success && data.unlock) {
         const unlock = data.unlock
         const contact = (data.contact_cache ?? null) as Record<string, unknown> | null
-        setUnlockStatus((prev) => ({
-          ...prev,
-          [lead.sr_number]: { unlocked: true, unlock, contact },
-        }))
-        setUnlockedLeadsList((prev) => {
-          if (prev.some((l) => l.sr_number === lead.sr_number)) return prev
-          const row: LeadWithUnlock = {
-            ...lead,
-            unlocked_at: String(unlock.created_at ?? new Date().toISOString()),
-            owner_name: (unlock.owner_name as string) ?? null,
-            owner_phone: (unlock.owner_phone as string) ?? null,
-            owner_address: (unlock.owner_address as string) ?? null,
-            owner_email: (unlock.owner_email as string) ?? null,
-            phone_type: (unlock.phone_type as string) ?? null,
-            phone_dnc: Boolean(unlock.phone_dnc),
-            owner_litigator: Boolean(unlock.owner_litigator),
+        const statusRes = await fetch(
+          `/api/leads/unlock/status?sr_numbers=${encodeURIComponent(lead.sr_number)}`
+        )
+        if (statusRes.ok) {
+          const statusJson = (await statusRes.json()) as { unlocks?: Record<string, UnlockStatusEntry> }
+          const entry = statusJson.unlocks?.[lead.sr_number]
+          if (entry?.unlocked) {
+            setUnlockStatus((prev) => ({ ...prev, [lead.sr_number]: entry }))
+          } else {
+            setUnlockStatus((prev) => ({
+              ...prev,
+              [lead.sr_number]: { unlocked: true, unlock, contact, taxpayer_name: null },
+            }))
           }
-          return [row, ...prev]
-        })
+        } else {
+          setUnlockStatus((prev) => ({
+            ...prev,
+            [lead.sr_number]: { unlocked: true, unlock, contact, taxpayer_name: null },
+          }))
+        }
+        await refetchMyUnlocks()
         if (data.reason !== 'already_unlocked') {
           const srs = leads.map((l) => l.sr_number).filter(Boolean)
           if (srs.length > 0) {
@@ -1001,7 +1005,7 @@ export default function LeadsClient() {
         .watchlist-bar-btn-remove:hover { background: #a02828; }
         .watchlist-bar button:last-of-type { background: transparent; border: 0; font-size: 18px; cursor: pointer; color: #374151; line-height: 1; }
         .leads-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
-        .leads-table-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
+        .leads-table-scroll { max-height: calc(100vh - 200px); overflow-y: auto; overflow-x: auto; width: 100%; }
         .leads-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .leads-table thead th {
           position: sticky;
@@ -1053,6 +1057,21 @@ export default function LeadsClient() {
         .leads-col-cb { width: 44px; text-align: center; }
         .leads-table tbody td.leads-col-cb { vertical-align: middle; }
         .leads-col-type { width: 160px; color: #162d47; }
+        .leads-table.leads-table-public { table-layout: auto; width: 100%; }
+        .leads-table.leads-table-public .leads-col-type {
+          width: auto;
+          min-width: 200px;
+          max-width: 450px;
+        }
+        .leads-table.leads-table-public th.leads-col-location,
+        .leads-table.leads-table-public td.leads-col-location {
+          width: auto;
+          min-width: 180px;
+          max-width: 380px;
+        }
+        .leads-table.leads-table-public .leads-col-contact { width: auto; min-width: 140px; max-width: 260px; }
+        .leads-table.leads-table-public th.record-col,
+        .leads-table.leads-table-public td.record-col { min-width: 72px; }
         .leads-col-time { width: 90px; }
         .leads-time-date { display: block; color: #111827; }
         .leads-time-h { display: block; font-size: 11px; color: #9ca3af; margin-top: 2px; }
@@ -1235,7 +1254,7 @@ export default function LeadsClient() {
                     <th>Date Unlocked</th>
                     <th>Location</th>
                     <th>Owner</th>
-                    <th>Email</th>
+                    <th>Contact Address</th>
                     <th>Phone</th>
                   </tr>
                 </thead>
@@ -1253,8 +1272,39 @@ export default function LeadsClient() {
                         getCommunityAreaName(lead.community_area) ||
                         (lead.community_area != null ? `Area ${lead.community_area}` : '—')
                       const unlockedDisp = formatUnlockedAtDisplay(lead.unlocked_at)
+                      const taxpayerAddressLine = [
+                        lead.taxpayer_address,
+                        [lead.taxpayer_city, lead.taxpayer_state, lead.taxpayer_zip].filter(Boolean).join(' '),
+                      ]
+                        .filter((s) => s && String(s).trim() !== '')
+                        .join(', ')
+                      const isHighlighted = highlightedSrNumber === lead.sr_number
+                      // Normalize both names for comparison: uppercase, collapse whitespace, strip punctuation.
+                      // If Tracerfy and the Assessor point to the same entity, Tracerfy's phone is already
+                      // what a Google search would turn up, so the lookup link adds nothing.
+                      const normalizeName = (s: string | null | undefined) =>
+                        (s ?? '')
+                          .toUpperCase()
+                          .replace(/[.,&]/g, '')
+                          .replace(/\s+/g, ' ')
+                          .trim()
+                      const ownerNorm = normalizeName(lead.owner_name)
+                      const taxpayerNorm = normalizeName(lead.taxpayer_name)
+                      const namesMatch =
+                        ownerNorm.length > 0 && taxpayerNorm.length > 0 && ownerNorm === taxpayerNorm
+                      const googleSearchUrl =
+                        lead.taxpayer_name && !namesMatch
+                          ? `https://www.google.com/search?q=${encodeURIComponent(`${lead.taxpayer_name} phone number`)}`
+                          : null
                       return (
-                        <tr key={lead.sr_number}>
+                        <tr
+                          key={lead.sr_number}
+                          id={`unlocked-row-${lead.sr_number}`}
+                          style={{
+                            background: isHighlighted ? '#fef3c7' : undefined,
+                            transition: 'background-color 0.6s ease',
+                          }}
+                        >
                           <td className="leads-col-type">
                             <ComplaintTypeCell srType={lead.sr_type} srShortCode={lead.sr_short_code} />
                           </td>
@@ -1276,44 +1326,161 @@ export default function LeadsClient() {
                               showPropertyLink
                             />
                           </td>
-                          <td style={{ fontWeight: 500 }}>{lead.owner_name ?? '—'}</td>
-                          <td className="leads-col-email">
-                            <LeadsEmailCellUnlocked ownerEmail={lead.owner_email} />
-                          </td>
                           <td>
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                alignItems: 'center',
-                                gap: 6,
-                                fontFamily: 'var(--mono, ui-monospace, monospace)',
-                                color: '#8a94a0',
-                                fontSize: 13,
-                              }}
-                            >
-                              {lead.owner_phone ?? '—'}
-                              {lead.phone_type ? (
-                                <span
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div>
+                                <div
                                   style={{
+                                    fontFamily: "'DM Mono', monospace",
                                     fontSize: 9,
-                                    fontWeight: 600,
-                                    letterSpacing: '0.06em',
+                                    letterSpacing: '0.08em',
                                     textTransform: 'uppercase',
-                                    color: '#5c6570',
-                                    background: '#f3f4f6',
-                                    padding: '2px 6px',
-                                    borderRadius: 4,
-                                    fontFamily: "'Inter', sans-serif",
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
                                   }}
                                 >
-                                  {lead.phone_type}
-                                </span>
-                              ) : null}
-                              <LeadsPhoneRiskBadges
-                                phoneDnc={Boolean(lead.phone_dnc)}
-                                ownerLitigator={Boolean(lead.owner_litigator)}
-                              />
+                                  Skip-Traced Owner
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
+                                  {lead.owner_name ?? '—'}
+                                </div>
+                              </div>
+                              <div>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  Tax Assessor
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
+                                  {lead.taxpayer_name ?? '—'}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="leads-col-email">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  Email
+                                </div>
+                                <LeadsEmailCellUnlocked ownerEmail={lead.owner_email} />
+                              </div>
+                              <div>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  Mailing Address
+                                </div>
+                                <div style={{ fontSize: 12, color: '#0f2744', lineHeight: 1.35 }}>
+                                  {taxpayerAddressLine || '—'}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  Skip-Traced
+                                </div>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    fontFamily: 'var(--mono, ui-monospace, monospace)',
+                                    color: '#8a94a0',
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  {lead.owner_phone ?? '—'}
+                                  {lead.phone_type ? (
+                                    <span
+                                      style={{
+                                        fontSize: 9,
+                                        fontWeight: 600,
+                                        letterSpacing: '0.06em',
+                                        textTransform: 'uppercase',
+                                        color: '#5c6570',
+                                        background: '#f3f4f6',
+                                        padding: '2px 6px',
+                                        borderRadius: 4,
+                                        fontFamily: "'Inter', sans-serif",
+                                      }}
+                                    >
+                                      {lead.phone_type}
+                                    </span>
+                                  ) : null}
+                                  <LeadsPhoneRiskBadges
+                                    phoneDnc={Boolean(lead.phone_dnc)}
+                                    ownerLitigator={Boolean(lead.owner_litigator)}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  Tax Assessor
+                                </div>
+                                {googleSearchUrl ? (
+                                  <a
+                                    href={googleSearchUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      fontSize: 12,
+                                      color: '#0f2744',
+                                      textDecoration: 'underline',
+                                      fontFamily: "'Inter', sans-serif",
+                                    }}
+                                  >
+                                    Look up phone # →
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>
+                                )}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -1327,18 +1494,9 @@ export default function LeadsClient() {
         ) : (
           <div className="leads-table-wrap">
             <div className="leads-table-scroll">
-              <table className="leads-table" style={{ tableLayout: 'fixed' as const }}>
+              <table className="leads-table leads-table-public">
                 <colgroup>
-                  <col style={{ width: '44px' }} />
-                  <col style={{ width: '19%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '180px' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '7%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '8%' }} />
+                  <col style={{ width: 44 }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1357,8 +1515,7 @@ export default function LeadsClient() {
                     </th>
                     <th>Complaint Type</th>
                     <th>Recorded</th>
-                    <th>Location</th>
-                    <th>Email</th>
+                    <th className="leads-col-location">Location</th>
                     <th>
                       Contact
                       <span className="leads-col-sub">Name, Address &amp; Phone #</span>
@@ -1408,13 +1565,13 @@ export default function LeadsClient() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="leads-empty">
+                      <td colSpan={9} className="leads-empty">
                         Loading…
                       </td>
                     </tr>
                   ) : leads.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="leads-empty">
+                      <td colSpan={9} className="leads-empty">
                         No leads match your filters.
                       </td>
                     </tr>
@@ -1451,7 +1608,7 @@ export default function LeadsClient() {
                             <span className="leads-time-date">{rec.date}</span>
                             {rec.time ? <span className="leads-time-h">{rec.time}</span> : null}
                           </td>
-                          <td>
+                          <td className="leads-col-location">
                             <LeadsLocationBlock
                               displayAddress={locLine}
                               neighborhood={hood}
@@ -1459,23 +1616,14 @@ export default function LeadsClient() {
                               showPropertyLink={isUnlocked}
                             />
                           </td>
-                          <td className="leads-col-email">
-                            {isUnlocked && uSt.unlocked ? (
-                              (() => {
-                                const em = unlockRowEmail(uSt)
-                                return em ? (
-                                  <LeadsEmailCellUnlocked ownerEmail={em} />
-                                ) : (
-                                  <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>
-                                )
-                              })()
-                            ) : (
-                              <LeadsEmailCellLocked />
-                            )}
-                          </td>
                           <td className="leads-col-contact">
                             {isUnlocked && uSt.unlocked ? (
-                              <ContactUnlockedBlock unlock={uSt.unlock} contact={uSt.contact} />
+                              <ContactUnlockedBlock
+                                unlock={uSt.unlock}
+                                contact={uSt.contact}
+                                srNumber={row.sr_number}
+                                onSeeMore={navigateToUnlockedRow}
+                              />
                             ) : isUnavailable ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>No data</span>

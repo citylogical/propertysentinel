@@ -4,7 +4,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
 
-/** All unlock rows for the current user (for Unlocked tab hydration). */
+type MailingRow = {
+  mailing_name: string | null
+  mailing_address: string | null
+  mailing_city: string | null
+  mailing_state: string | null
+  mailing_zip: string | null
+}
+
+/** All unlock rows for the current user, enriched with tax assessor mailing data. */
 export async function GET() {
   const { userId } = await auth()
   if (!userId) {
@@ -45,15 +53,61 @@ export async function GET() {
     }
   }
 
+  // Enrich with tax assessor mailing data from the properties table.
+  // Read-time join (Option B): works for existing unlocks without backfill,
+  // and mailing data stays current when properties sell.
+  const addresses = [
+    ...new Set(
+      (complaints ?? [])
+        .map((c) => (c as { address_normalized?: string | null }).address_normalized)
+        .filter((a): a is string => Boolean(a))
+    ),
+  ]
+  const mailingByAddress = new Map<string, MailingRow>()
+  if (addresses.length > 0) {
+    const { data: props } = await supabase
+      .from('properties')
+      .select('address_normalized, mailing_name, mailing_address, mailing_city, mailing_state, mailing_zip')
+      .in('address_normalized', addresses)
+    for (const row of props ?? []) {
+      const r = row as {
+        address_normalized: string | null
+        mailing_name: string | null
+        mailing_address: string | null
+        mailing_city: string | null
+        mailing_state: string | null
+        mailing_zip: string | null
+      }
+      if (r.address_normalized && !mailingByAddress.has(r.address_normalized)) {
+        mailingByAddress.set(r.address_normalized, {
+          mailing_name: r.mailing_name,
+          mailing_address: r.mailing_address,
+          mailing_city: r.mailing_city,
+          mailing_state: r.mailing_state,
+          mailing_zip: r.mailing_zip,
+        })
+      }
+    }
+  }
+
   const merged = list.map((u) => {
     const row = u as Record<string, unknown>
     const c = bySr.get(String(row.sr_number)) as Record<string, unknown> | undefined
     const base = { ...row, ...(c || {}) }
     const cid = base.tracerfy_contact_id as string | undefined
     const oe = base.owner_email as string | null | undefined
-    if (oe) return base
-    const pe = cid ? emailByCacheId.get(cid) : undefined
-    return pe ? { ...base, owner_email: pe } : base
+    const withEmail = oe ? base : cid && emailByCacheId.get(cid) ? { ...base, owner_email: emailByCacheId.get(cid) } : base
+    const addr = withEmail.address_normalized as string | undefined
+    const mailing = addr ? mailingByAddress.get(addr) : undefined
+    if (!mailing) return withEmail
+    return {
+      ...withEmail,
+      taxpayer_name: mailing.mailing_name,
+      taxpayer_address: mailing.mailing_address,
+      taxpayer_city: mailing.mailing_city,
+      taxpayer_state: mailing.mailing_state,
+      taxpayer_zip: mailing.mailing_zip,
+    }
   })
 
   merged.sort((a, b) => {

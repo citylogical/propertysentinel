@@ -6,6 +6,7 @@ import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { getRecentSearches } from '@/lib/recent-searches'
+import { formatAddressForDisplay } from '@/lib/formatAddress'
 
 type NavItem = {
   label: string
@@ -256,7 +257,9 @@ export default function AppSidebar() {
             <div className="app-sidebar-recent-label">Recent</div>
             {recentSearches.slice(0, maxRecent).map((s) => (
               <Link key={s.slug} href={`/address/${s.slug}`} className="app-sidebar-recent-link">
-                <span className="app-sidebar-recent-text">{s.address}</span>
+                <span className="app-sidebar-recent-text">
+                  {formatAddressForDisplay(s.address || s.slug)}
+                </span>
               </Link>
             ))}
           </div>

@@ -1,5 +1,11 @@
+import { unstable_cache } from 'next/cache'
 import { supabase as _supabase, getSupabaseAdmin } from './supabase'
 import { findManualBuilding } from './manual-building-addresses'
+
+// Cache settings for property data fetchers.
+// Worker A syncs underlying Socrata data every 15 minutes, so 5 minutes of staleness
+// is always safe. Tags allow targeted revalidation later if we add a webhook from Worker A.
+const PROPERTY_CACHE_REVALIDATE_SECONDS = 300
 
 const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : _supabase
 
@@ -373,16 +379,8 @@ export async function fetchSiblingPins(
       }
     }
 
-    // PATH B — commercial chars pins column
-    // Does NOT return early — falls through to Path C which is authoritative
-    const { data: commercial } = await supabaseAdmin
-      .from('property_chars_commercial')
-      .select('keypin, pins')
-      .or(`keypin.eq.${pin},pins.ilike.%${pin.substring(0, 10)}%`)
-      .order('tax_year', { ascending: false })
-      .limit(1)
-
-    // commercial result available if needed but Path C handles final resolution
+    // PATH B removed — was a leading-wildcard ilike seq scan on property_chars_commercial
+    // whose result was never consumed. Path C is authoritative.
 
     // PATH C — mailing name + same street (authoritative)
     const { data: subject } = await supabaseAdmin
@@ -750,7 +748,7 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
 // Parcel universe
 // ---------------------------------------------------------------------------
 
-export async function fetchParcelUniverse(pin: string): Promise<{
+async function _fetchParcelUniverseUncached(pin: string): Promise<{
   parcel: ParcelUniverseRow | null
   error: string | null
 }> {
@@ -776,11 +774,17 @@ export async function fetchParcelUniverse(pin: string): Promise<{
   }
 }
 
+export const fetchParcelUniverse = unstable_cache(
+  _fetchParcelUniverseUncached,
+  ['fetch-parcel-universe'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['parcel-universe'] }
+)
+
 // ---------------------------------------------------------------------------
 // Complaints
 // ---------------------------------------------------------------------------
 
-export async function fetchComplaints(normalizedAddress: string): Promise<{
+async function _fetchComplaintsUncached(normalizedAddress: string): Promise<{
   complaints: ComplaintRow[]
   error: string | null
 }> {
@@ -801,6 +805,12 @@ export async function fetchComplaints(normalizedAddress: string): Promise<{
     }
   }
 }
+
+export const fetchComplaints = unstable_cache(
+  _fetchComplaintsUncached,
+  ['fetch-complaints-by-address'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['complaints'] }
+)
 
 export async function fetchComplaintsByPin(pin: string): Promise<{
   complaints: ComplaintRow[]
@@ -858,7 +868,7 @@ export async function fetchComplaintsByAddresses(addresses: string[]): Promise<{
 // Violations
 // ---------------------------------------------------------------------------
 
-export async function fetchViolations(addressNormalized: string): Promise<{
+async function _fetchViolationsUncached(addressNormalized: string): Promise<{
   violations: ViolationRow[]
   error: string | null
 }> {
@@ -880,6 +890,12 @@ export async function fetchViolations(addressNormalized: string): Promise<{
     }
   }
 }
+
+export const fetchViolations = unstable_cache(
+  _fetchViolationsUncached,
+  ['fetch-violations-by-address'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['violations'] }
+)
 
 export async function fetchViolationsByPin(pin: string): Promise<{
   violations: ViolationRow[]
@@ -931,16 +947,18 @@ export async function fetchViolationsByAddresses(addresses: string[]): Promise<{
 // Permits
 // ---------------------------------------------------------------------------
 
-export async function fetchPermits(normalizedAddress: string): Promise<{
+async function _fetchPermitsUncached(normalizedAddress: string): Promise<{
   permits: PermitRow[]
   error: string | null
 }> {
   try {
+    // .like (case-sensitive) instead of .ilike — address_normalized is always uppercase,
+    // and ilike cannot use a text_pattern_ops btree index; .like with trailing wildcard can.
     const pattern = `${normalizedAddress}%`
     const { data, error } = await supabase
       .from('permits')
       .select('address_normalized, permit_type, permit_status, work_description, issue_date, permit_number, reported_cost, total_fee, contact_1_type, contact_1_name, is_roof_permit')
-      .ilike('address_normalized', pattern)
+      .like('address_normalized', pattern)
       .order('issue_date', { ascending: false })
 
     if (error) throw new Error(error.message)
@@ -953,6 +971,12 @@ export async function fetchPermits(normalizedAddress: string): Promise<{
     }
   }
 }
+
+export const fetchPermits = unstable_cache(
+  _fetchPermitsUncached,
+  ['fetch-permits-by-address'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['permits'] }
+)
 
 export async function fetchPermitsByPin(pin: string): Promise<{
   permits: PermitRow[]
@@ -1007,7 +1031,7 @@ const RESIDENTIAL_COLS =
 const CONDO_COLS =
   'pin,year_built,building_sqft,unit_sqft,num_bedrooms,building_pins,building_non_units,bldg_is_mixed_use,is_parking_space,is_common_area,land_sqft,tax_year'
 
-export async function fetchPropertyCharsResidential(pin: string): Promise<{
+async function _fetchPropertyCharsResidentialUncached(pin: string): Promise<{
   chars: PropertyCharsResidentialRow | null
   error: string | null
 }> {
@@ -1031,7 +1055,13 @@ export async function fetchPropertyCharsResidential(pin: string): Promise<{
   }
 }
 
-export async function fetchPropertyCharsCondo(pin: string): Promise<{
+export const fetchPropertyCharsResidential = unstable_cache(
+  _fetchPropertyCharsResidentialUncached,
+  ['fetch-property-chars-residential'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['property-chars'] }
+)
+
+async function _fetchPropertyCharsCondoUncached(pin: string): Promise<{
   chars: PropertyCharsCondoRow | null
   error: string | null
 }> {
@@ -1057,6 +1087,12 @@ export async function fetchPropertyCharsCondo(pin: string): Promise<{
   }
 }
 
+export const fetchPropertyCharsCondo = unstable_cache(
+  _fetchPropertyCharsCondoUncached,
+  ['fetch-property-chars-condo'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['property-chars'] }
+)
+
 export async function fetchPropertyChars(pin: string): Promise<{
   chars: PropertyCharsRow | null
   error: string | null
@@ -1075,7 +1111,7 @@ export async function fetchPropertyChars(pin: string): Promise<{
 // Assessed value
 // ---------------------------------------------------------------------------
 
-export async function fetchAssessedValue(pin: string | null | undefined): Promise<{
+async function _fetchAssessedValueUncached(pin: string | null | undefined): Promise<{
   assessed: AssessedValueResult | null
   error: string | null
 }> {
@@ -1145,6 +1181,12 @@ export async function fetchAssessedValue(pin: string | null | undefined): Promis
     }
   }
 }
+
+export const fetchAssessedValue = unstable_cache(
+  _fetchAssessedValueUncached,
+  ['fetch-assessed-value'],
+  { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['assessed-values'] }
+)
 
 export type AssessedValueByPinRow = {
   pin: string
