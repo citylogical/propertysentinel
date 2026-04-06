@@ -36,25 +36,44 @@ export async function POST(req: Request) {
 
   if (evt.type === 'user.created') {
     const { id, email_addresses } = evt.data
-    const email = email_addresses[0]?.email_address
-    if (email) {
+    const userId = id
+    const emailAddress = email_addresses[0]?.email_address
+    if (emailAddress) {
       // Insert only — don't overwrite existing rows (preserves role)
       const { data: existing } = await supabaseAdmin
         .from('subscribers')
         .select('id')
-        .eq('clerk_id', id)
+        .eq('clerk_id', userId)
         .single()
 
       if (!existing) {
         const { error } = await supabaseAdmin.from('subscribers').insert({
-          clerk_id: id,
-          email,
+          clerk_id: userId,
+          email: emailAddress,
           role: 'default',
         })
         if (error) {
           console.error('Clerk webhook subscribers insert:', error.message)
           return new Response('Database error', { status: 500 })
         }
+      }
+
+      try {
+        const { Resend } = await import('resend')
+        const resend = new Resend(process.env.RESEND_API_KEY)
+        await resend.emails.send({
+          from: 'Property Sentinel <jim@propertysentinel.io>',
+          to: 'jim@propertysentinel.io',
+          subject: 'New user signed up',
+          html: `
+    <p><strong>New user on Property Sentinel</strong></p>
+    <p>Email: ${emailAddress}</p>
+    <p>Clerk ID: ${userId}</p>
+    <p>Signed up: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
+  `,
+        })
+      } catch (e) {
+        console.error('Clerk webhook Resend notify:', e)
       }
     }
   }
