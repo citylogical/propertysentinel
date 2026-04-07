@@ -679,20 +679,44 @@ function LeadsLocationBlock({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: '14px',
-            fontWeight: 500,
-            color: '#0f2744',
-            whiteSpace: 'normal',
-            wordBreak: 'normal',
-            overflowWrap: 'break-word',
-            lineHeight: 1.35,
-          }}
-        >
-          {displayAddress}
-        </span>
+        {canLink ? (
+          <a
+            href={`/address/${slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '14px',
+              fontWeight: 500,
+              color: '#0f2744',
+              whiteSpace: 'normal',
+              wordBreak: 'normal',
+              overflowWrap: 'break-word',
+              lineHeight: 1.35,
+              textDecoration: 'underline',
+              textDecorationColor: 'rgba(15, 39, 68, 0.4)',
+              textUnderlineOffset: '2px',
+            }}
+          >
+            {displayAddress}
+          </a>
+        ) : (
+          <span
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '14px',
+              fontWeight: 500,
+              color: '#0f2744',
+              whiteSpace: 'normal',
+              wordBreak: 'normal',
+              overflowWrap: 'break-word',
+              lineHeight: 1.35,
+            }}
+          >
+            {displayAddress}
+          </span>
+        )}
         {canLink ? (
           <a
             href={`/address/${slug}`}
@@ -975,7 +999,9 @@ export default function LeadsClient() {
   }, [isSignedIn])
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || view !== 'unlocked') return
+    if (!isLoaded || !isSignedIn) return
+    // Fire on mount AND on tab change so the dropdown count "(N)" is accurate
+    // from the moment the page loads, not just after the user clicks the tab.
     void refetchMyUnlocks()
   }, [isLoaded, isSignedIn, view, refetchMyUnlocks])
 
@@ -1513,7 +1539,6 @@ export default function LeadsClient() {
                   fontSize: '13px',
                   color: '#3a3a3a',
                   lineHeight: 1.5,
-                  borderBottom: '1px dotted #9ca3af',
                   cursor: 'help',
                 }}
               >
