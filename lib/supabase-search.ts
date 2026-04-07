@@ -419,6 +419,19 @@ export async function fetchSiblingPins(
         return noSiblings
       }
 
+      // Parse the subject street number for the ±10 range cap.
+      // Path C used to group ANY same-mailing-name property on the same street,
+      // which incorrectly conflated cross-block portfolios (e.g. 2970 N Sheridan
+      // and 3260 N Sheridan, both owned by FORMAN REALTY CORP, treated as one
+      // building). Real conjoined-parcel buildings are within ±10 street numbers
+      // of each other (corner buildings, address-range buildings). Anything
+      // beyond that is a portfolio relationship, not a same-building relationship.
+      const subjectStreetNum = parseInt(parts[0], 10)
+      if (Number.isNaN(subjectStreetNum)) {
+        console.log('Path C skipped — could not parse subject street number:', parts[0])
+        return noSiblings
+      }
+
       const { data: siblings } = await supabaseAdmin
         .from('properties')
         .select('pin, address_normalized')
@@ -426,17 +439,42 @@ export async function fetchSiblingPins(
         .ilike('address_normalized', `%${streetWords}%`)
 
       if (siblings && siblings.length > 0) {
-        console.log('Path C siblings result:', JSON.stringify(siblings), 'streetWords:', streetWords)
-        const mailingPins = siblings.map((r: any) => r.pin).filter(Boolean) as string[]
-        const mailingAddresses = [...new Set(siblings.map((r: any) => r.address_normalized).filter(Boolean))] as string[]
-        const allPins = [...new Set([pin, ...mailingPins])] as string[]
-        const allAddresses = [...new Set([addressNormalized, ...mailingAddresses])] as string[]
-        if (allAddresses.length > 1) {
-          return {
-            siblingPins: allPins,
-            siblingAddresses: allAddresses,
-            addressRange: buildAddressRange(allAddresses),
-            resolvedVia: 'mailing',
+        // Filter siblings to only those within ±10 street numbers of the subject.
+        // This is the new cap that prevents cross-block portfolio grouping.
+        const STREET_NUMBER_RANGE = 10
+        const filteredSiblings = siblings.filter((r: { address_normalized?: string | null }) => {
+          const siblingAddr = r.address_normalized as string | null
+          if (!siblingAddr) return false
+          const siblingNum = parseInt(siblingAddr.split(' ')[0], 10)
+          if (Number.isNaN(siblingNum)) return false
+          return Math.abs(siblingNum - subjectStreetNum) <= STREET_NUMBER_RANGE
+        })
+
+        console.log(
+          'Path C siblings result:',
+          JSON.stringify(filteredSiblings),
+          'streetWords:',
+          streetWords,
+          'filtered_from:',
+          siblings.length
+        )
+
+        if (filteredSiblings.length > 0) {
+          const mailingPins = filteredSiblings.map((r: { pin?: string }) => r.pin).filter(Boolean) as string[]
+          const mailingAddresses = [
+            ...new Set(
+              filteredSiblings.map((r: { address_normalized?: string | null }) => r.address_normalized).filter(Boolean)
+            ),
+          ] as string[]
+          const allPins = [...new Set([pin, ...mailingPins])] as string[]
+          const allAddresses = [...new Set([addressNormalized, ...mailingAddresses])] as string[]
+          if (allAddresses.length > 1) {
+            return {
+              siblingPins: allPins,
+              siblingAddresses: allAddresses,
+              addressRange: buildAddressRange(allAddresses),
+              resolvedVia: 'mailing',
+            }
           }
         }
       }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { batchPropertyTypeLabelsForAddresses } from '@/lib/property-type'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,25 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ watchlist: data ?? [] })
+
+  const rows = (data ?? []) as Record<string, unknown>[]
+  const addresses = [
+    ...new Set(
+      rows
+        .map((r) => String(r.address_normalized ?? '').trim())
+        .filter((a) => a.length > 0)
+    ),
+  ]
+  const labelByAddress = await batchPropertyTypeLabelsForAddresses(addresses)
+  const watchlist = rows.map((r) => {
+    const addr = String(r.address_normalized ?? '').trim()
+    return {
+      ...r,
+      property_type_label: labelByAddress.get(addr) ?? 'unknown',
+    }
+  })
+
+  return NextResponse.json({ watchlist })
 }
 
 export async function POST(req: NextRequest) {

@@ -8,7 +8,8 @@ import {
   tracerfyInstantLookup,
   type TracerfyEnrichedPerson,
 } from '@/lib/tracerfy'
-import { evaluateBusinessTrace } from '@/lib/business-trace-rules'
+import { evaluateBusinessTrace, isMultiOwnerBuilding } from '@/lib/business-trace-rules'
+import { derivePropertyType } from '@/lib/property-type'
 import {
   consumeCreditForUnlock,
   getUnlockQuota,
@@ -114,7 +115,25 @@ export async function POST(req: NextRequest) {
   let cacheRow = cached as Record<string, unknown> | null
   let unlockedFromCache = Boolean(cached)
 
+  // Multi-owner skip path: if there's no cached data AND the address is a
+  // multi-owner building (7+ PINs with 2+ distinct mailing names), skip the
+  // Tracerfy call entirely. The Unlocked Leads modal will surface every
+  // taxpayer mailing name from the properties table — that's the actual
+  // product the user wants for these addresses, and Tracerfy would just
+  // return one or two random unit owners that mislead the user.
+  //
+  // This consumes a credit and counts as a successful unlock. The lead_unlocks
+  // row is written with no Tracerfy data; the multi_owner_skip flag distinguishes
+  // it from a normal unlock so the UI can render the modal trigger correctly.
+  let isMultiOwnerSkip = false
   if (!cacheRow) {
+    const skipMultiOwner = await isMultiOwnerBuilding(addressNormalized)
+    if (skipMultiOwner) {
+      isMultiOwnerSkip = true
+    }
+  }
+
+  if (!cacheRow && !isMultiOwnerSkip) {
     let tracerfyResponse
     try {
       tracerfyResponse = await tracerfyInstantLookup({
@@ -208,6 +227,121 @@ export async function POST(req: NextRequest) {
       cacheRow = inserted as Record<string, unknown>
       unlockedFromCache = false
     }
+  }
+
+  if (!cacheRow && !isMultiOwnerSkip) {
+    return NextResponse.json({ success: false, reason: 'db_error', message: 'Cache unavailable' }, { status: 500 })
+  }
+
+  // Skip the rest of the Tracerfy-result handling for multi-owner buildings.
+  // We jump straight to the lead_unlocks insert with no person/phone data.
+  if (isMultiOwnerSkip) {
+    let propertyClass: string | null = null
+    if (c.pin) {
+      const { data: byPin } = await supabase
+        .from('properties')
+        .select('property_class')
+        .eq('pin', c.pin)
+        .maybeSingle()
+      if (byPin) {
+        propertyClass = (byPin as { property_class: string | null }).property_class
+      }
+    }
+    if (!propertyClass) {
+      const { data: byAddr } = await supabase
+        .from('properties')
+        .select('property_class')
+        .eq('address_normalized', addressNormalized)
+        .limit(1)
+        .maybeSingle()
+      if (byAddr) {
+        propertyClass = propertyClass ?? (byAddr as { property_class: string | null }).property_class
+      }
+    }
+    const propertyTypeLabelMO = await derivePropertyType(propertyClass, addressNormalized)
+
+    const { data: unlockMO, error: unlockErrMO } = await supabase
+      .from('lead_unlocks')
+      .insert({
+        user_id: userId,
+        sr_number: srNumber,
+        address_normalized: addressNormalized,
+        pin: c.pin || null,
+        tracerfy_contact_id: null,
+        owner_name: null,
+        owner_phone: null,
+        owner_address: null,
+        owner_email: null,
+        owner_mailing_street: null,
+        owner_mailing_city: null,
+        owner_mailing_state: null,
+        owner_mailing_zip: null,
+        owner_deceased: false,
+        owner_litigator: false,
+        phone_type: null,
+        phone_dnc: false,
+        phone_carrier: null,
+        tracerfy_hit: false,
+        tracerfy_persons_count: 0,
+        unlocked_from_cache: false,
+        unlock_source: 'multi_owner_skip',
+        all_persons: null,
+        all_phones: null,
+        all_emails: null,
+        business_trace_recommended: true,
+        business_trace_reason: 'multi_owner_building',
+        property_type_label: propertyTypeLabelMO,
+      })
+      .select('*')
+      .single()
+
+    if (unlockErrMO) {
+      console.error('[unlock] multi-owner lead_unlocks insert failed:', unlockErrMO)
+      return NextResponse.json({ success: false, reason: 'db_error' }, { status: 500 })
+    }
+
+    if (!quota.unlimited) {
+      await consumeCreditForUnlock(userId, srNumber).catch((err) => {
+        console.error('[unlock] credit consume failed (multi-owner):', err)
+      })
+    }
+
+    const { data: existingCountMO } = await supabase
+      .from('lead_unlock_counts')
+      .select('unlock_count')
+      .eq('sr_number', srNumber)
+      .maybeSingle()
+    const ecMO = existingCountMO as { unlock_count?: number } | null
+    if (ecMO && typeof ecMO.unlock_count === 'number') {
+      await supabase
+        .from('lead_unlock_counts')
+        .update({ unlock_count: ecMO.unlock_count + 1 })
+        .eq('sr_number', srNumber)
+    } else {
+      await supabase.from('lead_unlock_counts').insert({ sr_number: srNumber, unlock_count: 1 })
+    }
+
+    await supabase
+      .from('lead_watchlist')
+      .delete()
+      .eq('user_id', userId)
+      .eq('sr_number', srNumber)
+
+    const updatedQuotaMO = await getUnlockQuota(userId)
+
+    return NextResponse.json({
+      success: true,
+      unlock: unlockMO,
+      contact_cache: null,
+      from_cache: false,
+      multi_owner_skip: true,
+      quota: {
+        remaining: updatedQuotaMO.unlimited ? null : updatedQuotaMO.remaining,
+        limit: updatedQuotaMO.unlimited ? null : updatedQuotaMO.limit,
+        unlimited: updatedQuotaMO.unlimited,
+        used: updatedQuotaMO.used,
+      },
+    })
   }
 
   if (!cacheRow) {
@@ -306,6 +440,7 @@ export async function POST(req: NextRequest) {
     addressNormalized,
     enrichedPersons
   )
+  const propertyTypeLabel = await derivePropertyType(propertyClass, addressNormalized)
 
   const { data: unlock, error: unlockErr } = await supabase
     .from('lead_unlocks')
@@ -341,6 +476,9 @@ export async function POST(req: NextRequest) {
       // and multi-owner building check. Drives the CTA banner on the Unlocked Leads row.
       business_trace_recommended: businessTrace.recommended,
       business_trace_reason: businessTrace.reason,
+      // Property type label derived from class + PIN count. Drives the colored
+      // tag under the location on the Unlocked Leads row.
+      property_type_label: propertyTypeLabel,
     })
     .select('*')
     .single()

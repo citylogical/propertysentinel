@@ -6,6 +6,7 @@ import {
   type LeadCategory,
 } from '@/lib/lead-categories'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { batchPropertyTypeLabelsForAddresses } from '@/lib/property-type'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,11 +92,23 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const leads = (data ?? []).map((row: Record<string, unknown>) => {
-    const addr = String(row.address_normalized ?? '')
+  const rawRows = (data ?? []) as Record<string, unknown>[]
+  const addresses = [
+    ...new Set(
+      rawRows
+        .map((r) => String(r.address_normalized ?? '').trim())
+        .filter((a) => a.length > 0)
+    ),
+  ]
+
+  const labelByAddress = await batchPropertyTypeLabelsForAddresses(addresses)
+
+  const leads = rawRows.map((row) => {
+    const addr = String(row.address_normalized ?? '').trim()
     return {
       ...row,
       street_name: streetNameFromNormalized(addr),
+      property_type_label: labelByAddress.get(addr) ?? 'unknown',
     }
   })
 

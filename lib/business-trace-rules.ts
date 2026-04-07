@@ -164,3 +164,31 @@ export function businessTraceReasonLabel(
       return ''
   }
 }
+
+/**
+ * Standalone multi-owner building check used as a pre-Tracerfy gate.
+ * Mirrors rule 4 from evaluateBusinessTrace exactly: 7+ PINs at the address
+ * AND 2+ distinct mailing names. Returns true when we should skip Tracerfy
+ * and serve the contacts modal instead.
+ *
+ * Note: this duplicates the rule 4 query in evaluateBusinessTrace. We accept
+ * the duplication because the unlock route needs to make the skip decision
+ * before knowing anything else, and merging the two checks would require a
+ * more invasive refactor of evaluateBusinessTrace.
+ */
+export async function isMultiOwnerBuilding(addressNormalized: string): Promise<boolean> {
+  if (!addressNormalized) return false
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase
+    .from('properties')
+    .select('mailing_name')
+    .eq('address_normalized', addressNormalized)
+  const rows = (data ?? []) as { mailing_name: string | null }[]
+  if (rows.length < 7) return false
+  const distinctNames = new Set(
+    rows
+      .map((r) => (r.mailing_name ?? '').trim().toUpperCase())
+      .filter((n) => n.length > 0)
+  )
+  return distinctNames.size >= 2
+}

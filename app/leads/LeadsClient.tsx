@@ -10,9 +10,11 @@ import {
   LEAD_CATEGORIES,
   type LeadCategory,
 } from '@/lib/lead-categories'
+import { getPropertyTypeStyle, type PropertyTypeLabel } from '@/lib/property-type'
 import LitigatorCreditModal from '@/components/LitigatorCreditModal'
 import OutOfCreditsModal from '@/components/OutOfCreditsModal'
 import IncorrectInfoModal from '@/components/IncorrectInfoModal'
+import MultiOwnerContactsModal from '@/components/MultiOwnerContactsModal'
 import HoverTooltip from '@/components/HoverTooltip'
 
 const NEIGHBORHOOD_OPTIONS = Object.entries(CHICAGO_COMMUNITY_AREAS)
@@ -34,6 +36,7 @@ export type LeadRow = {
   created_date?: string | null
   status?: string | null
   street_name?: string
+  property_type_label?: PropertyTypeLabel | null
   /** Unlocked view */
   pin?: string | null
   owner_name?: string | null
@@ -60,6 +63,7 @@ function normalizeLead(r: Record<string, unknown>): LeadRow {
     created_date: (r.created_date as string) ?? null,
     status: (r.status as string) ?? null,
     street_name: (r.street_name as string) || deriveStreetName(addr),
+    property_type_label: (r.property_type_label as PropertyTypeLabel | null) ?? null,
     pin: (r.pin as string) ?? null,
     owner_name: (r.owner_name as string) ?? null,
     owner_phone: (r.owner_phone as string) ?? null,
@@ -70,9 +74,11 @@ function normalizeLead(r: Record<string, unknown>): LeadRow {
 function ComplaintTypeCell({
   srType,
   srShortCode,
+  propertyTypeLabel,
 }: {
   srType: string | null | undefined
   srShortCode: string | null | undefined
+  propertyTypeLabel?: PropertyTypeLabel | null
 }) {
   const cat = getCategoryForCode(srShortCode)
   const categoryLabel = cat ? LEAD_CATEGORIES[cat].label : null
@@ -91,20 +97,23 @@ function ComplaintTypeCell({
       >
         {srType ?? '—'}
       </div>
-      {categoryLabel ? (
-        <span
-          style={{
-            fontFamily: "'DM Mono', monospace",
-            fontSize: '9px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: '#7a7a7a',
-            fontWeight: 500,
-          }}
-        >
-          {categoryLabel}
-        </span>
-      ) : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {categoryLabel ? (
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: '9px',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: '#7a7a7a',
+              fontWeight: 500,
+            }}
+          >
+            {categoryLabel}
+          </span>
+        ) : null}
+        <PropertyTypeBadge label={propertyTypeLabel} />
+      </div>
     </div>
   )
 }
@@ -215,6 +224,8 @@ type LeadWithUnlock = LeadRow & {
     | 'entity_mailing_name'
     | 'multi_owner_building'
     | null
+  property_type_label?: PropertyTypeLabel | null
+  unlock_source?: 'tracerfy_instant' | 'multi_owner_skip' | string | null
 }
 
 function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnlock {
@@ -248,6 +259,8 @@ function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnl
     all_emails: (u.all_emails as EnrichedEmail[] | null) ?? null,
     business_trace_recommended: Boolean(u.business_trace_recommended),
     business_trace_reason: (u.business_trace_reason as LeadWithUnlock['business_trace_reason']) ?? null,
+    property_type_label: (u.property_type_label as PropertyTypeLabel | null) ?? null,
+    unlock_source: (u.unlock_source as LeadWithUnlock['unlock_source']) ?? null,
   }
 }
 
@@ -457,6 +470,10 @@ type PivotRow =
       isBusinessTrace: boolean
     }
   | {
+      kind: 'multi_owner_trigger'
+      address: string
+    }
+  | {
       kind: 'person_phone'
       personIndex: number
       personRowIndex: number
@@ -469,6 +486,13 @@ type PivotRow =
 
 function buildPivotRows(lead: LeadWithUnlock): PivotRow[] {
   const rows: PivotRow[] = []
+
+  // Multi-owner Tracerfy skip: one spanned trigger row only — no Tax Assessor row.
+  // Cached Tracerfy unlocks at the same address keep Tax Assessor + trigger (unlock_source !== multi_owner_skip).
+  if (lead.unlock_source === 'multi_owner_skip' && lead.address_normalized) {
+    rows.push({ kind: 'multi_owner_trigger', address: lead.address_normalized })
+    return rows
+  }
 
   // Build Tax Assessor row
   const taxpayerAddressLine = [
@@ -505,6 +529,19 @@ function buildPivotRows(lead: LeadWithUnlock): PivotRow[] {
     googleSearchUrl,
     isBusinessTrace,
   })
+
+  // For multi-owner buildings, replace the Tracerfy person rows entirely with
+  // a single "see all contacts" trigger. The Tracerfy persons (e.g. Rosie + Tanya
+  // at 5901 N Sheridan) are misleading because they're individual unit owners,
+  // not the management contact the user actually wants. Surface the full taxpayer
+  // list from the properties table instead via the modal.
+  if (lead.business_trace_reason === 'multi_owner_building' && lead.address_normalized) {
+    rows.push({
+      kind: 'multi_owner_trigger',
+      address: lead.address_normalized,
+    })
+    return rows
+  }
 
   // Build per-person sections.
   // Use Phase 1 enriched data when available; fall back to flat fields for legacy unlocks.
@@ -599,6 +636,30 @@ function BusinessTraceCTA({
         Search for the building&apos;s management contact →
       </a>
     </div>
+  )
+}
+
+function PropertyTypeBadge({ label }: { label: PropertyTypeLabel | null | undefined }) {
+  if (!label) return null
+  const style = getPropertyTypeStyle(label)
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        fontFamily: "'DM Mono', monospace",
+        fontSize: 9,
+        fontWeight: 600,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        background: style.bg,
+        color: style.fg,
+        border: `1px solid ${style.border}`,
+        padding: '2px 7px',
+        borderRadius: 3,
+      }}
+    >
+      {style.text}
+    </span>
   )
 }
 
@@ -798,6 +859,10 @@ export default function LeadsClient() {
     srNumber: string
     address: string
   }>({ open: false, srNumber: '', address: '' })
+  const [contactsModal, setContactsModal] = useState<{ open: boolean; address: string }>({
+    open: false,
+    address: '',
+  })
 
   const refetchQuota = useCallback(async () => {
     try {
@@ -1198,12 +1263,16 @@ export default function LeadsClient() {
             if (ucJson.counts) setUnlockCounts((prev) => ({ ...prev, ...ucJson.counts }))
           }
         }
-        const watchRes = await fetch('/api/leads/watchlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads: [lead] }),
-        })
-        if (watchRes.ok) await refetchWatchlist()
+        // If this lead was on the watchlist, remove it now that it's unlocked.
+        // Unlocked leads have their own dedicated tab and shouldn't double up on the watchlist.
+        if (watchlistSrNumbers.has(lead.sr_number)) {
+          const watchRes = await fetch('/api/leads/watchlist', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sr_numbers: [lead.sr_number] }),
+          })
+          if (watchRes.ok) await refetchWatchlist()
+        }
 
         // LITIGATOR AUTO-CREDIT FLOW
         // When a litigator-flagged contact is unlocked, show the free-unlock modal.
@@ -1428,9 +1497,8 @@ export default function LeadsClient() {
               content={
                 <>
                   <p style={{ margin: '0 0 8px', fontSize: 12, lineHeight: 1.5 }}>
-                    <strong>Residential building owners</strong> will be surprised to hear about a 311 complaint at their
-                    address — it was likely called in by a neighbor or passerby. Make sure you leave a call-back number as
-                    they may need to inspect the issue themselves before hiring outside work.
+                    <strong>Residential building owners</strong> may be surprised to hear about a 311 complaint at their
+                    address — it could have been called in by a neighbor or passerby. Make sure you leave a call-back number.
                   </p>
                   <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
                     <strong>Condos and commercial properties</strong> likely had a tenant call in the complaint. Leave your
@@ -1634,7 +1702,11 @@ export default function LeadsClient() {
                           <tr key={trKey} id={trId} style={trStyle}>
                             {isFirstRow ? (
                               <td className="leads-col-type" rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
-                                <ComplaintTypeCell srType={lead.sr_type} srShortCode={lead.sr_short_code} />
+                                <ComplaintTypeCell
+                                  srType={lead.sr_type}
+                                  srShortCode={lead.sr_short_code}
+                                  propertyTypeLabel={lead.property_type_label}
+                                />
                               </td>
                             ) : null}
 
@@ -1662,34 +1734,36 @@ export default function LeadsClient() {
                                   addressNormalized={lead.address_normalized}
                                   showPropertyLink
                                 />
-                                <div style={{ marginTop: 10 }}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setIncorrectInfoModal({
-                                        open: true,
-                                        srNumber: lead.sr_number,
-                                        address: lead.address_normalized?.trim() || '—',
-                                      })
-                                    }
-                                    style={{
-                                      fontFamily: "'DM Mono', monospace",
-                                      fontSize: 9,
-                                      letterSpacing: '0.06em',
-                                      textTransform: 'uppercase',
-                                      color: '#6b7280',
-                                      background: 'transparent',
-                                      border: '1px dashed #9ca3af',
-                                      padding: '3px 8px',
-                                      borderRadius: 4,
-                                      cursor: 'pointer',
-                                      fontWeight: 500,
-                                    }}
-                                    title="Request a credit-back if this contact info is incorrect. Rules: 2 per 24h, 7-day freshness, once per lead."
-                                  >
-                                    Incorrect info?
-                                  </button>
-                                </div>
+                                {lead.business_trace_reason !== 'multi_owner_building' ? (
+                                  <div style={{ marginTop: 10 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setIncorrectInfoModal({
+                                          open: true,
+                                          srNumber: lead.sr_number,
+                                          address: lead.address_normalized?.trim() || '—',
+                                        })
+                                      }
+                                      style={{
+                                        fontFamily: "'DM Mono', monospace",
+                                        fontSize: 9,
+                                        letterSpacing: '0.06em',
+                                        textTransform: 'uppercase',
+                                        color: '#6b7280',
+                                        background: 'transparent',
+                                        border: '1px dashed #9ca3af',
+                                        padding: '3px 8px',
+                                        borderRadius: 4,
+                                        cursor: 'pointer',
+                                        fontWeight: 500,
+                                      }}
+                                      title="Request a credit-back if this contact info is incorrect. Rules: 2 per 24h, 7-day freshness, once per lead."
+                                    >
+                                      Incorrect info?
+                                    </button>
+                                  </div>
+                                ) : null}
                               </td>
                             ) : null}
 
@@ -1711,7 +1785,45 @@ export default function LeadsClient() {
                                   {row.ownerName}
                                 </div>
                               </td>
-                            ) : row.personRowIndex === 0 ? (
+                            ) : row.kind === 'multi_owner_trigger' ? (
+                              <td colSpan={3} style={{ verticalAlign: 'top' }}>
+                                <div
+                                  style={{
+                                    fontFamily: "'DM Mono', monospace",
+                                    fontSize: 9,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    color: '#9ca3af',
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  All Unit Owners on File
+                                </div>
+                                <div style={{ marginBottom: 8 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setContactsModal({ open: true, address: row.address })}
+                                    style={{
+                                      fontFamily: "'Inter', sans-serif",
+                                      fontSize: 14,
+                                      fontWeight: 600,
+                                      color: '#0f2744',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      padding: 0,
+                                      textDecoration: 'underline',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    See all contacts on file →
+                                  </button>
+                                </div>
+                                {lead.unlock_source === 'multi_owner_skip' ? (
+                                  <BusinessTraceCTA reason="multi_owner_building" address={row.address} />
+                                ) : null}
+                              </td>
+                            ) : row.kind === 'person_phone' && row.personRowIndex === 0 ? (
                               <td rowSpan={row.personRowCount} style={{ verticalAlign: 'top' }}>
                                 {row.personIndex === 0 ? (
                                   <div
@@ -1781,7 +1893,7 @@ export default function LeadsClient() {
                                   {row.mailingAddress}
                                 </div>
                               </td>
-                            ) : (
+                            ) : row.kind === 'multi_owner_trigger' ? null : (
                               <td className="leads-col-email" style={{ verticalAlign: 'top' }}>
                                 {row.email ? (
                                   <a
@@ -1827,7 +1939,7 @@ export default function LeadsClient() {
                                   <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>
                                 )}
                               </td>
-                            ) : (
+                            ) : row.kind === 'multi_owner_trigger' ? null : (
                               <td style={{ verticalAlign: 'top' }}>
                                 {row.phone ? (
                                   <div
@@ -2003,7 +2115,11 @@ export default function LeadsClient() {
                             />
                           </td>
                           <td className="leads-col-type">
-                            <ComplaintTypeCell srType={row.sr_type} srShortCode={row.sr_short_code} />
+                            <ComplaintTypeCell
+                              srType={row.sr_type}
+                              srShortCode={row.sr_short_code}
+                              propertyTypeLabel={row.property_type_label}
+                            />
                           </td>
                           <td className="leads-col-time">
                             <span className="leads-time-date">{rec.date}</span>
@@ -2163,6 +2279,11 @@ export default function LeadsClient() {
           }))
           void refetchMyUnlocks()
         }}
+      />
+      <MultiOwnerContactsModal
+        isOpen={contactsModal.open}
+        onClose={() => setContactsModal({ open: false, address: '' })}
+        address={contactsModal.address}
       />
     </>
   )

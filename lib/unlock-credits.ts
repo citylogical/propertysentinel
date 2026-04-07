@@ -46,7 +46,7 @@ export async function getUnlockQuota(userId: string): Promise<UnlockQuota> {
   const { data: sub } = await supabase
     .from('subscribers')
     .select('unlimited_unlocks')
-    .eq('user_id', userId)
+    .eq('clerk_id', userId)
     .maybeSingle()
   const unlimited = Boolean((sub as { unlimited_unlocks?: boolean } | null)?.unlimited_unlocks)
 

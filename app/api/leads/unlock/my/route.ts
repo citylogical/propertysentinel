@@ -98,6 +98,17 @@ export async function GET() {
     const oe = base.owner_email as string | null | undefined
     const withEmail = oe ? base : cid && emailByCacheId.get(cid) ? { ...base, owner_email: emailByCacheId.get(cid) } : base
     const addr = withEmail.address_normalized as string | undefined
+    const unlockSource = withEmail.unlock_source as string | undefined
+    if (unlockSource === 'multi_owner_skip') {
+      return {
+        ...withEmail,
+        taxpayer_name: null,
+        taxpayer_address: null,
+        taxpayer_city: null,
+        taxpayer_state: null,
+        taxpayer_zip: null,
+      }
+    }
     const mailing = addr ? mailingByAddress.get(addr) : undefined
     if (!mailing) return withEmail
     return {

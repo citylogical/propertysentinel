@@ -269,7 +269,7 @@ export default function BuildingDetectionModal({
 
                     <div className="building-modal-hint">
                       <a href="https://webapps1.chicago.gov/buildingrecords/" target="_blank" rel="noopener noreferrer">
-                        Verify address ranges on the city website
+                        Verify this building&apos;s address ranges on the city website
                       </a>
                     </div>
 
