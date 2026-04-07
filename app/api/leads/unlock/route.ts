@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { rankOneEmail, rankOnePhone, tracerfyInstantLookup } from '@/lib/tracerfy'
+import {
+  enrichTracerfyResponse,
+  rankOneEmail,
+  rankOnePhone,
+  tracerfyInstantLookup,
+  type TracerfyEnrichedPerson,
+} from '@/lib/tracerfy'
+import { evaluateBusinessTrace } from '@/lib/business-trace-rules'
+import {
+  consumeCreditForUnlock,
+  getUnlockQuota,
+} from '@/lib/unlock-credits'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,6 +82,27 @@ export async function POST(req: NextRequest) {
     })
   }
 
+  // Quota gate: check before calling Tracerfy.
+  // Admin users (subscribers.unlimited_unlocks = true) bypass this check.
+  // New users get their initial grant of credits via getUnlockQuota's lazy-init.
+  const quota = await getUnlockQuota(userId)
+  if (!quota.unlimited && quota.remaining <= 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: 'no_credits',
+        message: 'You have used all your free unlocks.',
+        quota: {
+          remaining: 0,
+          limit: quota.limit,
+          unlimited: false,
+          used: quota.used,
+        },
+      },
+      { status: 402 }
+    )
+  }
+
   const nowIso = new Date().toISOString()
   const { data: cached } = await supabase
     .from('tracerfy_contact_cache')
@@ -101,10 +133,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const persons = tracerfyResponse.persons || []
-    const primary = persons[0]
-    const primaryPhone = primary ? rankOnePhone(primary.phones ?? []) : null
-    const primaryEmail = primary ? rankOneEmail(primary.emails ?? []) : null
+    // Enrich the raw Tracerfy response: filter deceased persons, rank mailing-matched
+    // owners first, flatten phones/emails across all living persons. This becomes the
+    // canonical structure for the Unlocked Leads UI in Phase 2.
+    const enriched = enrichTracerfyResponse(tracerfyResponse, addressNormalized)
+    const primary = enriched.primary_person
+    const primaryPhone = rankOnePhone(primary?.phones ?? [])
+    const primaryEmail = rankOneEmail(primary?.emails ?? [])
 
     const expiresAt = new Date(Date.now() + CACHE_DAYS * 86400000).toISOString()
 
@@ -118,12 +153,15 @@ export async function POST(req: NextRequest) {
       request_city: 'Chicago',
       request_state: 'IL',
       request_zip: c.zip_code || null,
+      // Primary flat columns — populated from the enriched primary_person so the
+      // backwards-compat surface agrees with the new ranking (mailing-match first,
+      // living persons only). Deceased primary → primary is null → hit becomes miss.
       primary_owner_first_name: primary?.first_name || null,
       primary_owner_last_name: primary?.last_name || null,
       primary_owner_full_name: primary?.full_name || null,
       primary_owner_age: primary?.age || null,
       primary_owner_dob: primary?.dob || null,
-      primary_owner_deceased: primary?.deceased ?? false,
+      primary_owner_deceased: false, // enriched filtered deceased out
       primary_owner_litigator: primary?.litigator ?? false,
       primary_phone: primaryPhone?.number || null,
       primary_phone_type: primaryPhone?.type || null,
@@ -134,6 +172,10 @@ export async function POST(req: NextRequest) {
       mailing_city: primary?.mailing_address?.city || null,
       mailing_state: primary?.mailing_address?.state || null,
       mailing_zip: primary?.mailing_address?.zip || null,
+      // NEW: full enriched data. Phase 2 UI reads from here.
+      all_persons: enriched.all_persons,
+      all_phones: enriched.all_phones,
+      all_emails: enriched.all_emails,
       expires_at: expiresAt,
     }
 
@@ -187,6 +229,16 @@ export async function POST(req: NextRequest) {
       message: 'Owner of record is deceased. This lead is not available.',
     })
   }
+  // No-phone = failed unlock. Do not write lead_unlocks, do not consume a credit.
+  // Even if an email or mailing address exists, we return nothing — the unlock
+  // is only considered successful when we can deliver a phone number.
+  if (!cacheRow.primary_phone) {
+    return NextResponse.json({
+      success: false,
+      reason: 'no_phone',
+      message: 'No phone number available for the owner of this property.',
+    })
+  }
 
   // ---------- TCPA Litigator Credit (Stripe integration pending) ----------
   // When billing is wired up, this is where we skip the Stripe charge entirely
@@ -215,6 +267,46 @@ export async function POST(req: NextRequest) {
 
   const cacheId = cacheRow.id
 
+  // Look up property class + mailing name to evaluate the business trace recommendation.
+  // Prefer PIN match (more reliable), fall back to address. If neither hits, the
+  // recommendation falls through to the multi-owner building check, which queries
+  // properties by address_normalized directly.
+  let propertyClass: string | null = null
+  let propertyMailingName: string | null = null
+  if (c.pin) {
+    const { data: byPin } = await supabase
+      .from('properties')
+      .select('property_class, mailing_name')
+      .eq('pin', c.pin)
+      .maybeSingle()
+    if (byPin) {
+      const r = byPin as { property_class: string | null; mailing_name: string | null }
+      propertyClass = r.property_class
+      propertyMailingName = r.mailing_name
+    }
+  }
+  if (!propertyClass) {
+    const { data: byAddr } = await supabase
+      .from('properties')
+      .select('property_class, mailing_name')
+      .eq('address_normalized', addressNormalized)
+      .limit(1)
+      .maybeSingle()
+    if (byAddr) {
+      const r = byAddr as { property_class: string | null; mailing_name: string | null }
+      propertyClass = propertyClass ?? r.property_class
+      propertyMailingName = propertyMailingName ?? r.mailing_name
+    }
+  }
+  const enrichedPersons =
+    (cacheRow.all_persons as TracerfyEnrichedPerson[] | null | undefined) ?? []
+  const businessTrace = await evaluateBusinessTrace(
+    propertyClass,
+    propertyMailingName,
+    addressNormalized,
+    enrichedPersons
+  )
+
   const { data: unlock, error: unlockErr } = await supabase
     .from('lead_unlocks')
     .insert({
@@ -240,6 +332,15 @@ export async function POST(req: NextRequest) {
       tracerfy_persons_count: cacheRow.tracerfy_persons_count,
       unlocked_from_cache: unlockedFromCache,
       unlock_source: 'tracerfy_instant',
+      // Copy enriched data from the cache row so /api/leads/unlock/my can
+      // serve the Unlocked Leads table without a cache join.
+      all_persons: cacheRow.all_persons ?? null,
+      all_phones: cacheRow.all_phones ?? null,
+      all_emails: cacheRow.all_emails ?? null,
+      // Business trace recommendation computed from property class, mailing name,
+      // and multi-owner building check. Drives the CTA banner on the Unlocked Leads row.
+      business_trace_recommended: businessTrace.recommended,
+      business_trace_reason: businessTrace.reason,
     })
     .select('*')
     .single()
@@ -248,12 +349,22 @@ export async function POST(req: NextRequest) {
     console.error('[unlock] lead_unlocks insert failed:', unlockErr)
     return NextResponse.json({ success: false, reason: 'db_error' }, { status: 500 })
   }
-
-  const { data: existingCount } = await supabase
-    .from('lead_unlock_counts')
-    .select('unlock_count')
-    .eq('sr_number', srNumber)
-    .maybeSingle()
+  
+   // Consume one credit for this unlock. Admin users (unlimited_unlocks) skip this.
+   // The ledger write is fire-and-forget — if it fails the unlock still succeeds
+   // and the user gets a free one. This is intentional: we never want the ledger
+   // to block a successful data delivery.
+   if (!quota.unlimited) {
+     await consumeCreditForUnlock(userId, srNumber).catch((err) => {
+       console.error('[unlock] credit consume failed:', err)
+     })
+   }
+  
+   const { data: existingCount } = await supabase
+     .from('lead_unlock_counts')
+     .select('unlock_count')
+     .eq('sr_number', srNumber)
+     .maybeSingle()
 
   const ec = existingCount as { unlock_count?: number } | null
   if (ec && typeof ec.unlock_count === 'number') {
@@ -265,10 +376,18 @@ export async function POST(req: NextRequest) {
     await supabase.from('lead_unlock_counts').insert({ sr_number: srNumber, unlock_count: 1 })
   }
 
+  const updatedQuota = await getUnlockQuota(userId)
+
   return NextResponse.json({
     success: true,
     unlock,
     contact_cache: cacheRow,
     from_cache: unlockedFromCache,
+    quota: {
+      remaining: updatedQuota.unlimited ? null : updatedQuota.remaining,
+      limit: updatedQuota.unlimited ? null : updatedQuota.limit,
+      unlimited: updatedQuota.unlimited,
+      used: updatedQuota.used,
+    },
   })
 }

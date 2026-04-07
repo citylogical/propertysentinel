@@ -34,9 +34,27 @@ export default function ProfileContent() {
   const [plan, setPlan] = useState('')
   const [role, setRole] = useState('')
   const [memberSince, setMemberSince] = useState('')
+  const [quota, setQuota] = useState<{
+    remaining: number | null
+    limit: number | null
+    unlimited: boolean
+    used: number
+  } | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
+
+    void fetch('/api/leads/quota')
+      .then((res) => res.json())
+      .then((data: { remaining: number | null; limit: number | null; unlimited: boolean; used: number }) => {
+        setQuota({
+          remaining: data.remaining,
+          limit: data.limit,
+          unlimited: data.unlimited,
+          used: data.used,
+        })
+      })
+      .catch(() => {})
 
     fetch('/api/profile/update')
       .then((res) => res.json())
@@ -222,6 +240,40 @@ export default function ProfileContent() {
               </div>
             </div>
           </div>
+          {quota && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: '12px 14px',
+                background: '#e8e4db',
+                border: '1px solid #d4cfc4',
+                borderRadius: 6,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: '#6b7280',
+                  marginBottom: 4,
+                }}
+              >
+                Lead Unlocks
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f2744' }}>
+                {quota.unlimited
+                  ? 'Unlimited'
+                  : `${quota.remaining ?? 0} of ${quota.limit ?? 5} credits remaining`}
+              </div>
+              {!quota.unlimited && (
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                  {quota.used} used to date
+                </div>
+              )}
+            </div>
+          )}
           {memberSince && <div className="profile-content-plan-meta">Member since {memberSince}</div>}
         </div>
       </div>

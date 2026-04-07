@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useUser } from '@clerk/nextjs'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useUser, SignInButton } from '@clerk/nextjs'
 import { CHICAGO_COMMUNITY_AREAS, getCommunityAreaName } from '@/lib/chicago-community-areas'
 import {
   ALL_MAPPED_CODES,
@@ -11,6 +11,8 @@ import {
   type LeadCategory,
 } from '@/lib/lead-categories'
 import LitigatorCreditModal from '@/components/LitigatorCreditModal'
+import OutOfCreditsModal from '@/components/OutOfCreditsModal'
+import IncorrectInfoModal from '@/components/IncorrectInfoModal'
 import HoverTooltip from '@/components/HoverTooltip'
 
 const NEIGHBORHOOD_OPTIONS = Object.entries(CHICAGO_COMMUNITY_AREAS)
@@ -163,6 +165,35 @@ type UnlockStatusEntry =
     }
   | { unlocked: false; unavailable?: boolean }
 
+type EnrichedPhone = {
+  number: string
+  type: string
+  dnc: boolean
+  carrier: string
+  rank: number
+  person_name: string
+}
+
+type EnrichedEmail = {
+  email: string
+  rank: number
+  person_name: string
+}
+
+type EnrichedPerson = {
+  first_name: string
+  last_name: string
+  full_name: string
+  age: string
+  dob: string
+  property_owner: boolean
+  litigator: boolean
+  mailing_address: { street: string; city: string; state: string; zip: string }
+  mailing_matches_property: boolean
+  phones: unknown[]
+  emails: unknown[]
+}
+
 type LeadWithUnlock = LeadRow & {
   unlocked_at?: string | null
   owner_email?: string | null
@@ -174,6 +205,16 @@ type LeadWithUnlock = LeadRow & {
   taxpayer_city?: string | null
   taxpayer_state?: string | null
   taxpayer_zip?: string | null
+  all_persons?: EnrichedPerson[] | null
+  all_phones?: EnrichedPhone[] | null
+  all_emails?: EnrichedEmail[] | null
+  business_trace_recommended?: boolean
+  business_trace_reason?:
+    | 'commercial_class'
+    | 'exempt_class'
+    | 'entity_mailing_name'
+    | 'multi_owner_building'
+    | null
 }
 
 function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnlock {
@@ -202,6 +243,11 @@ function mapMyUnlockRowToLeadWithUnlock(u: Record<string, unknown>): LeadWithUnl
     taxpayer_city: (u.taxpayer_city as string) ?? null,
     taxpayer_state: (u.taxpayer_state as string) ?? null,
     taxpayer_zip: (u.taxpayer_zip as string) ?? null,
+    all_persons: (u.all_persons as EnrichedPerson[] | null) ?? null,
+    all_phones: (u.all_phones as EnrichedPhone[] | null) ?? null,
+    all_emails: (u.all_emails as EnrichedEmail[] | null) ?? null,
+    business_trace_recommended: Boolean(u.business_trace_recommended),
+    business_trace_reason: (u.business_trace_reason as LeadWithUnlock['business_trace_reason']) ?? null,
   }
 }
 
@@ -339,32 +385,6 @@ function ContactUnlockedBlock({
   )
 }
 
-function LeadsEmailCellUnlocked({ ownerEmail }: { ownerEmail: string | null | undefined }) {
-  if (!ownerEmail?.trim()) {
-    return <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>
-  }
-  return (
-    <a
-      href={`mailto:${ownerEmail}`}
-      style={{
-        fontFamily: "'Inter', sans-serif",
-        fontSize: '13px',
-        color: '#0f2744',
-        textDecoration: 'none',
-        wordBreak: 'break-all',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.textDecoration = 'underline'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.textDecoration = 'none'
-      }}
-    >
-      {ownerEmail}
-    </a>
-  )
-}
-
 function formatUnlockedAtDisplay(iso: string | null | undefined): { dateStr: string; timeStr: string } {
   if (!iso) return { dateStr: '—', timeStr: '' }
   const d = new Date(iso)
@@ -376,6 +396,210 @@ function formatUnlockedAtDisplay(iso: string | null | undefined): { dateStr: str
     hour12: true,
   })
   return { dateStr, timeStr }
+}
+
+/**
+ * Sort phones non-DNC first, then by rank. Stable so equal ranks preserve original order.
+ */
+function sortPhonesForDisplay(phones: EnrichedPhone[] | null | undefined): EnrichedPhone[] {
+  if (!phones?.length) return []
+  return [...phones].sort((a, b) => {
+    if (a.dnc !== b.dnc) return a.dnc ? 1 : -1
+    return a.rank - b.rank
+  })
+}
+
+function businessTraceReasonLabel(reason: LeadWithUnlock['business_trace_reason']): string {
+  switch (reason) {
+    case 'commercial_class':
+      return 'a commercial property'
+    case 'exempt_class':
+      return 'a tax-exempt institutional property'
+    case 'entity_mailing_name':
+      return 'owned by a business entity'
+    case 'multi_owner_building':
+      return 'a condo or association building'
+    default:
+      return ''
+  }
+}
+
+function formatPhoneDisplay(num: string): string {
+  if (!num || num.length !== 10) return num
+  return `(${num.slice(0, 3)}) ${num.slice(3, 6)}-${num.slice(6)}`
+}
+
+/**
+ * Build the per-owner pivot row groups for the Unlocked Leads pivot table.
+ *
+ * Layout per unlock:
+ *   Row 1 (Tax Assessor section):
+ *     - Owner col:    KARMELA HOWELL (or "—")
+ *     - Contact col:  mailing address
+ *     - Phone col:    CTA banner if business_trace_recommended, else "Look up phone #" link
+ *
+ *   For each enriched person (filtered, deceased already removed in Phase 1):
+ *     N rows where N = max(person.phones.length, person.emails.length)
+ *     - Owner col:    person name on first row only (rowSpan), with ⚠ badge if mailing mismatched
+ *     - Contact col:  one email per row, blank if more phones than emails
+ *     - Phone col:    one phone per row, sorted non-DNC first then by rank
+ *
+ *   Last row of unlock contains the Incorrect Info button (rendered in the Location col by parent)
+ */
+type PivotRow =
+  | {
+      kind: 'tax_assessor'
+      ownerName: string
+      mailingAddress: string
+      ctaBannerReason: LeadWithUnlock['business_trace_reason']
+      ctaBannerAddress: string | null
+      googleSearchUrl: string | null
+      isBusinessTrace: boolean
+    }
+  | {
+      kind: 'person_phone'
+      personIndex: number
+      personRowIndex: number
+      personRowCount: number
+      personName: string
+      mailingMismatch: boolean
+      email: EnrichedEmail | null
+      phone: EnrichedPhone | null
+    }
+
+function buildPivotRows(lead: LeadWithUnlock): PivotRow[] {
+  const rows: PivotRow[] = []
+
+  // Build Tax Assessor row
+  const taxpayerAddressLine = [
+    lead.taxpayer_address,
+    [lead.taxpayer_city, lead.taxpayer_state, lead.taxpayer_zip].filter(Boolean).join(' '),
+  ]
+    .filter((s) => s && String(s).trim() !== '')
+    .join(', ')
+
+  const normalizeName = (s: string | null | undefined) =>
+    (s ?? '')
+      .toUpperCase()
+      .replace(/[.,&]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const ownerNorm = normalizeName(lead.owner_name)
+  const taxpayerNorm = normalizeName(lead.taxpayer_name)
+  const namesMatch =
+    ownerNorm.length > 0 && taxpayerNorm.length > 0 && ownerNorm === taxpayerNorm
+
+  // The "Look up phone #" link only shows when the CTA banner does NOT take its place.
+  const isBusinessTrace = Boolean(lead.business_trace_recommended)
+  const googleSearchUrl =
+    lead.taxpayer_name && !namesMatch && !isBusinessTrace
+      ? `https://www.google.com/search?q=${encodeURIComponent(`${lead.taxpayer_name} phone number`)}`
+      : null
+
+  rows.push({
+    kind: 'tax_assessor',
+    ownerName: lead.taxpayer_name ?? '—',
+    mailingAddress: taxpayerAddressLine || '—',
+    ctaBannerReason: lead.business_trace_reason,
+    ctaBannerAddress: lead.address_normalized ?? null,
+    googleSearchUrl,
+    isBusinessTrace,
+  })
+
+  // Build per-person sections.
+  // Use Phase 1 enriched data when available; fall back to flat fields for legacy unlocks.
+  const persons = lead.all_persons ?? []
+  if (persons.length === 0 && (lead.owner_name || lead.owner_phone || lead.owner_email)) {
+    // Legacy unlock: synthesize a single fake person from the flat columns.
+    const fakePhone: EnrichedPhone | null = lead.owner_phone
+      ? {
+          number: lead.owner_phone,
+          type: lead.phone_type ?? '',
+          dnc: Boolean(lead.phone_dnc),
+          carrier: '',
+          rank: 1,
+          person_name: lead.owner_name ?? '',
+        }
+      : null
+    const fakeEmail: EnrichedEmail | null = lead.owner_email
+      ? { email: lead.owner_email, rank: 1, person_name: lead.owner_name ?? '' }
+      : null
+    rows.push({
+      kind: 'person_phone',
+      personIndex: 0,
+      personRowIndex: 0,
+      personRowCount: 1,
+      personName: lead.owner_name ?? '—',
+      mailingMismatch: false,
+      email: fakeEmail,
+      phone: fakePhone,
+    })
+    return rows
+  }
+
+  persons.forEach((person, personIndex) => {
+    // Filter phones/emails to only this person's
+    const personPhones = sortPhonesForDisplay(
+      (lead.all_phones ?? []).filter((ph) => ph.person_name === person.full_name)
+    )
+    const personEmails = (lead.all_emails ?? [])
+      .filter((em) => em.person_name === person.full_name)
+      .sort((a, b) => a.rank - b.rank)
+
+    const rowCount = Math.max(personPhones.length, personEmails.length, 1)
+
+    for (let i = 0; i < rowCount; i++) {
+      rows.push({
+        kind: 'person_phone',
+        personIndex,
+        personRowIndex: i,
+        personRowCount: rowCount,
+        personName: person.full_name,
+        mailingMismatch: !person.mailing_matches_property,
+        email: personEmails[i] ?? null,
+        phone: personPhones[i] ?? null,
+      })
+    }
+  })
+
+  return rows
+}
+
+function BusinessTraceCTA({
+  reason,
+  address,
+}: {
+  reason: LeadWithUnlock['business_trace_reason']
+  address: string | null | undefined
+}) {
+  if (!reason || !address) return null
+  const label = businessTraceReasonLabel(reason)
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${address} property phone number`)}`
+  return (
+    <div
+      style={{
+        padding: '8px 10px',
+        background: '#fff7ed',
+        border: '1px solid #fed7aa',
+        borderRadius: 4,
+        fontSize: 11,
+        color: '#9a3412',
+        fontFamily: "'Inter', sans-serif",
+        lineHeight: 1.4,
+      }}
+    >
+      This property is likely <strong>{label}</strong> — any owner contacts generated may be unit owners or past
+      residents.{' '}
+      <a
+        href={searchUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#9a3412', textDecoration: 'underline', fontWeight: 600 }}
+      >
+        Search for the building&apos;s management contact →
+      </a>
+    </div>
+  )
 }
 
 function LeadsLocationBlock({
@@ -562,6 +786,39 @@ export default function LeadsClient() {
   const [litigatorModalAddress, setLitigatorModalAddress] = useState('')
   const [unlockedLeadsList, setUnlockedLeadsList] = useState<LeadWithUnlock[]>([])
   const [highlightedSrNumber, setHighlightedSrNumber] = useState<string | null>(null)
+  const [quota, setQuota] = useState<{
+    signed_in: boolean
+    remaining: number | null
+    limit: number | null
+    unlimited: boolean
+  }>({ signed_in: false, remaining: null, limit: 5, unlimited: false })
+  const [outOfCreditsOpen, setOutOfCreditsOpen] = useState(false)
+  const [incorrectInfoModal, setIncorrectInfoModal] = useState<{
+    open: boolean
+    srNumber: string
+    address: string
+  }>({ open: false, srNumber: '', address: '' })
+
+  const refetchQuota = useCallback(async () => {
+    try {
+      const res = await fetch('/api/leads/quota')
+      if (!res.ok) return
+      const json = (await res.json()) as {
+        signed_in: boolean
+        remaining: number | null
+        limit: number | null
+        unlimited: boolean
+      }
+      setQuota(json)
+    } catch {
+      // Silent fail — button state will fall back to signed_in: false default
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isLoaded) return
+    void refetchQuota()
+  }, [isLoaded, isSignedIn, refetchQuota])
 
   const navigateToUnlockedRow = useCallback((srNumber: string) => {
     setView('unlocked')
@@ -879,6 +1136,26 @@ export default function LeadsClient() {
         return
       }
 
+      if (data.reason === 'no_credits') {
+        setOutOfCreditsOpen(true)
+        const dataWithQuota = data as typeof data & {
+          quota?: { remaining: number | null; limit: number | null; unlimited: boolean }
+        }
+        if (dataWithQuota.quota) {
+          setQuota({ signed_in: true, ...dataWithQuota.quota })
+        }
+        return
+      }
+
+      if (data.reason === 'no_phone') {
+        window.alert(data.message || 'No phone number available for this property. No credit used.')
+        setUnlockStatus((prev) => ({
+          ...prev,
+          [lead.sr_number]: { unlocked: false, unavailable: true },
+        }))
+        return
+      }
+
       if (data.success && data.unlock) {
         const unlock = data.unlock
         const contact = (data.contact_cache ?? null) as Record<string, unknown> | null
@@ -901,6 +1178,12 @@ export default function LeadsClient() {
             ...prev,
             [lead.sr_number]: { unlocked: true, unlock, contact, taxpayer_name: null },
           }))
+        }
+        const dataWithQuota = data as typeof data & {
+          quota?: { remaining: number | null; limit: number | null; unlimited: boolean }
+        }
+        if (dataWithQuota.quota && data.reason !== 'already_unlocked') {
+          setQuota({ signed_in: true, ...dataWithQuota.quota })
         }
         await refetchMyUnlocks()
         if (data.reason !== 'already_unlocked') {
@@ -1139,17 +1422,37 @@ export default function LeadsClient() {
               <line x1="12" y1="16" x2="12" y2="12" />
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
-            <span
-              style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: '13px',
-                color: '#3a3a3a',
-                lineHeight: 1.5,
-              }}
+            <HoverTooltip
+              variant="navy"
+              width={360}
+              content={
+                <>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, lineHeight: 1.5 }}>
+                    <strong>Residential building owners</strong> will be surprised to hear about a 311 complaint at their
+                    address — it was likely called in by a neighbor or passerby. Make sure you leave a call-back number as
+                    they may need to inspect the issue themselves before hiring outside work.
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
+                    <strong>Condos and commercial properties</strong> likely had a tenant call in the complaint. Leave your
+                    contact and let them know how you found out — they&apos;ll be curious.
+                  </p>
+                </>
+              }
             >
-              Building owners are typically unaware of a 311 complaint at their address until a city inspector shows up
-              — <strong>you will be the first person to let them know.</strong> Make sure they know where you heard it from.
-            </span>
+              <span
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontSize: '13px',
+                  color: '#3a3a3a',
+                  lineHeight: 1.5,
+                  borderBottom: '1px dotted #9ca3af',
+                  cursor: 'help',
+                }}
+              >
+                Building owners are typically unaware of a 311 complaint at their address until a city inspector shows up
+                — <strong>you will be the first person to let them know.</strong>
+              </span>
+            </HoverTooltip>
           </div>
         </div>
 
@@ -1197,6 +1500,46 @@ export default function LeadsClient() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {view !== 'unlocked' && (
               <span className="leads-meta">{total.toLocaleString()} leads</span>
+            )}
+            {isSignedIn && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!quota.unlimited && quota.remaining !== null && quota.remaining <= 0) {
+                    setOutOfCreditsOpen(true)
+                  }
+                }}
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: 10,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: '#0f2744',
+                  background: quota.unlimited
+                    ? '#e8e4db'
+                    : quota.remaining !== null && quota.remaining <= 0
+                      ? '#fecaca'
+                      : '#e8e4db',
+                  border: `1px solid ${
+                    quota.unlimited
+                      ? '#0f2744'
+                      : quota.remaining !== null && quota.remaining <= 0
+                        ? '#ef4444'
+                        : '#d4cfc4'
+                  }`,
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  cursor:
+                    !quota.unlimited && quota.remaining !== null && quota.remaining <= 0
+                      ? 'pointer'
+                      : 'default',
+                  fontWeight: 600,
+                }}
+              >
+                {quota.unlimited
+                  ? 'Unlimited'
+                  : `${quota.remaining ?? 0} / ${quota.limit ?? 5} credits`}
+              </button>
             )}
             <div className="toolbar-divider" />
             <select
@@ -1266,86 +1609,92 @@ export default function LeadsClient() {
                       </td>
                     </tr>
                   ) : (
-                    unlockedLeadsList.map((lead) => {
+                    unlockedLeadsList.flatMap((lead) => {
                       const rec = formatLeadDate(lead.created_date ?? undefined)
                       const hoodUnlocked =
                         getCommunityAreaName(lead.community_area) ||
                         (lead.community_area != null ? `Area ${lead.community_area}` : '—')
                       const unlockedDisp = formatUnlockedAtDisplay(lead.unlocked_at)
-                      const taxpayerAddressLine = [
-                        lead.taxpayer_address,
-                        [lead.taxpayer_city, lead.taxpayer_state, lead.taxpayer_zip].filter(Boolean).join(' '),
-                      ]
-                        .filter((s) => s && String(s).trim() !== '')
-                        .join(', ')
                       const isHighlighted = highlightedSrNumber === lead.sr_number
-                      // Normalize both names for comparison: uppercase, collapse whitespace, strip punctuation.
-                      // If Tracerfy and the Assessor point to the same entity, Tracerfy's phone is already
-                      // what a Google search would turn up, so the lookup link adds nothing.
-                      const normalizeName = (s: string | null | undefined) =>
-                        (s ?? '')
-                          .toUpperCase()
-                          .replace(/[.,&]/g, '')
-                          .replace(/\s+/g, ' ')
-                          .trim()
-                      const ownerNorm = normalizeName(lead.owner_name)
-                      const taxpayerNorm = normalizeName(lead.taxpayer_name)
-                      const namesMatch =
-                        ownerNorm.length > 0 && taxpayerNorm.length > 0 && ownerNorm === taxpayerNorm
-                      const googleSearchUrl =
-                        lead.taxpayer_name && !namesMatch
-                          ? `https://www.google.com/search?q=${encodeURIComponent(`${lead.taxpayer_name} phone number`)}`
-                          : null
-                      return (
-                        <tr
-                          key={lead.sr_number}
-                          id={`unlocked-row-${lead.sr_number}`}
-                          style={{
-                            background: isHighlighted ? '#fef3c7' : undefined,
-                            transition: 'background-color 0.6s ease',
-                          }}
-                        >
-                          <td className="leads-col-type">
-                            <ComplaintTypeCell srType={lead.sr_type} srShortCode={lead.sr_short_code} />
-                          </td>
-                          <td className="leads-col-time">
-                            <span className="leads-time-date">{rec.date}</span>
-                            {rec.time ? <span className="leads-time-h">{rec.time}</span> : null}
-                          </td>
-                          <td className="leads-col-time">
-                            <span className="leads-time-date">{unlockedDisp.dateStr}</span>
-                            {unlockedDisp.timeStr ? (
-                              <span className="leads-time-h">{unlockedDisp.timeStr}</span>
+                      const pivotRows = buildPivotRows(lead)
+                      const totalRowCount = pivotRows.length
+                      const highlightStyle = isHighlighted ? { background: '#fef3c7' } : undefined
+
+                      return pivotRows.map((row, rowIdx) => {
+                        const isFirstRow = rowIdx === 0
+                        const trKey = `${lead.sr_number}-${rowIdx}`
+                        const trId = isFirstRow ? `unlocked-row-${lead.sr_number}` : undefined
+                        const trStyle: CSSProperties = {
+                          ...highlightStyle,
+                          transition: 'background-color 0.6s ease',
+                          borderTop: isFirstRow ? '2px solid #e5e7eb' : 'none',
+                        }
+
+                        return (
+                          <tr key={trKey} id={trId} style={trStyle}>
+                            {isFirstRow ? (
+                              <td className="leads-col-type" rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
+                                <ComplaintTypeCell srType={lead.sr_type} srShortCode={lead.sr_short_code} />
+                              </td>
                             ) : null}
-                          </td>
-                          <td>
-                            <LeadsLocationBlock
-                              displayAddress={lead.address_normalized?.trim() || '—'}
-                              neighborhood={hoodUnlocked}
-                              addressNormalized={lead.address_normalized}
-                              showPropertyLink
-                            />
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div>
-                                <div
-                                  style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: 9,
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    color: '#9ca3af',
-                                    marginBottom: 2,
-                                  }}
-                                >
-                                  Skip-Traced Owner
+
+                            {isFirstRow ? (
+                              <td className="leads-col-time" rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
+                                <span className="leads-time-date">{rec.date}</span>
+                                {rec.time ? <span className="leads-time-h">{rec.time}</span> : null}
+                              </td>
+                            ) : null}
+
+                            {isFirstRow ? (
+                              <td className="leads-col-time" rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
+                                <span className="leads-time-date">{unlockedDisp.dateStr}</span>
+                                {unlockedDisp.timeStr ? (
+                                  <span className="leads-time-h">{unlockedDisp.timeStr}</span>
+                                ) : null}
+                              </td>
+                            ) : null}
+
+                            {isFirstRow ? (
+                              <td rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
+                                <LeadsLocationBlock
+                                  displayAddress={lead.address_normalized?.trim() || '—'}
+                                  neighborhood={hoodUnlocked}
+                                  addressNormalized={lead.address_normalized}
+                                  showPropertyLink
+                                />
+                                <div style={{ marginTop: 10 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setIncorrectInfoModal({
+                                        open: true,
+                                        srNumber: lead.sr_number,
+                                        address: lead.address_normalized?.trim() || '—',
+                                      })
+                                    }
+                                    style={{
+                                      fontFamily: "'DM Mono', monospace",
+                                      fontSize: 9,
+                                      letterSpacing: '0.06em',
+                                      textTransform: 'uppercase',
+                                      color: '#6b7280',
+                                      background: 'transparent',
+                                      border: '1px dashed #9ca3af',
+                                      padding: '3px 8px',
+                                      borderRadius: 4,
+                                      cursor: 'pointer',
+                                      fontWeight: 500,
+                                    }}
+                                    title="Request a credit-back if this contact info is incorrect. Rules: 2 per 24h, 7-day freshness, once per lead."
+                                  >
+                                    Incorrect info?
+                                  </button>
                                 </div>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
-                                  {lead.owner_name ?? '—'}
-                                </div>
-                              </div>
-                              <div>
+                              </td>
+                            ) : null}
+
+                            {row.kind === 'tax_assessor' ? (
+                              <td style={{ verticalAlign: 'top' }}>
                                 <div
                                   style={{
                                     fontFamily: "'DM Mono', monospace",
@@ -1359,29 +1708,63 @@ export default function LeadsClient() {
                                   Tax Assessor
                                 </div>
                                 <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
-                                  {lead.taxpayer_name ?? '—'}
+                                  {row.ownerName}
                                 </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="leads-col-email">
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div>
+                              </td>
+                            ) : row.personRowIndex === 0 ? (
+                              <td rowSpan={row.personRowCount} style={{ verticalAlign: 'top' }}>
+                                {row.personIndex === 0 ? (
+                                  <div
+                                    style={{
+                                      fontFamily: "'DM Mono', monospace",
+                                      fontSize: 9,
+                                      letterSpacing: '0.08em',
+                                      textTransform: 'uppercase',
+                                      color: '#9ca3af',
+                                      marginBottom: 2,
+                                    }}
+                                  >
+                                    Skip-Traced
+                                    {(lead.all_persons?.length ?? 0) > 1
+                                      ? ` Owners (${lead.all_persons!.length})`
+                                      : ' Owner'}
+                                  </div>
+                                ) : null}
                                 <div
                                   style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: 9,
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    color: '#9ca3af',
-                                    marginBottom: 2,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 2,
                                   }}
                                 >
-                                  Email
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
+                                    {row.personName}
+                                  </div>
+                                  {row.mailingMismatch ? (
+                                    <span
+                                      style={{
+                                        fontFamily: "'DM Mono', monospace",
+                                        fontSize: 8,
+                                        fontWeight: 600,
+                                        letterSpacing: '0.08em',
+                                        textTransform: 'uppercase',
+                                        background: '#fde68a',
+                                        color: '#92400e',
+                                        padding: '2px 5px',
+                                        borderRadius: 3,
+                                        alignSelf: 'flex-start',
+                                      }}
+                                      title="This person's mailing address does not match the property — they may be a former resident."
+                                    >
+                                      ⚠ Mailing Elsewhere
+                                    </span>
+                                  ) : null}
                                 </div>
-                                <LeadsEmailCellUnlocked ownerEmail={lead.owner_email} />
-                              </div>
-                              <div>
+                              </td>
+                            ) : null}
+
+                            {row.kind === 'tax_assessor' ? (
+                              <td className="leads-col-email" style={{ verticalAlign: 'top' }}>
                                 <div
                                   style={{
                                     fontFamily: "'DM Mono', monospace",
@@ -1395,77 +1778,40 @@ export default function LeadsClient() {
                                   Mailing Address
                                 </div>
                                 <div style={{ fontSize: 12, color: '#0f2744', lineHeight: 1.35 }}>
-                                  {taxpayerAddressLine || '—'}
+                                  {row.mailingAddress}
                                 </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div>
-                                <div
-                                  style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: 9,
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    color: '#9ca3af',
-                                    marginBottom: 2,
-                                  }}
-                                >
-                                  Skip-Traced
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    fontFamily: 'var(--mono, ui-monospace, monospace)',
-                                    color: '#8a94a0',
-                                    fontSize: 13,
-                                  }}
-                                >
-                                  {lead.owner_phone ?? '—'}
-                                  {lead.phone_type ? (
-                                    <span
-                                      style={{
-                                        fontSize: 9,
-                                        fontWeight: 600,
-                                        letterSpacing: '0.06em',
-                                        textTransform: 'uppercase',
-                                        color: '#5c6570',
-                                        background: '#f3f4f6',
-                                        padding: '2px 6px',
-                                        borderRadius: 4,
-                                        fontFamily: "'Inter', sans-serif",
-                                      }}
-                                    >
-                                      {lead.phone_type}
-                                    </span>
-                                  ) : null}
-                                  <LeadsPhoneRiskBadges
-                                    phoneDnc={Boolean(lead.phone_dnc)}
-                                    ownerLitigator={Boolean(lead.owner_litigator)}
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <div
-                                  style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: 9,
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    color: '#9ca3af',
-                                    marginBottom: 2,
-                                  }}
-                                >
-                                  Tax Assessor
-                                </div>
-                                {googleSearchUrl ? (
+                              </td>
+                            ) : (
+                              <td className="leads-col-email" style={{ verticalAlign: 'top' }}>
+                                {row.email ? (
                                   <a
-                                    href={googleSearchUrl}
+                                    href={`mailto:${row.email.email}`}
+                                    style={{
+                                      fontFamily: "'Inter', sans-serif",
+                                      fontSize: 12,
+                                      color: '#0f2744',
+                                      textDecoration: 'none',
+                                      wordBreak: 'break-all',
+                                    }}
+                                  >
+                                    {row.email.email}
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#d1d5db' }}>—</span>
+                                )}
+                              </td>
+                            )}
+
+                            {row.kind === 'tax_assessor' ? (
+                              <td style={{ verticalAlign: 'top' }}>
+                                {row.isBusinessTrace ? (
+                                  <BusinessTraceCTA
+                                    reason={row.ctaBannerReason}
+                                    address={row.ctaBannerAddress}
+                                  />
+                                ) : row.googleSearchUrl ? (
+                                  <a
+                                    href={row.googleSearchUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     style={{
@@ -1480,11 +1826,66 @@ export default function LeadsClient() {
                                 ) : (
                                   <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>
                                 )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )
+                              </td>
+                            ) : (
+                              <td style={{ verticalAlign: 'top' }}>
+                                {row.phone ? (
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      fontFamily: 'var(--mono, ui-monospace, monospace)',
+                                      color: '#0f2744',
+                                      fontSize: 13,
+                                      opacity: row.phone.dnc ? 0.7 : 1,
+                                    }}
+                                  >
+                                    <span>{formatPhoneDisplay(row.phone.number)}</span>
+                                    {row.phone.type ? (
+                                      <span
+                                        style={{
+                                          fontFamily: "'Inter', sans-serif",
+                                          fontSize: 9,
+                                          fontWeight: 600,
+                                          letterSpacing: '0.06em',
+                                          textTransform: 'uppercase',
+                                          color: '#5c6570',
+                                          background: '#f3f4f6',
+                                          padding: '2px 6px',
+                                          borderRadius: 4,
+                                        }}
+                                      >
+                                        {row.phone.type}
+                                      </span>
+                                    ) : null}
+                                    {row.phone.dnc ? (
+                                      <span
+                                        style={{
+                                          fontFamily: "'DM Mono', monospace",
+                                          fontSize: 9,
+                                          fontWeight: 500,
+                                          letterSpacing: '0.08em',
+                                          textTransform: 'uppercase',
+                                          background: '#fde68a',
+                                          color: '#92400e',
+                                          padding: '2px 6px',
+                                          borderRadius: 3,
+                                        }}
+                                      >
+                                        DNC
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#d1d5db' }}>—</span>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })
                     })
                   )}
                 </tbody>
@@ -1636,6 +2037,33 @@ export default function LeadsClient() {
                                   Unlock
                                 </button>
                               </div>
+                            ) : !isSignedIn ? (
+                              <SignInButton mode="modal">
+                                <button type="button" className="leads-unlock-btn">
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    style={{ width: 13, height: 13, verticalAlign: '-2px', marginRight: 5 }}
+                                  >
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                                  </svg>
+                                  Sign in to unlock
+                                </button>
+                              </SignInButton>
+                            ) : !quota.unlimited && quota.remaining !== null && quota.remaining <= 0 ? (
+                              <button
+                                type="button"
+                                className="leads-unlock-btn"
+                                onClick={() => setOutOfCreditsOpen(true)}
+                                style={{ opacity: 0.7 }}
+                              >
+                                No credits left
+                              </button>
                             ) : (
                               <button
                                 type="button"
@@ -1655,7 +2083,11 @@ export default function LeadsClient() {
                                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                                   <path d="M7 11V7a5 5 0 0110 0v4" />
                                 </svg>
-                                {unlockLoadingSr === row.sr_number ? 'Unlocking…' : 'Unlock'}
+                                {unlockLoadingSr === row.sr_number
+                                  ? 'Unlocking…'
+                                  : quota.unlimited
+                                    ? 'Unlock'
+                                    : `Unlock (${quota.remaining} left)`}
                               </button>
                             )}
                           </td>
@@ -1716,6 +2148,21 @@ export default function LeadsClient() {
         isOpen={litigatorModalOpen}
         onClose={() => setLitigatorModalOpen(false)}
         address={litigatorModalAddress}
+      />
+      <OutOfCreditsModal isOpen={outOfCreditsOpen} onClose={() => setOutOfCreditsOpen(false)} />
+      <IncorrectInfoModal
+        isOpen={incorrectInfoModal.open}
+        onClose={() => setIncorrectInfoModal({ open: false, srNumber: '', address: '' })}
+        srNumber={incorrectInfoModal.srNumber}
+        address={incorrectInfoModal.address}
+        onSuccess={(newQuota: { remaining: number | null; unlimited: boolean }) => {
+          setQuota((prev) => ({
+            ...prev,
+            remaining: newQuota.remaining,
+            unlimited: newQuota.unlimited,
+          }))
+          void refetchMyUnlocks()
+        }}
       />
     </>
   )
