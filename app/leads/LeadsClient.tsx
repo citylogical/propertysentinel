@@ -27,6 +27,7 @@ const ALL_NEIGHBORHOOD_NUMS = NEIGHBORHOOD_OPTIONS.map((o) => o.num)
 const NEIGHBORHOOD_COUNT = ALL_NEIGHBORHOOD_NUMS.length
 
 const PAGE_SIZE = 25
+const UNLOCKED_PAGE_SIZE = 50
 
 export type LeadRow = {
   sr_number: string
@@ -927,6 +928,11 @@ export default function LeadsClient() {
   const [dossierFlashSr, setDossierFlashSr] = useState<string | null>(null)
   const [dossierFlashFaded, setDossierFlashFaded] = useState(false)
 
+  const [collapsedSrNumbers, setCollapsedSrNumbers] = useState<Set<string>>(() => new Set())
+  const [collapseInitialized, setCollapseInitialized] = useState(false)
+  const [unlockedPage, setUnlockedPage] = useState(1)
+  const [unlockedTotal, setUnlockedTotal] = useState(0)
+
   const clearDossierRevealState = useCallback(() => {
     setRevealingSrNumber(null)
     setRevealData(null)
@@ -957,6 +963,7 @@ export default function LeadsClient() {
 
   const navigateToUnlockedRow = useCallback((srNumber: string) => {
     setView('unlocked')
+    setUnlockedPage(1)
     setPage(1)
     setSelectedSrNumbers(new Set())
     setHighlightedSrNumber(srNumber)
@@ -1029,27 +1036,80 @@ export default function LeadsClient() {
       setUnlockStatus({})
       setUnlockedLeadsList([])
       setUnlockLoadingSr(null)
+      setUnlockedTotal(0)
+      setCollapseInitialized(false)
     }
   }, [isLoaded, isSignedIn])
 
   const refetchMyUnlocks = useCallback(async () => {
     if (!isSignedIn) {
       setUnlockedLeadsList([])
+      setUnlockedTotal(0)
       return
     }
-    const res = await fetch('/api/leads/unlock/my')
+    const pageToFetch = view === 'unlocked' ? unlockedPage : 1
+    const res = await fetch(
+      `/api/leads/unlock/my?page=${pageToFetch}&page_size=${UNLOCKED_PAGE_SIZE}`
+    )
     if (!res.ok) return
-    const json = (await res.json()) as { unlocks?: Record<string, unknown>[] }
+    const json = (await res.json()) as {
+      unlocks?: Record<string, unknown>[]
+      total?: number
+    }
     const raw = json.unlocks ?? []
     setUnlockedLeadsList(raw.map(mapMyUnlockRowToLeadWithUnlock))
-  }, [isSignedIn])
+    setUnlockedTotal(json.total ?? 0)
+  }, [isSignedIn, view, unlockedPage])
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
     // Fire on mount AND on tab change so the dropdown count "(N)" is accurate
     // from the moment the page loads, not just after the user clicks the tab.
     void refetchMyUnlocks()
-  }, [isLoaded, isSignedIn, view, refetchMyUnlocks])
+  }, [isLoaded, isSignedIn, view, unlockedPage, refetchMyUnlocks])
+
+  useEffect(() => {
+    if (collapseInitialized) return
+    if (unlockedLeadsList.length === 0) return
+
+    let stored: string[] | null = null
+    try {
+      const raw = localStorage.getItem('ps-unlocked-leads-collapsed')
+      if (raw) stored = JSON.parse(raw) as string[]
+    } catch {
+      stored = null
+    }
+
+    if (stored && Array.isArray(stored)) {
+      setCollapsedSrNumbers(new Set(stored))
+    } else {
+      const allSrs = unlockedLeadsList.map((u) => u.sr_number)
+      const mostRecent = allSrs[0]
+      setCollapsedSrNumbers(new Set(allSrs.filter((sr) => sr !== mostRecent)))
+    }
+    setCollapseInitialized(true)
+  }, [unlockedLeadsList, collapseInitialized])
+
+  useEffect(() => {
+    if (!collapseInitialized) return
+    try {
+      localStorage.setItem('ps-unlocked-leads-collapsed', JSON.stringify([...collapsedSrNumbers]))
+    } catch {
+      // localStorage may be unavailable (private browsing); silently ignore.
+    }
+  }, [collapsedSrNumbers, collapseInitialized])
+
+  function toggleCollapsed(srNumber: string) {
+    setCollapsedSrNumbers((prev) => {
+      const next = new Set(prev)
+      if (next.has(srNumber)) {
+        next.delete(srNumber)
+      } else {
+        next.add(srNumber)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || view === 'unlocked') return
@@ -1241,6 +1301,7 @@ export default function LeadsClient() {
     setView(v)
     setPage(1)
     setSelectedSrNumbers(new Set())
+    if (v === 'unlocked') setUnlockedPage(1)
   }
 
   const handleUnlock = async (lead: LeadRow) => {
@@ -1724,7 +1785,7 @@ export default function LeadsClient() {
             >
               <option value="public">Public Leads</option>
               <option value="watchlist">Watchlist ({watchlistSrNumbers.size})</option>
-              <option value="unlocked">Unlocked Leads ({unlockedLeadsList.length})</option>
+              <option value="unlocked">Unlocked Leads ({unlockedTotal})</option>
             </select>
 
             <div className="toolbar-divider" aria-hidden />
@@ -1801,20 +1862,21 @@ export default function LeadsClient() {
               </button>
             )}
             <div className="toolbar-divider" />
-            <select
-              className="leads-select"
-              value={timeWindow}
-              disabled={view === 'unlocked'}
-              onChange={(e) => {
-                setTimeWindow(Number(e.target.value))
-                onFilterChange()
-              }}
-            >
-              <option value={1}>Last 24 Hours</option>
-              <option value={3}>Last 3 Days</option>
-              <option value={7}>Last 7 Days</option>
-              <option value={14}>Last 14 Days</option>
-            </select>
+            {view !== 'unlocked' ? (
+              <select
+                className="leads-select"
+                value={timeWindow}
+                onChange={(e) => {
+                  setTimeWindow(Number(e.target.value))
+                  onFilterChange()
+                }}
+              >
+                <option value={1}>Last 24 Hours</option>
+                <option value={3}>Last 3 Days</option>
+                <option value={7}>Last 7 Days</option>
+                <option value={14}>Last 14 Days</option>
+              </select>
+            ) : null}
           </div>
         </div>
 
@@ -1875,29 +1937,66 @@ export default function LeadsClient() {
                         (lead.community_area != null ? `Area ${lead.community_area}` : '—')
                       const unlockedDisp = formatUnlockedAtDisplay(lead.unlocked_at)
                       const isHighlighted = highlightedSrNumber === lead.sr_number
-                      const pivotRows = buildPivotRows(lead)
+                      const isCollapsed = collapsedSrNumbers.has(lead.sr_number)
+                      const allPivotRows = buildPivotRows(lead)
+                      const pivotRows = isCollapsed ? allPivotRows.slice(0, 1) : allPivotRows
                       const totalRowCount = pivotRows.length
                       const highlightStyle = isHighlighted ? { background: '#fef3c7' } : undefined
 
                       return pivotRows.map((row, rowIdx) => {
                         const isFirstRow = rowIdx === 0
+                        const isLastRowOfLead = rowIdx === pivotRows.length - 1
                         const trKey = `${lead.sr_number}-${rowIdx}`
                         const trId = isFirstRow ? `unlocked-row-${lead.sr_number}` : undefined
                         const trStyle: CSSProperties = {
                           ...highlightStyle,
                           transition: 'background-color 0.6s ease',
                           borderTop: isFirstRow ? '2px solid #e5e7eb' : 'none',
+                          ...(isCollapsed && isLastRowOfLead
+                            ? { borderBottom: '2px solid #d4cfc4' }
+                            : {}),
                         }
 
                         return (
                           <tr key={trKey} id={trId} style={trStyle}>
                             {isFirstRow ? (
                               <td className="leads-col-type" rowSpan={totalRowCount} style={{ verticalAlign: 'top' }}>
-                                <ComplaintTypeCell
-                                  srType={lead.sr_type}
-                                  srShortCode={lead.sr_short_code}
-                                  propertyTypeLabel={lead.property_type_label}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCollapsed(lead.sr_number)}
+                                    aria-label={isCollapsed ? 'Expand lead' : 'Collapse lead'}
+                                    title={isCollapsed ? 'Expand' : 'Collapse'}
+                                    style={{
+                                      flexShrink: 0,
+                                      width: 18,
+                                      height: 18,
+                                      marginTop: 2,
+                                      background: 'transparent',
+                                      border: '1px solid #d4cfc4',
+                                      borderRadius: 3,
+                                      color: '#6b7280',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontFamily: "'DM Mono', monospace",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      lineHeight: 1,
+                                      padding: 0,
+                                    }}
+                                  >
+                                    {isCollapsed ? '+' : '−'}
+                                  </button>
+                                  <div style={{ flex: 1 }}>
+                                    <ComplaintTypeCell
+                                      srType={lead.sr_type}
+                                      srShortCode={lead.sr_short_code}
+                                      propertyTypeLabel={lead.property_type_label}
+                                    />
+                                  </div>
+                                </div>
                               </td>
                             ) : null}
 
@@ -1972,9 +2071,37 @@ export default function LeadsClient() {
                                 >
                                   Tax Assessor
                                 </div>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
-                                  {row.ownerName}
-                                </div>
+                                {row.ownerName?.trim() && row.ownerName !== '—' ? (
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
+                                    {row.ownerName}
+                                  </div>
+                                ) : (
+                                  <div
+                                    style={{
+                                      fontSize: 12,
+                                      color: '#6b7280',
+                                      lineHeight: 1.4,
+                                      maxWidth: 220,
+                                    }}
+                                  >
+                                    No taxpayer on file, address likely condo/commercial and part of a building
+                                    range.{' '}
+                                    <a
+                                      href={`https://www.google.com/search?q=${encodeURIComponent(
+                                        `${row.ctaBannerAddress ?? ''} chicago building management phone number`
+                                      )}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        color: '#0f2744',
+                                        textDecoration: 'underline',
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      Search for phone number →
+                                    </a>
+                                  </div>
+                                )}
                               </td>
                             ) : row.kind === 'multi_owner_trigger' ? (
                               <td colSpan={3} style={{ verticalAlign: 'top' }}>
@@ -2068,21 +2195,27 @@ export default function LeadsClient() {
 
                             {row.kind === 'tax_assessor' ? (
                               <td className="leads-col-email" style={{ verticalAlign: 'top' }}>
-                                <div
-                                  style={{
-                                    fontFamily: "'DM Mono', monospace",
-                                    fontSize: 9,
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    color: '#9ca3af',
-                                    marginBottom: 2,
-                                  }}
-                                >
-                                  Mailing Address
-                                </div>
-                                <div style={{ fontSize: 12, color: '#0f2744', lineHeight: 1.35 }}>
-                                  {row.mailingAddress}
-                                </div>
+                                {row.mailingAddress?.trim() && row.mailingAddress !== '—' ? (
+                                  <>
+                                    <div
+                                      style={{
+                                        fontFamily: "'DM Mono', monospace",
+                                        fontSize: 9,
+                                        letterSpacing: '0.08em',
+                                        textTransform: 'uppercase',
+                                        color: '#9ca3af',
+                                        marginBottom: 2,
+                                      }}
+                                    >
+                                      Mailing Address
+                                    </div>
+                                    <div style={{ fontSize: 12, color: '#0f2744', lineHeight: 1.35 }}>
+                                      {row.mailingAddress}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>
+                                )}
                               </td>
                             ) : row.kind === 'multi_owner_trigger' ? null : (
                               <td className="leads-col-email" style={{ verticalAlign: 'top' }}>
@@ -2193,6 +2326,75 @@ export default function LeadsClient() {
                   )}
                 </tbody>
               </table>
+
+              {unlockedTotal > UNLOCKED_PAGE_SIZE ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '14px 16px',
+                    borderTop: '1px solid #e5e7eb',
+                    background: '#fafaf7',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: 11,
+                      color: '#6b7280',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    Showing {(unlockedPage - 1) * UNLOCKED_PAGE_SIZE + 1}–
+                    {Math.min(unlockedPage * UNLOCKED_PAGE_SIZE, unlockedTotal)} of {unlockedTotal} unlocked leads
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      disabled={unlockedPage === 1}
+                      onClick={() => setUnlockedPage((p) => Math.max(1, p - 1))}
+                      style={{
+                        padding: '6px 14px',
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        color: unlockedPage === 1 ? '#9ca3af' : '#0f2744',
+                        background: '#fff',
+                        border: '1px solid #d4cfc4',
+                        borderRadius: 4,
+                        cursor: unlockedPage === 1 ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      ← Previous
+                    </button>
+                    <button
+                      type="button"
+                      disabled={unlockedPage * UNLOCKED_PAGE_SIZE >= unlockedTotal}
+                      onClick={() => setUnlockedPage((p) => p + 1)}
+                      style={{
+                        padding: '6px 14px',
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        color:
+                          unlockedPage * UNLOCKED_PAGE_SIZE >= unlockedTotal ? '#9ca3af' : '#0f2744',
+                        background: '#fff',
+                        border: '1px solid #d4cfc4',
+                        borderRadius: 4,
+                        cursor:
+                          unlockedPage * UNLOCKED_PAGE_SIZE >= unlockedTotal ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { resolveAddressesToProperties } from '@/lib/address-resolution'
@@ -13,20 +13,50 @@ type MailingRow = {
   mailing_zip: string | null
 }
 
-/** All unlock rows for the current user, enriched with tax assessor mailing data. */
-export async function GET() {
+/** Paginated unlock rows for the current user, enriched with tax assessor mailing data. */
+export async function GET(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ unlocks: [] }, { status: 401 })
   }
 
+  const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10))
+  const pageSize = Math.min(
+    100,
+    Math.max(1, parseInt(req.nextUrl.searchParams.get('page_size') ?? '50', 10))
+  )
+  const rangeStart = (page - 1) * pageSize
+  const rangeEnd = rangeStart + pageSize - 1
+
   const supabase = getSupabaseAdmin()
-  const { data: unlocks, error } = await supabase.from('lead_unlocks').select('*').eq('user_id', userId)
+
+  const { count, error: countErr } = await supabase
+    .from('lead_unlocks')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+
+  if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 })
+
+  const { data: unlocks, error } = await supabase
+    .from('lead_unlocks')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .range(rangeStart, rangeEnd)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const list = unlocks ?? []
+
+  if (list.length === 0) {
+    return NextResponse.json({
+      unlocks: [],
+      total: count ?? 0,
+      page,
+      page_size: pageSize,
+    })
+  }
+
   const srs = list.map((u) => (u as { sr_number: string }).sr_number).filter(Boolean)
-  if (srs.length === 0) return NextResponse.json({ unlocks: [] })
 
   const { data: complaints } = await supabase
     .from('complaints_311')
@@ -54,9 +84,6 @@ export async function GET() {
     }
   }
 
-  // Enrich with tax assessor mailing data from the properties table.
-  // Read-time join (Option B): works for existing unlocks without backfill,
-  // and mailing data stays current when properties sell.
   const addresses = [
     ...new Set(
       (complaints ?? [])
@@ -141,5 +168,10 @@ export async function GET() {
     return tb - ta
   })
 
-  return NextResponse.json({ unlocks: merged })
+  return NextResponse.json({
+    unlocks: merged,
+    total: count ?? 0,
+    page,
+    page_size: pageSize,
+  })
 }

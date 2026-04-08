@@ -720,14 +720,6 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
                   className="nearest-parcel-link nearest-parcel-city-verify-link"
                 >
                   Or verify address on City website →
-                </a>{' '}
-                <a
-                  href="https://www.cookcountyassessoril.gov/address-search"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="nearest-parcel-link nearest-parcel-city-verify-link"
-                >
-                  Cook County assessor search →
                 </a>
               </div>
             </div>
@@ -736,16 +728,15 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
             <div className="nearest-parcel-note">
               <div className="nearest-parcel-heading">No Assessor record at this address</div>
               <div className="nearest-parcel-sub">
-                The Cook County Assessor does not have a parcel record for this address. This may be a unit within a larger building or a non-standard address. Try searching for the building&apos;s primary street address on the{' '}
+                The Cook County Assessor does not have a parcel record for this address. This may be a unit within a larger building or a non-standard address. Try searching for the building&apos;s primary street address:{' '}
                 <a
-                  href="https://www.cookcountyassessoril.gov/address-search"
+                  href="https://webapps1.chicago.gov/buildingrecords/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nearest-parcel-link nearest-parcel-city-verify-link"
                 >
-                  Cook County assessor address search
+                  Look up on city website →
                 </a>
-                .
               </div>
             </div>
           )}
