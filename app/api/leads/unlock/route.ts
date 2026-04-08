@@ -327,6 +327,31 @@ export async function POST(req: NextRequest) {
       .eq('user_id', userId)
       .eq('sr_number', srNumber)
 
+    let dossierUnitCount: number | null = null
+    let dossierTaxpayerCount: number | null = null
+    let dossierAssociationName: string | null = null
+    {
+      const { data: pinRows } = await supabase
+        .from('properties')
+        .select('mailing_name')
+        .eq('address_normalized', addressNormalized)
+      const rows = (pinRows ?? []) as { mailing_name: string | null }[]
+      dossierUnitCount = rows.length
+      const nameCounts = new Map<string, number>()
+      for (const r of rows) {
+        const n = (r.mailing_name ?? '').trim().toUpperCase()
+        if (!n) continue
+        nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1)
+      }
+      dossierTaxpayerCount = nameCounts.size
+      const sorted = [...nameCounts.entries()].sort((a, b) => b[1] - a[1])
+      if (sorted.length > 0) {
+        const dominantKey = sorted[0][0]
+        const sample = rows.find((r) => (r.mailing_name ?? '').trim().toUpperCase() === dominantKey)
+        dossierAssociationName = sample?.mailing_name?.trim() ?? dominantKey
+      }
+    }
+
     const updatedQuotaMO = await getUnlockQuota(userId)
 
     return NextResponse.json({
@@ -335,6 +360,9 @@ export async function POST(req: NextRequest) {
       contact_cache: null,
       from_cache: false,
       multi_owner_skip: true,
+      multi_owner_unit_count: dossierUnitCount,
+      multi_owner_taxpayer_count: dossierTaxpayerCount,
+      multi_owner_association_name: dossierAssociationName,
       quota: {
         remaining: updatedQuotaMO.unlimited ? null : updatedQuotaMO.remaining,
         limit: updatedQuotaMO.unlimited ? null : updatedQuotaMO.limit,

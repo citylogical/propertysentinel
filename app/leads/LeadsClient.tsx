@@ -15,7 +15,9 @@ import LitigatorCreditModal from '@/components/LitigatorCreditModal'
 import OutOfCreditsModal from '@/components/OutOfCreditsModal'
 import IncorrectInfoModal from '@/components/IncorrectInfoModal'
 import MultiOwnerContactsModal from '@/components/MultiOwnerContactsModal'
+import DossierReveal from '@/components/DossierReveal'
 import HoverTooltip from '@/components/HoverTooltip'
+import './dossier-reveal.css'
 
 const NEIGHBORHOOD_OPTIONS = Object.entries(CHICAGO_COMMUNITY_AREAS)
   .map(([num, name]) => ({ num, name }))
@@ -42,6 +44,27 @@ export type LeadRow = {
   owner_name?: string | null
   owner_phone?: string | null
   owner_address?: string | null
+}
+
+function dossierMailingFromUnlock(
+  u: Record<string, unknown>,
+  contact: Record<string, unknown> | null
+): string | null {
+  const street =
+    (u.owner_mailing_street as string)?.trim() ||
+    (contact?.mailing_street as string)?.trim() ||
+    ''
+  const city =
+    (u.owner_mailing_city as string)?.trim() || (contact?.mailing_city as string)?.trim() || ''
+  const state =
+    (u.owner_mailing_state as string)?.trim() ||
+    (contact?.mailing_state as string)?.trim() ||
+    ''
+  const zip = String(u.owner_mailing_zip ?? contact?.mailing_zip ?? '')
+    .trim()
+  const tail = [city, state, zip].filter(Boolean).join(' ').trim()
+  const line = [street, tail].filter((s) => s.length > 0).join(', ')
+  return line || null
 }
 
 function deriveStreetName(addr: string | null | undefined): string {
@@ -888,6 +911,29 @@ export default function LeadsClient() {
     address: '',
   })
 
+  const [revealingSrNumber, setRevealingSrNumber] = useState<string | null>(null)
+  const [revealData, setRevealData] = useState<{
+    sr_number: string
+    propertyType: PropertyTypeLabel | null
+    ownerName: string
+    phone: string | null
+    email: string | null
+    mailingAddress: string | null
+    unitCount: number | null
+    taxpayerCount: number | null
+    landlordUnitCount: number | null
+    multiOwnerDirectoryOnly: boolean
+  } | null>(null)
+  const [dossierFlashSr, setDossierFlashSr] = useState<string | null>(null)
+  const [dossierFlashFaded, setDossierFlashFaded] = useState(false)
+
+  const clearDossierRevealState = useCallback(() => {
+    setRevealingSrNumber(null)
+    setRevealData(null)
+    setDossierFlashSr(null)
+    setDossierFlashFaded(false)
+  }, [])
+
   const refetchQuota = useCallback(async () => {
     try {
       const res = await fetch('/api/leads/quota')
@@ -1208,6 +1254,21 @@ export default function LeadsClient() {
     if (unlockLoadingSr === lead.sr_number) return
 
     setUnlockLoadingSr(lead.sr_number)
+
+    setRevealingSrNumber(lead.sr_number)
+    setRevealData({
+      sr_number: lead.sr_number,
+      propertyType: lead.property_type_label ?? null,
+      ownerName: '',
+      phone: null,
+      email: null,
+      mailingAddress: null,
+      unitCount: null,
+      taxpayerCount: null,
+      landlordUnitCount: null,
+      multiOwnerDirectoryOnly: false,
+    })
+
     try {
       const res = await fetch('/api/leads/unlock', {
         method: 'POST',
@@ -1220,14 +1281,19 @@ export default function LeadsClient() {
         message?: string
         unlock?: Record<string, unknown>
         contact_cache?: Record<string, unknown> | null
+        multi_owner_unit_count?: number
+        multi_owner_taxpayer_count?: number
+        multi_owner_association_name?: string | null
       }
 
       if (res.status === 401 || data.reason === 'unauthorized') {
+        clearDossierRevealState()
         window.alert('Sign in to unlock contact info.')
         return
       }
 
       if (data.reason === 'no_credits') {
+        clearDossierRevealState()
         setOutOfCreditsOpen(true)
         const dataWithQuota = data as typeof data & {
           quota?: { remaining: number | null; limit: number | null; unlimited: boolean }
@@ -1239,6 +1305,7 @@ export default function LeadsClient() {
       }
 
       if (data.reason === 'no_phone') {
+        clearDossierRevealState()
         window.alert(data.message || 'No phone number available for this property. No credit used.')
         setUnlockStatus((prev) => ({
           ...prev,
@@ -1248,8 +1315,12 @@ export default function LeadsClient() {
       }
 
       if (data.success && data.unlock) {
+        if (data.reason === 'already_unlocked') {
+          clearDossierRevealState()
+        }
         const unlock = data.unlock
         const contact = (data.contact_cache ?? null) as Record<string, unknown> | null
+        let statusTaxpayer: string | null = null
         const statusRes = await fetch(
           `/api/leads/unlock/status?sr_numbers=${encodeURIComponent(lead.sr_number)}`
         )
@@ -1257,6 +1328,8 @@ export default function LeadsClient() {
           const statusJson = (await statusRes.json()) as { unlocks?: Record<string, UnlockStatusEntry> }
           const entry = statusJson.unlocks?.[lead.sr_number]
           if (entry?.unlocked) {
+            statusTaxpayer =
+              'taxpayer_name' in entry ? (entry.taxpayer_name as string | null | undefined) ?? null : null
             setUnlockStatus((prev) => ({ ...prev, [lead.sr_number]: entry }))
           } else {
             setUnlockStatus((prev) => ({
@@ -1270,6 +1343,91 @@ export default function LeadsClient() {
             [lead.sr_number]: { unlocked: true, unlock, contact, taxpayer_name: null },
           }))
         }
+
+        if (data.reason !== 'already_unlocked') {
+          const u = unlock as Record<string, unknown>
+          const allPersons = (u.all_persons as EnrichedPerson[] | null) ?? []
+          const allPhones = (u.all_phones as EnrichedPhone[] | null) ?? []
+          const allEmails = (u.all_emails as EnrichedEmail[] | null) ?? []
+
+          const firstPerson = allPersons[0] ?? null
+          const firstPhone = allPhones[0] ?? null
+          const firstEmail = allEmails[0] ?? null
+
+          const propertyType =
+            (u.property_type_label as PropertyTypeLabel | null) ?? lead.property_type_label ?? null
+          const businessTraceReason = u.business_trace_reason as string | undefined
+          const isMultiOwnerReason = businessTraceReason === 'multi_owner_building'
+          const multiOwnerDirectoryOnly = u.unlock_source === 'multi_owner_skip'
+
+          const rawPhone = firstPhone?.number ?? (u.owner_phone as string) ?? null
+          const phoneDigits = rawPhone ? rawPhone.replace(/\D/g, '') : ''
+          const phone =
+            phoneDigits.length === 10 ? formatPhoneDisplay(phoneDigits) : rawPhone || null
+
+          const email =
+            firstEmail?.email ??
+            (u.owner_email as string) ??
+            (contact?.primary_email as string) ??
+            null
+
+          let dossierOwnerName = ''
+          let dossierMailingAddress: string | null = null
+          let dossierUnitCount: number | null =
+            typeof u.unit_count === 'number' ? u.unit_count : null
+          let dossierTaxpayerCount: number | null =
+            typeof u.taxpayer_count === 'number' ? u.taxpayer_count : null
+
+          if (isMultiOwnerReason || propertyType === 'condo_building') {
+            const assocRaw = data.multi_owner_association_name
+            const assoc =
+              typeof assocRaw === 'string' && assocRaw.trim() !== '' ? assocRaw.trim() : ''
+            dossierOwnerName =
+              assoc || statusTaxpayer?.trim() || (u.owner_name as string)?.trim() || '—'
+            if (typeof data.multi_owner_unit_count === 'number') {
+              dossierUnitCount = data.multi_owner_unit_count
+            }
+            if (typeof data.multi_owner_taxpayer_count === 'number') {
+              dossierTaxpayerCount = data.multi_owner_taxpayer_count
+            }
+          } else if (propertyType === 'commercial' || propertyType === 'exempt') {
+            dossierOwnerName =
+              statusTaxpayer?.trim() || (u.owner_name as string)?.trim() || '—'
+            dossierMailingAddress = dossierMailingFromUnlock(u, contact)
+          } else {
+            if (firstPerson) {
+              dossierOwnerName =
+                firstPerson.full_name?.trim() ||
+                (u.owner_name as string)?.trim() ||
+                statusTaxpayer?.trim() ||
+                '—'
+            } else {
+              dossierOwnerName =
+                (u.owner_name as string)?.trim() || statusTaxpayer?.trim() || '—'
+            }
+          }
+
+          setRevealData({
+            sr_number: lead.sr_number,
+            propertyType,
+            ownerName: dossierOwnerName || '—',
+            phone,
+            email: email || null,
+            mailingAddress: dossierMailingAddress,
+            unitCount: dossierUnitCount,
+            taxpayerCount: dossierTaxpayerCount,
+            landlordUnitCount: null,
+            multiOwnerDirectoryOnly,
+          })
+          setDossierFlashSr(lead.sr_number)
+          setDossierFlashFaded(false)
+          window.setTimeout(() => setDossierFlashFaded(true), 120)
+          window.setTimeout(() => {
+            setDossierFlashSr(null)
+            setDossierFlashFaded(false)
+          }, 3500)
+        }
+
         const dataWithQuota = data as typeof data & {
           quota?: { remaining: number | null; limit: number | null; unlimited: boolean }
         }
@@ -1326,6 +1484,7 @@ export default function LeadsClient() {
       }
 
       if (data.reason === 'miss') {
+        clearDossierRevealState()
         window.alert(data.message || 'No owner information available for this address.')
         setUnlockStatus((prev) => ({
           ...prev,
@@ -1334,6 +1493,7 @@ export default function LeadsClient() {
         return
       }
       if (data.reason === 'deceased_owner') {
+        clearDossierRevealState()
         window.alert(data.message || 'Owner of record is deceased. This lead is not available.')
         setUnlockStatus((prev) => ({
           ...prev,
@@ -1342,10 +1502,16 @@ export default function LeadsClient() {
         return
       }
       if (data.reason === 'tracerfy_error') {
+        clearDossierRevealState()
         window.alert(data.message || 'Temporarily unavailable, please try again shortly.')
         return
       }
+      clearDossierRevealState()
       window.alert(data.message || 'Unlock failed. Please try again.')
+    } catch (err) {
+      clearDossierRevealState()
+      console.error('[unlock] error:', err)
+      window.alert('Unlock failed. Please try again.')
     } finally {
       setUnlockLoadingSr((s) => (s === lead.sr_number ? null : s))
     }
@@ -2129,8 +2295,13 @@ export default function LeadsClient() {
                       const locLine = isUnlocked
                         ? row.address_normalized?.trim() || '—'
                         : maskedStreetLine(row.address_normalized)
+                      const flashClass =
+                        dossierFlashSr === row.sr_number
+                          ? `dossier-row-flash${dossierFlashFaded ? ' fade' : ''}`
+                          : ''
+                      const rowClass = [checked ? 'leads-row-checked' : '', flashClass].filter(Boolean).join(' ')
                       return (
-                        <tr key={row.sr_number} className={checked ? 'leads-row-checked' : undefined}>
+                        <tr key={row.sr_number} className={rowClass || undefined}>
                           <td className="leads-col-cb">
                             <input
                               type="checkbox"
@@ -2159,7 +2330,38 @@ export default function LeadsClient() {
                             />
                           </td>
                           <td className="leads-col-contact">
-                            {isUnlocked && uSt.unlocked ? (
+                            {revealingSrNumber === row.sr_number && revealData ? (
+                              <DossierReveal
+                                propertyType={revealData.propertyType}
+                                ownerName={revealData.ownerName}
+                                phone={revealData.phone}
+                                email={revealData.email}
+                                mailingAddress={revealData.mailingAddress}
+                                unitCount={revealData.unitCount}
+                                taxpayerCount={revealData.taxpayerCount}
+                                landlordUnitCount={revealData.landlordUnitCount}
+                                multiOwnerDirectoryOnly={revealData.multiOwnerDirectoryOnly}
+                                onSeeAllInfo={() => {
+                                  const pt = revealData.propertyType
+                                  setRevealingSrNumber(null)
+                                  setRevealData(null)
+                                  setDossierFlashSr(null)
+                                  setDossierFlashFaded(false)
+                                  if (
+                                    pt === 'condo_building' ||
+                                    pt === 'commercial' ||
+                                    pt === 'exempt'
+                                  ) {
+                                    setContactsModal({
+                                      open: true,
+                                      address: row.address_normalized?.trim() ?? '',
+                                    })
+                                  } else {
+                                    navigateToUnlockedRow(row.sr_number)
+                                  }
+                                }}
+                              />
+                            ) : isUnlocked && uSt.unlocked ? (
                               <ContactUnlockedBlock
                                 unlock={uSt.unlock}
                                 contact={uSt.contact}
@@ -2175,7 +2377,7 @@ export default function LeadsClient() {
                                   disabled
                                   style={{ opacity: 0.55, cursor: 'not-allowed' }}
                                 >
-                                  Unlock
+                                  Reveal Owner
                                 </button>
                               </div>
                             ) : !isSignedIn ? (
@@ -2227,8 +2429,8 @@ export default function LeadsClient() {
                                 {unlockLoadingSr === row.sr_number
                                   ? 'Unlocking…'
                                   : quota.unlimited
-                                    ? 'Unlock'
-                                    : `Unlock (${quota.remaining} left)`}
+                                    ? 'Reveal Owner →'
+                                    : `Reveal Owner (${quota.remaining} left) →`}
                               </button>
                             )}
                           </td>
