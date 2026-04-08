@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveAddressesToProperties } from '@/lib/address-resolution'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,15 +52,11 @@ export async function GET(req: NextRequest) {
   const addresses = [...new Set([...addrBySr.values()])]
   const taxpayerByAddress = new Map<string, string>()
   if (addresses.length > 0) {
-    const { data: props } = await supabase
-      .from('properties')
-      .select('address_normalized, mailing_name')
-      .in('address_normalized', addresses)
-    for (const row of props ?? []) {
-      const r = row as { address_normalized: string | null; mailing_name: string | null }
-      if (r.address_normalized && r.mailing_name && !taxpayerByAddress.has(r.address_normalized)) {
-        taxpayerByAddress.set(r.address_normalized, r.mailing_name)
-      }
+    const propsByAddr = await resolveAddressesToProperties(addresses)
+    for (const addr of addresses) {
+      const matches = propsByAddr.get(addr) ?? []
+      const row = matches.find((m) => m.mailing_name && String(m.mailing_name).trim() !== '')
+      if (row?.mailing_name) taxpayerByAddress.set(addr, row.mailing_name)
     }
   }
 

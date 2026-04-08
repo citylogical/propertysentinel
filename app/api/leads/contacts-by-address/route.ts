@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveAddressToProperties } from '@/lib/address-resolution'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,10 +18,16 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAdmin()
 
+  const resolvedProps = await resolveAddressToProperties(address)
+  if (resolvedProps.length === 0) {
+    return NextResponse.json({ address, total_pins: 0, total_contacts: 0, contacts: [] })
+  }
+  const pinList = [...new Set(resolvedProps.map((p) => p.pin).filter(Boolean))]
+
   const { data: rows, error } = await supabase
     .from('properties')
     .select('pin, mailing_name, mailing_address, mailing_city, mailing_state, mailing_zip, tax_year')
-    .eq('address_normalized', address)
+    .in('pin', pinList)
     .order('mailing_name', { ascending: true })
 
   if (error) {

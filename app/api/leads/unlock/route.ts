@@ -14,6 +14,7 @@ import {
   consumeCreditForUnlock,
   getUnlockQuota,
 } from '@/lib/unlock-credits'
+import { resolveAddressToProperties, uniquePinCount } from '@/lib/address-resolution'
 
 export const dynamic = 'force-dynamic'
 
@@ -248,14 +249,18 @@ export async function POST(req: NextRequest) {
       }
     }
     if (!propertyClass) {
-      const { data: byAddr } = await supabase
-        .from('properties')
-        .select('property_class')
-        .eq('address_normalized', addressNormalized)
-        .limit(1)
-        .maybeSingle()
-      if (byAddr) {
-        propertyClass = propertyClass ?? (byAddr as { property_class: string | null }).property_class
+      const resolved = await resolveAddressToProperties(addressNormalized)
+      const pins = [...new Set(resolved.map((r) => r.pin).filter(Boolean))]
+      if (pins.length > 0) {
+        const { data: byAddr } = await supabase
+          .from('properties')
+          .select('property_class')
+          .in('pin', pins)
+          .limit(1)
+          .maybeSingle()
+        if (byAddr) {
+          propertyClass = propertyClass ?? (byAddr as { property_class: string | null }).property_class
+        }
       }
     }
     const propertyTypeLabelMO = await derivePropertyType(propertyClass, addressNormalized)
@@ -331,12 +336,9 @@ export async function POST(req: NextRequest) {
     let dossierTaxpayerCount: number | null = null
     let dossierAssociationName: string | null = null
     {
-      const { data: pinRows } = await supabase
-        .from('properties')
-        .select('mailing_name')
-        .eq('address_normalized', addressNormalized)
-      const rows = (pinRows ?? []) as { mailing_name: string | null }[]
-      dossierUnitCount = rows.length
+      const properties = await resolveAddressToProperties(addressNormalized)
+      const rows = properties.map((p) => ({ mailing_name: p.mailing_name }))
+      dossierUnitCount = uniquePinCount(properties)
       const nameCounts = new Map<string, number>()
       for (const r of rows) {
         const n = (r.mailing_name ?? '').trim().toUpperCase()
@@ -448,16 +450,20 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!propertyClass) {
-    const { data: byAddr } = await supabase
-      .from('properties')
-      .select('property_class, mailing_name')
-      .eq('address_normalized', addressNormalized)
-      .limit(1)
-      .maybeSingle()
-    if (byAddr) {
-      const r = byAddr as { property_class: string | null; mailing_name: string | null }
-      propertyClass = propertyClass ?? r.property_class
-      propertyMailingName = propertyMailingName ?? r.mailing_name
+    const resolved = await resolveAddressToProperties(addressNormalized)
+    const pins = [...new Set(resolved.map((r) => r.pin).filter(Boolean))]
+    if (pins.length > 0) {
+      const { data: byAddr } = await supabase
+        .from('properties')
+        .select('property_class, mailing_name')
+        .in('pin', pins)
+        .limit(1)
+        .maybeSingle()
+      if (byAddr) {
+        const r = byAddr as { property_class: string | null; mailing_name: string | null }
+        propertyClass = propertyClass ?? r.property_class
+        propertyMailingName = propertyMailingName ?? r.mailing_name
+      }
     }
   }
   const enrichedPersons =

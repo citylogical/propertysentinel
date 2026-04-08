@@ -1,3 +1,5 @@
+import { resolveAddressesToProperties } from './address-resolution'
+
 export type PropertyTypeLabel =
   | 'residential'
   | 'condo_unit'
@@ -75,21 +77,15 @@ export async function batchPropertyTypeLabelsForAddresses(
   const { getSupabaseAdmin } = await import('@/lib/supabase-admin')
   const supabase = getSupabaseAdmin()
 
-  const { data: props } = await supabase
-    .from('properties')
-    .select('address_normalized, pin')
-    .in('address_normalized', unique)
-  const propRows = (props ?? []) as { address_normalized: string; pin: string | null }[]
+  const propsByAddress = await resolveAddressesToProperties(unique)
 
   const pinsByAddress = new Map<string, string[]>()
-  for (const p of propRows) {
-    if (!p.address_normalized || !p.pin) continue
-    if (!pinsByAddress.has(p.address_normalized)) pinsByAddress.set(p.address_normalized, [])
-    const arr = pinsByAddress.get(p.address_normalized)!
-    if (!arr.includes(p.pin)) arr.push(p.pin)
+  for (const [addr, properties] of propsByAddress.entries()) {
+    const pins = [...new Set(properties.map((p) => p.pin).filter((pin): pin is string => Boolean(pin)))]
+    if (pins.length > 0) pinsByAddress.set(addr, pins)
   }
 
-  const allPins = [...new Set(propRows.map((p) => p.pin).filter((p): p is string => Boolean(p)))]
+  const allPins = [...new Set([...pinsByAddress.values()].flat())]
   let classByPin = new Map<string, string>()
   if (allPins.length > 0) {
     const { data: parcels } = await supabase

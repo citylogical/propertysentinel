@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveAddressesToProperties } from '@/lib/address-resolution'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,28 +66,41 @@ export async function GET() {
   ]
   const mailingByAddress = new Map<string, MailingRow>()
   if (addresses.length > 0) {
-    const { data: props } = await supabase
-      .from('properties')
-      .select('address_normalized, mailing_name, mailing_address, mailing_city, mailing_state, mailing_zip')
-      .in('address_normalized', addresses)
-    for (const row of props ?? []) {
-      const r = row as {
-        address_normalized: string | null
-        mailing_name: string | null
-        mailing_address: string | null
-        mailing_city: string | null
-        mailing_state: string | null
-        mailing_zip: string | null
+    const propsByAddr = await resolveAddressesToProperties(addresses)
+    const allPins = [...new Set([...propsByAddr.values()].flat().map((p) => p.pin).filter(Boolean))]
+    const mailingByPin = new Map<string, MailingRow>()
+    if (allPins.length > 0) {
+      const { data: props } = await supabase
+        .from('properties')
+        .select('pin, mailing_name, mailing_address, mailing_city, mailing_state, mailing_zip, tax_year')
+        .in('pin', allPins)
+        .order('tax_year', { ascending: false })
+      for (const row of props ?? []) {
+        const r = row as {
+          pin: string | null
+          mailing_name: string | null
+          mailing_address: string | null
+          mailing_city: string | null
+          mailing_state: string | null
+          mailing_zip: string | null
+        }
+        if (!r.pin) continue
+        if (!mailingByPin.has(r.pin)) {
+          mailingByPin.set(r.pin, {
+            mailing_name: r.mailing_name,
+            mailing_address: r.mailing_address,
+            mailing_city: r.mailing_city,
+            mailing_state: r.mailing_state,
+            mailing_zip: r.mailing_zip,
+          })
+        }
       }
-      if (r.address_normalized && !mailingByAddress.has(r.address_normalized)) {
-        mailingByAddress.set(r.address_normalized, {
-          mailing_name: r.mailing_name,
-          mailing_address: r.mailing_address,
-          mailing_city: r.mailing_city,
-          mailing_state: r.mailing_state,
-          mailing_zip: r.mailing_zip,
-        })
-      }
+    }
+    for (const addr of addresses) {
+      const matches = propsByAddr.get(addr) ?? []
+      const pin = matches.find((m) => m.pin)?.pin
+      const m = pin ? mailingByPin.get(pin) : undefined
+      if (m) mailingByAddress.set(addr, m)
     }
   }
 

@@ -1,5 +1,9 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { TracerfyEnrichedPerson } from './tracerfy'
+import {
+  resolveAddressToProperties,
+  countDistinctMailingNames,
+  uniquePinCount,
+} from './address-resolution'
 
 /**
  * Word-boundary regex matching common business entity suffixes/keywords.
@@ -124,19 +128,10 @@ export async function evaluateBusinessTrace(
   // Rule 4: multi-owner building check (7+ PINs AND 2+ distinct mailing names)
   // Only run if address is non-empty.
   if (addressNormalized) {
-    const supabase = getSupabaseAdmin()
-    const { data } = await supabase
-      .from('properties')
-      .select('mailing_name')
-      .eq('address_normalized', addressNormalized)
-    const rows = (data ?? []) as { mailing_name: string | null }[]
-    if (rows.length >= 7) {
-      const distinctNames = new Set(
-        rows
-          .map((r) => (r.mailing_name ?? '').trim().toUpperCase())
-          .filter((n) => n.length > 0)
-      )
-      if (distinctNames.size >= 2) {
+    const properties = await resolveAddressToProperties(addressNormalized)
+    if (uniquePinCount(properties) >= 7) {
+      const distinctNames = countDistinctMailingNames(properties)
+      if (distinctNames >= 2) {
         return { recommended: true, reason: 'multi_owner_building' }
       }
     }
@@ -178,17 +173,8 @@ export function businessTraceReasonLabel(
  */
 export async function isMultiOwnerBuilding(addressNormalized: string): Promise<boolean> {
   if (!addressNormalized) return false
-  const supabase = getSupabaseAdmin()
-  const { data } = await supabase
-    .from('properties')
-    .select('mailing_name')
-    .eq('address_normalized', addressNormalized)
-  const rows = (data ?? []) as { mailing_name: string | null }[]
-  if (rows.length < 7) return false
-  const distinctNames = new Set(
-    rows
-      .map((r) => (r.mailing_name ?? '').trim().toUpperCase())
-      .filter((n) => n.length > 0)
-  )
-  return distinctNames.size >= 2
+  const properties = await resolveAddressToProperties(addressNormalized)
+  if (uniquePinCount(properties) < 7) return false
+  const distinctNames = countDistinctMailingNames(properties)
+  return distinctNames >= 2
 }
