@@ -10,7 +10,6 @@ import {
   collectPinsForUserRangeAddresses,
   normalizePin,
 } from '@/lib/supabase-search'
-import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { getClassDescription } from '@/lib/class-codes'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
@@ -152,26 +151,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
 
-  const displayCommunityAreaName =
-    getCommunityAreaName(property?.community_area ?? null) ??
-    (property?.community_area != null && String(property.community_area).trim() !== ''
-      ? String(property.community_area).trim()
-      : null)
-
-  const displayWard =
-    property?.ward != null && String(property.ward).trim() !== ''
-      ? String(property.ward).trim()
-      : null
-
   const cityStateDisplay = displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL'
-
-  const addressBarMeta = [
-    displayCommunityAreaName,
-    displayWard != null ? `Ward ${displayWard}` : null,
-    cityStateDisplay,
-  ]
-    .filter(Boolean)
-    .join(' · ')
 
   const addressBarHeadline =
     isExpandedFromQuery && addressRange
@@ -197,17 +177,16 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       <RecordSearch address={addressBarHeadline} slug={decodedSlug} />
       <div className="prop-page-shell">
         <div className="prop-main-content">
-          <div className="address-header">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="address-header-street">{addressBarHeadline}</div>
-              <div className="address-header-meta">{addressBarMeta || 'Chicago'}</div>
+          <div className="property-identity-row">
+            <div className="property-identity-left">
+              <h1 className="property-identity-address">{addressBarHeadline}</h1>
+              <div className="property-identity-citystate">{cityStateDisplay}</div>
             </div>
             <AddressBarButtons
               addressRange={addressRange}
               slug={decodedSlug}
               isExpanded={isExpandedFromQuery}
               isFullBuildingView={isExpandedFromQuery}
-              apiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY}
               saveData={stubPortfolioSaveData}
             />
           </div>

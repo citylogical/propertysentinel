@@ -1,12 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
-import { getRecentSearches } from '@/lib/recent-searches'
+import { addressToSlug } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
+import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { getRecentSearches } from '@/lib/recent-searches'
+import {
+  fetchPlaceDetailsForNavigation,
+  useAddressAutocomplete,
+  type AddressSuggestion,
+} from '@/lib/use-address-autocomplete'
 
 type NavItem = {
   label: string
@@ -20,15 +36,117 @@ type NavItem = {
 
 export default function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { isSignedIn, isLoaded } = useUser()
   const { signOut } = useClerk()
   const [isAdmin, setIsAdmin] = useState(false)
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
   const [recentSearches, setRecentSearches] = useState<{ address: string; slug: string }[]>([])
   const [maxRecent, setMaxRecent] = useState(4)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchValue, setSearchValue] = useState('')
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(0)
+  const { suggestions, clearSuggestions } = useAddressAutocomplete(searchValue)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLDivElement>(null)
   const recentRef = useRef<HTMLDivElement>(null)
   const footerRef = useRef<HTMLDivElement>(null)
+  const [railPinned, setRailPinned] = useState(false)
+
+  const expandRailForSearch = useCallback(() => {
+    setRailPinned(true)
+    globalThis.setTimeout(() => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }, 280)
+  }, [])
+
+  useEffect(() => {
+    function handleKeydown(e: globalThis.KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        expandRailForSearch()
+      }
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [expandRailForSearch])
+
+  function handleSidebarMouseLeave() {
+    if (document.activeElement !== searchInputRef.current) {
+      setRailPinned(false)
+    }
+  }
+
+  function handleNavSearchPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.target === searchInputRef.current) return
+    const w = sidebarRef.current?.offsetWidth ?? 200
+    if (w <= 52) {
+      e.preventDefault()
+      expandRailForSearch()
+    }
+  }
+
+  useEffect(() => {
+    setHighlightedSuggestion(0)
+  }, [suggestions])
+
+  async function navigateToSuggestion(suggestion: AddressSuggestion) {
+    const place = await fetchPlaceDetailsForNavigation(suggestion.place_id)
+    const resolved = place ? resolveStreetAndZipForNavigation(searchValue, place) : null
+    if (resolved?.street) {
+      const slug = addressToSlug(resolved.street, resolved.zip)
+      router.push(`/address/${encodeURIComponent(slug)}`)
+    } else {
+      const firstPart = suggestion.description.split(',')[0]?.trim() ?? ''
+      if (firstPart) {
+        router.push(`/address/${encodeURIComponent(addressToSlug(firstPart))}`)
+      }
+    }
+    setSearchValue('')
+    setSuggestionsOpen(false)
+    clearSuggestions()
+    searchInputRef.current?.blur()
+  }
+
+  function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlightedSuggestion((prev) => (prev + 1) % suggestions.length)
+      setSuggestionsOpen(true)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlightedSuggestion((prev) => (prev === 0 ? suggestions.length - 1 : prev - 1))
+      setSuggestionsOpen(true)
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (suggestionsOpen && suggestions.length > 0) {
+        void navigateToSuggestion(suggestions[highlightedSuggestion])
+        return
+      }
+      if (searchValue.trim()) {
+        const slug = addressToSlug(searchValue.trim())
+        router.push(`/address/${encodeURIComponent(slug)}`)
+        setSearchValue('')
+        setSuggestionsOpen(false)
+        clearSuggestions()
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      setSearchValue('')
+      setSuggestionsOpen(false)
+      clearSuggestions()
+      searchInputRef.current?.blur()
+    }
+  }
 
   useEffect(() => {
     setRecentSearches(getRecentSearches())
@@ -68,17 +186,6 @@ export default function AppSidebar() {
 
   const navItems = useMemo((): NavItem[] => {
     const items: NavItem[] = [
-      {
-        label: 'Property search',
-        href: '/search',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-        ),
-        active: pathname === '/search' || pathname.startsWith('/address/'),
-      },
       {
         label: 'Portfolio',
         href: '/portfolio',
@@ -171,10 +278,14 @@ export default function AppSidebar() {
     )
 
     return items
-  }, [isAdmin, pathname])
+  }, [isAdmin])
 
   return (
-    <div className="app-sidebar">
+    <div
+      ref={sidebarRef}
+      className={`app-sidebar${railPinned ? ' app-sidebar--pinned' : ''}`}
+      onMouseLeave={handleSidebarMouseLeave}
+    >
       <style>{`
         .sidebar-badge {
           font-family: var(--mono, 'DM Mono', monospace);
@@ -222,20 +333,79 @@ export default function AppSidebar() {
         </Link>
       </div>
 
+      <div className="app-sidebar-divider" aria-hidden />
+
       <nav className="app-sidebar-nav">
         <div ref={navRef}>
+          <div
+            className="app-sidebar-nav-search"
+            onPointerDown={handleNavSearchPointerDown}
+            role="search"
+          >
+            <div className="app-sidebar-nav-search-inner">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search any address…"
+                value={searchValue}
+                onChange={(e) => {
+                  setSearchValue(e.target.value)
+                  setHighlightedSuggestion(0)
+                  setSuggestionsOpen(true)
+                }}
+                onFocus={() => setSuggestionsOpen(true)}
+                onBlur={() => {
+                  setTimeout(() => setSuggestionsOpen(false), 150)
+                }}
+                onKeyDown={handleSearchKeyDown}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            {suggestionsOpen && suggestions.length > 0 ? (
+              <div className="app-sidebar-search-suggestions" role="listbox">
+                {suggestions.map((s, idx) => (
+                  <button
+                    type="button"
+                    key={s.place_id}
+                    role="option"
+                    aria-selected={idx === highlightedSuggestion}
+                    className={
+                      idx === highlightedSuggestion
+                        ? 'app-sidebar-suggestion app-sidebar-suggestion-active'
+                        : 'app-sidebar-suggestion'
+                    }
+                    onMouseDown={(ev) => {
+                      ev.preventDefault()
+                      void navigateToSuggestion(s)
+                    }}
+                    onMouseEnter={() => setHighlightedSuggestion(idx)}
+                  >
+                    {s.description}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           {navItems.filter((item) => !item.requiresAuth || isSignedIn).map((item) => {
             const active = item.active ?? isActive(item.href)
-            const href =
-              item.href === '/search'
-                ? recentSearches.length > 0
-                  ? `/address/${recentSearches[0].slug}`
-                  : '/search'
-                : item.href
             return (
               <Link
                 key={item.href}
-                href={href}
+                href={item.href}
                 className={`app-sidebar-link ${active ? 'app-sidebar-link-active' : ''}`}
               >
                 <span className="app-sidebar-link-icon">{item.icon}</span>

@@ -12,24 +12,6 @@ type PlaceResult = {
 declare global {
   interface Window {
     initSearchPageAutocomplete?: () => void
-    google?: {
-      maps: {
-        places: {
-          Autocomplete: new (
-            input: HTMLInputElement,
-            opts?: {
-              types?: string[]
-              componentRestrictions?: { country: string }
-              bounds?: { north: number; south: number; east: number; west: number }
-              strictBounds?: boolean
-            }
-          ) => {
-            getPlace: () => PlaceResult
-            addListener: (event: string, fn: () => void) => void
-          }
-        }
-      }
-    }
   }
 }
 
@@ -108,7 +90,7 @@ export default function SearchHero({ apiKey }: Props) {
     <div className="search-hero">
       {apiKey && (
         <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initSearchPageAutocomplete`}
+          src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initSearchPageAutocomplete`}
           strategy="afterInteractive"
         />
       )}

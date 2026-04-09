@@ -50,7 +50,8 @@ body {
   transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-body:has(.app-sidebar:hover) .app-layout-main {
+body:has(.app-sidebar:hover) .app-layout-main,
+body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
   margin-left: var(--app-rail-expanded-w);
 }
 
@@ -76,7 +77,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.app-sidebar:hover {
+.app-sidebar:hover,
+.app-sidebar.app-sidebar--pinned {
   width: var(--app-rail-expanded-w);
 }
 
@@ -84,20 +86,33 @@ body:has(.app-sidebar:hover) .app-layout-main {
   width: 100%;
   min-height: 64px;
   display: flex;
-  align-items: center;
-  padding: 14px 0 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  align-items: flex-start;
+  padding: 22px 14px 18px;
   flex-shrink: 0;
+  transition: padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo {
+  padding: 18px 0 14px;
+  justify-content: center;
 }
 
 .app-sidebar-logo-link {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex: 1 1 auto;
   min-width: 0;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
+  gap: 10px;
+  transition: gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo-link {
+  justify-content: center;
+  width: 100%;
+  gap: 0;
 }
 
 .app-sidebar-logo-link:focus-visible {
@@ -110,9 +125,28 @@ body:has(.app-sidebar:hover) .app-layout-main {
   width: var(--app-rail-w);
   min-width: var(--app-rail-w);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   flex-shrink: 0;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo-icon {
+  width: auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-sidebar-logo-icon svg {
+  display: block;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo-icon svg {
+  width: 18px;
+  height: auto;
+  max-height: 32px;
 }
 
 .brand-wordmark-line {
@@ -135,13 +169,136 @@ body:has(.app-sidebar:hover) .app-layout-main {
   gap: 1px;
 }
 
-.app-sidebar:hover .app-sidebar-logo-text {
+.app-sidebar:hover .app-sidebar-logo-text,
+.app-sidebar.app-sidebar--pinned .app-sidebar-logo-text {
   opacity: 1;
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo-text {
+  display: none;
+}
+
+.app-sidebar-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 14px 12px;
+  flex-shrink: 0;
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-divider {
+  display: none;
+}
+
+/* Address search — first row inside nav, aligns with nav icons */
+.app-sidebar-nav-search {
+  padding: 0 14px 8px 14px;
+  position: relative;
+  z-index: 5;
+  transition: padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar-nav-search-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 8px 10px 8px 6px;
+  transition:
+    padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.app-sidebar-nav-search-inner:focus-within {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.app-sidebar-nav-search-inner svg {
+  width: 18px;
+  height: 18px;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+}
+
+.app-sidebar-nav-search-inner input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-sidebar-nav-search-inner input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Collapsed rail: icon-only search, centered like other nav icons */
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-nav-search {
+  padding: 0 0 8px;
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-nav-search-inner {
+  background: transparent;
+  border: none;
+  padding: 8px 0;
+  justify-content: center;
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-nav-search-inner input {
+  display: none;
+}
+
+.app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-search-suggestions {
+  display: none !important;
+}
+
+.app-sidebar-search-suggestions {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 0;
+  right: 0;
+  background: #1a365d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.app-sidebar-suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 9px 12px;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  line-height: 1.4;
+}
+
+.app-sidebar-suggestion:last-child {
+  border-bottom: none;
+}
+
+.app-sidebar-suggestion:hover,
+.app-sidebar-suggestion-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 .app-sidebar-nav {
   flex: 1;
-  padding: 8px 0;
+  padding: 0 0 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -206,7 +363,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: opacity 0.18s ease 0.08s;
 }
 
-.app-sidebar:hover .app-sidebar-link-body {
+.app-sidebar:hover .app-sidebar-link-body,
+.app-sidebar.app-sidebar--pinned .app-sidebar-link-body {
   opacity: 1;
 }
 
@@ -269,7 +427,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: opacity 0.18s ease 0.08s;
 }
 
-.app-sidebar:hover .app-sidebar-footer-label {
+.app-sidebar:hover .app-sidebar-footer-label,
+.app-sidebar.app-sidebar--pinned .app-sidebar-footer-label {
   opacity: 1;
 }
 
@@ -290,7 +449,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: opacity 0.18s ease 0.08s;
 }
 
-.app-sidebar:hover .app-sidebar-recent-label {
+.app-sidebar:hover .app-sidebar-recent-label,
+.app-sidebar.app-sidebar--pinned .app-sidebar-recent-label {
   opacity: 1;
 }
 
@@ -307,7 +467,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   transition: opacity 0.18s ease 0.08s, color 0.12s;
 }
 
-.app-sidebar:hover .app-sidebar-recent-link {
+.app-sidebar:hover .app-sidebar-recent-link,
+.app-sidebar.app-sidebar--pinned .app-sidebar-recent-link {
   opacity: 1;
 }
 
@@ -383,14 +544,13 @@ body:has(.app-sidebar:hover) .app-layout-main {
   text-align: center;
 }
 
-.landing-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(rgba(0,51,102,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,51,102,0.05) 1px, transparent 1px);
+/* Homepage grid pattern — full-page wrapper (see .homepage-grid-bg on app/page.tsx) */
+.homepage-grid-bg {
+  background-color: var(--bg);
+  background-image: linear-gradient(rgba(0, 51, 102, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 51, 102, 0.05) 1px, transparent 1px);
   background-size: 56px 56px;
-  pointer-events: none;
+  min-height: 100vh;
 }
 
 .hero-inner {
@@ -940,20 +1100,8 @@ body:has(.app-sidebar:hover) .app-layout-main {
   scrollbar-gutter: stable;
 }
 
-.address-page .prop-main-content::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(0, 51, 102, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 51, 102, 0.04) 1px, transparent 1px);
-  background-size: 56px 56px;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Stack main column above grid (don't override sticky on .address-header) */
-.address-page .prop-main-content > *:not(.address-header) {
+/* Stack above decorative layers (reserved for future pseudo-elements) */
+.address-page .prop-main-content > *:not(.property-identity-row) {
   position: relative;
   z-index: 1;
 }
@@ -969,6 +1117,57 @@ body:has(.app-sidebar:hover) .app-layout-main {
   box-sizing: border-box;
 }
 
+/* Property identity row — aligns with leads page title treatment */
+.address-page .property-identity-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 32px 14px 32px;
+  border-bottom: 1px solid #e5e1d6;
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+}
+
+.address-page .property-identity-row + .prop-page {
+  padding-top: 18px;
+}
+
+.address-page .property-identity-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.address-page .property-identity-address {
+  font-family: "Merriweather", Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #162d47;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.address-page .property-identity-citystate {
+  font-family: var(--mono, "DM Mono", ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.address-page .property-identity-right.address-bar-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Cream banner header — portfolio, profile, explore, blog (not property identity row) */
 .address-page .address-header {
   background: #e2ded5;
   padding: 14px 24px 14px 32px;
@@ -1000,44 +1199,15 @@ body:has(.app-sidebar:hover) .app-layout-main {
   margin-top: 3px;
 }
 
-.address-page .address-header-search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
+.address-page .property-identity-row .address-header-icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
-.address-page .address-header-search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  color: var(--text-dim);
-  pointer-events: none;
-}
-
-.address-page .address-header-search-input {
-  font-family: var(--sans);
-  font-size: 13px;
-  color: var(--text);
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 7px 12px 7px 32px;
-  width: 320px;
-  outline: none;
-  transition: border-color 0.15s, width 0.2s;
-  box-sizing: border-box;
-}
-
-.address-page .address-header-search-input::placeholder {
-  color: var(--text-dim);
-}
-
-.address-page .address-header-search-input:focus {
-  border-color: var(--navy);
-  width: 240px;
+.address-page .property-identity-row .address-header-icon-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .address-page .address-header-icon-btn {
@@ -1080,13 +1250,13 @@ body:has(.app-sidebar:hover) .app-layout-main {
 }
 
 .address-page .address-header-icon-btn-alert {
-  background: var(--green);
-  border-color: var(--green);
+  background: #166534;
+  border-color: #166534;
 }
 
 .address-page .address-header-icon-btn-alert:hover {
-  background: #235440;
-  border-color: #235440;
+  background: #14532d;
+  border-color: #14532d;
 }
 
 
@@ -1468,9 +1638,15 @@ body:has(.app-sidebar:hover) .app-layout-main {
 @media (max-width: 900px) {
   .address-page .alert-btn { align-self: stretch; justify-content: center; }
   .address-page .prop-page-shell { flex-direction: column; }
-  .address-page .address-header-search-wrap { display: none !important; }
-  .address-page .address-header { padding: 12px 16px; margin-left: 0; }
+  .address-page .property-identity-row {
+    flex-wrap: wrap;
+    padding: 16px 16px 14px;
+    margin-bottom: 0;
+  }
   .address-page .prop-page { grid-template-columns: 1fr; padding: 16px 12px 48px; gap: 14px; }
+  .address-page .property-identity-row + .prop-page {
+    padding-top: 18px;
+  }
   .address-page .rail { order: 2; }
   .address-page .profile { order: 1; }
   .address-page .feed { order: 3; }
@@ -1498,7 +1674,7 @@ body:has(.app-sidebar:hover) .app-layout-main {
     width: 100% !important;
   }
 
-  .address-page .address-header {
+  .address-page .property-identity-row {
     position: static !important;
     top: auto !important;
     z-index: 1;

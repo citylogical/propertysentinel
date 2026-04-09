@@ -3,7 +3,7 @@ import LiveTimestamp from './components/LiveTimestamp'
 
 export default function Home() {
   return (
-    <div className="landing-page homepage home-container homepage-wrapper">
+    <div className="landing-page homepage home-container homepage-wrapper homepage-grid-bg">
       <section className="landing-hero">
         <div className="hero-inner">
           <h1 className="hero-headline">

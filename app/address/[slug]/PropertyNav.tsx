@@ -94,7 +94,7 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
       <nav className="prop-nav">
         {apiKey && (
           <Script
-            src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initNavAutocomplete`}
+            src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initNavAutocomplete`}
             strategy="afterInteractive"
           />
         )}
