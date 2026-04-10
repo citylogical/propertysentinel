@@ -18,11 +18,8 @@ import { addressToSlug } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
 import { getRecentSearches } from '@/lib/recent-searches'
-import {
-  fetchPlaceDetailsForNavigation,
-  useAddressAutocomplete,
-  type AddressSuggestion,
-} from '@/lib/use-address-autocomplete'
+import { fetchPlaceDetailsForNavigation } from '@/lib/google-maps-loader'
+import { useAddressAutocomplete, type AddressSuggestion } from '@/lib/use-address-autocomplete'
 
 type NavItem = {
   label: string
@@ -88,12 +85,11 @@ export default function AppSidebar() {
     }
   }
 
-  useEffect(() => {
-    setHighlightedSuggestion(0)
-  }, [suggestions])
+  const safeHighlightedSuggestion =
+    suggestions.length === 0 ? 0 : Math.min(highlightedSuggestion, suggestions.length - 1)
 
   async function navigateToSuggestion(suggestion: AddressSuggestion) {
-    const place = await fetchPlaceDetailsForNavigation(suggestion.place_id)
+    const place = await fetchPlaceDetailsForNavigation(suggestion.placeId)
     const resolved = place ? resolveStreetAndZipForNavigation(searchValue, place) : null
     if (resolved?.street) {
       const slug = addressToSlug(resolved.street, resolved.zip)
@@ -128,7 +124,7 @@ export default function AppSidebar() {
     if (e.key === 'Enter') {
       e.preventDefault()
       if (suggestionsOpen && suggestions.length > 0) {
-        void navigateToSuggestion(suggestions[highlightedSuggestion])
+        void navigateToSuggestion(suggestions[safeHighlightedSuggestion])
         return
       }
       if (searchValue.trim()) {
@@ -221,14 +217,27 @@ export default function AppSidebar() {
       badge: 'beta',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-          <path d="M9 18h6" />
-          <path d="M10 22h4" />
+          <path d="M16 10h2" />
+          <path d="M16 14h2" />
+          <path d="M6.17 15a3 3 0 0 1 5.66 0" />
+          <circle cx="9" cy="11" r="2" />
+          <rect x="2" y="5" width="20" height="14" rx="2" />
         </svg>
       ),
     })
 
     items.push(
+      {
+        label: 'About',
+        href: '/about',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+            <path d="M9 18h6" />
+            <path d="M10 22h4" />
+          </svg>
+        ),
+      },
       {
         label: 'Blog',
         href: '/blog',
@@ -238,19 +247,6 @@ export default function AppSidebar() {
             <path d="M14 2v6h6" />
             <path d="M16 13H8" />
             <path d="M16 17H8" />
-          </svg>
-        ),
-      },
-      {
-        label: 'About',
-        href: '/about',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M16 10h2" />
-            <path d="M16 14h2" />
-            <path d="M6.17 15a3 3 0 0 1 5.66 0" />
-            <circle cx="9" cy="11" r="2" />
-            <rect x="2" y="5" width="20" height="14" rx="2" />
           </svg>
         ),
       },
@@ -379,11 +375,11 @@ export default function AppSidebar() {
                 {suggestions.map((s, idx) => (
                   <button
                     type="button"
-                    key={s.place_id}
+                    key={s.placeId}
                     role="option"
-                    aria-selected={idx === highlightedSuggestion}
+                    aria-selected={idx === safeHighlightedSuggestion}
                     className={
-                      idx === highlightedSuggestion
+                      idx === safeHighlightedSuggestion
                         ? 'app-sidebar-suggestion app-sidebar-suggestion-active'
                         : 'app-sidebar-suggestion'
                     }

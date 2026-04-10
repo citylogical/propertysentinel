@@ -1,70 +1,5 @@
 /* ── About page ────────────────────────────────────────────────────── */
 
-/* Header override — centered with tabs underneath */
-.about-header {
-  justify-content: center !important;
-  text-align: center;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 24px 0 32px !important;
-  margin-left: -8px;
-}
-
-.about-header-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-.about-header .address-header-street {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.about-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  margin-top: 0;
-}
-
-.about-tab {
-  font-family: var(--sans, "Inter", system-ui, sans-serif);
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-dim, #8a94a0);
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0 0 8px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-  
-  .about-tab {
-    font-family: var(--sans, "Inter", system-ui, sans-serif);
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--text-dim, #8a94a0);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 0 0 10px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  
-  .about-tab:hover {
-    color: var(--text, #1a1a1a);
-  }
-  
-  .about-tab.active {
-    font-weight: 500;
-    color: var(--navy, #0f2744);
-    border-bottom-color: var(--navy, #0f2744);
-  }
-  
   /* Shared panel container */
   .about-panel {
     position: relative;
@@ -235,13 +170,15 @@
   /* ── Pricing tab ─────────────────────────────────────────────────── */
   
   .about-pricing-panel {
-    max-width: 520px;
+    max-width: 1100px;
+    margin-left: auto;
+    margin-right: auto;
   }
   
   .pc-toggle {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
     margin-bottom: 24px;
   }
@@ -295,19 +232,6 @@
     background: rgba(45, 106, 79, 0.1);
     padding: 2px 8px;
     border-radius: 10px;
-  }
-  
-  .pc-free-text {
-    text-align: center;
-    margin-bottom: 24px;
-    font-size: 13px;
-    color: var(--text-mid, #4a5568);
-    line-height: 1.7;
-  }
-  
-  .pc-free-text strong {
-    font-weight: 500;
-    color: var(--text, #1a1a1a);
   }
   
   .pc-cards {
@@ -421,7 +345,7 @@
   
   .pc-slider-input {
     width: 100%;
-    margin: 0 0 12px;
+    margin: 0;
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
@@ -470,16 +394,6 @@
     background: var(--navy, #0f2744);
     height: 4px;
     border-radius: 2px;
-  }
-  
-  .pc-slider-ticks {
-    display: flex;
-    justify-content: space-between;
-    font-family: var(--mono, "DM Mono", monospace);
-    font-size: 9px;
-    color: var(--text-dim, #8a94a0);
-    margin-bottom: 16px;
-    padding: 0 2px;
   }
   
   /* Breakdown */
@@ -549,18 +463,12 @@
     margin-top: 2px;
   }
   
-  .pc-breakdown-saved {
+  .about-pricing-panel .pc-breakdown-saved {
     margin-top: 10px;
-    text-align: right;
+    text-align: left;
     font-size: 12px;
     color: #2d6a4f;
     font-weight: 500;
-  }
-  
-  .pc-footer-text {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-dim, #8a94a0);
   }
   
   .pc-footer-link {
@@ -748,6 +656,8 @@
   
   .about-contact-panel {
     max-width: 680px;
+    margin-left: 0;
+    margin-right: auto;
   }
   
   .about-contact-row {
@@ -827,10 +737,6 @@
       z-index: 200;
     }
   
-    .about-tabs {
-      gap: 20px;
-    }
-  
     .pc-cards {
       grid-template-columns: 1fr;
     }
@@ -848,8 +754,8 @@
   
     .about-contact-row {
       flex-direction: column;
-      align-items: center;
-      text-align: center;
+      align-items: flex-start;
+      text-align: left;
     }
   
     .about-contact-photo {

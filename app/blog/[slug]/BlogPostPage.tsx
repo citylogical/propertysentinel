@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -23,51 +23,74 @@ type Props = {
 }
 
 export default function BlogPostPage({ post, otherPosts }: Props) {
-  const router = useRouter()
-
   return (
-    <div className="blog-content">
-      <div className="address-header about-header">
-        <div className="about-header-inner">
-          <div className="address-header-street">Blog</div>
-          <div className="about-tabs">
-            <button
-              type="button"
-              className="about-tab active"
-            >
-              Latest
-            </button>
-            <button
-              type="button"
-              className="about-tab"
-              onClick={() => router.push('/blog')}
-            >
-              List
-            </button>
-          </div>
+    <>
+      <div className="property-identity-row">
+        <div className="property-identity-left">
+          <p className="blog-slug-back">
+            <Link href="/blog">← All posts</Link>
+          </p>
+          <h1 className="property-identity-address">{post.title}</h1>
+          <div className="property-identity-citystate">{post.date_label}</div>
         </div>
       </div>
 
-      <div className="about-panel blog-latest-panel">
-        <button
-          type="button"
-          className="about-post-back"
-          onClick={() => router.push('/blog')}
-        >
-          ← All posts
-        </button>
-        <div className="blog-latest-layout">
-          <article>
-            <div className="about-post-date">{post.date_label}</div>
-            <h1 className="about-post-h1">{post.title}</h1>
-            <div className="about-post-body blog-post-body">
+      <div className="blog-layout">
+        <div className="blog-stream">
+          <article className="blog-post blog-post-latest">
+            <div className="blog-post-content">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  h2: ({ children }) => <h2 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 18, fontWeight: 700, color: '#0f2744', margin: '24px 0 12px' }}>{children}</h2>,
-                  h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '20px 0 8px' }}>{children}</h3>,
-                  h4: ({ children }) => <h4 style={{ fontSize: 13, fontWeight: 600, color: '#4a5568', margin: '16px 0 6px' }}>{children}</h4>,
-                  h5: ({ children }) => <h5 style={{ fontSize: 12, fontWeight: 600, color: '#4a5568', margin: '14px 0 4px' }}>{children}</h5>,
+                  h2: ({ children }) => (
+                    <h2
+                      style={{
+                        fontFamily: '"Merriweather", Georgia, serif',
+                        fontSize: 18,
+                        fontWeight: 700,
+                        color: '#0f2744',
+                        margin: '24px 0 12px',
+                      }}
+                    >
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 600,
+                        color: '#0f2744',
+                        margin: '20px 0 8px',
+                      }}
+                    >
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: '#4a5568',
+                        margin: '16px 0 6px',
+                      }}
+                    >
+                      {children}
+                    </h4>
+                  ),
+                  h5: ({ children }) => (
+                    <h5
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: '#4a5568',
+                        margin: '14px 0 4px',
+                      }}
+                    >
+                      {children}
+                    </h5>
+                  ),
                   a: ({ href, children }) => (
                     <a
                       href={href}
@@ -127,27 +150,30 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
               </ReactMarkdown>
             </div>
           </article>
-          <aside className="about-post-sidebar">
-            <div className="about-post-sidebar-label">Recent posts</div>
-            {otherPosts.length === 0 ? (
-              <div style={{ fontSize: 12, color: '#8a94a0', padding: '8px 0' }}>
-                No other posts yet.
-              </div>
-            ) : (
-              otherPosts.map((p) => (
-                <div
-                  key={p.slug}
-                  className="about-post-sidebar-item"
-                  onClick={() => router.push(`/blog/${p.slug}`)}
-                >
-                  <div className="about-post-sidebar-title">{p.title}</div>
-                  <div className="about-post-sidebar-date">{p.date_label}</div>
-                </div>
-              ))
-            )}
-          </aside>
         </div>
+
+        <aside className="blog-directory" aria-label="Other posts">
+          <div className="blog-directory-sticky">
+            <div className="blog-directory-label">Other posts</div>
+            <ul className="blog-directory-list">
+              {otherPosts.length === 0 ? (
+                <li className="blog-directory-link-date" style={{ padding: '4px 0' }}>
+                  No other posts yet.
+                </li>
+              ) : (
+                otherPosts.map((p) => (
+                  <li key={p.slug}>
+                    <Link href={`/blog/${p.slug}`} className="blog-directory-link">
+                      <span className="blog-directory-link-title">{p.title}</span>
+                      <span className="blog-directory-link-date">{p.date_label}</span>
+                    </Link>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        </aside>
       </div>
-    </div>
+    </>
   )
 }

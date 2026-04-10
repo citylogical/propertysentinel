@@ -2,8 +2,6 @@ import { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import BlogPostPage from './BlogPostPage'
-import '../../about/about.css'
-import '../blog.css'
 
 function getSupabase() {
   return createClient(

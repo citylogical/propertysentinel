@@ -1,63 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import Script from 'next/script'
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, type FormEvent, type KeyboardEvent } from 'react'
 import { addressToSlug } from '@/lib/address-slug'
-import { CHICAGO_METRO_BOUNDS, resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { fetchPlaceDetailsForNavigation, type AddressSuggestion } from '@/lib/google-maps-loader'
+import { useAddressAutocomplete } from '@/lib/use-address-autocomplete'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import NavMenuDropdown from '@/app/components/NavMenuDropdown'
 import HamburgerIcon from '@/app/components/HamburgerIcon'
-
-const NAV_SEARCH_INPUT_ID = 'prop-nav-search-input'
-
-type PlaceResult = {
-  address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
-  formatted_address?: string
-}
-
-declare global {
-  interface Window {
-    initNavAutocomplete?: () => void
-  }
-}
-
-function initNavAutocomplete(): void {
-  const input = document.getElementById(NAV_SEARCH_INPUT_ID) as HTMLInputElement | null
-  if (!input || !window.google?.maps?.places?.Autocomplete) return
-
-  let lastTyped = input.value
-  input.addEventListener('input', () => {
-    lastTyped = input.value
-  })
-
-  const autocomplete = new window.google.maps.places.Autocomplete(input, {
-    types: ['address'],
-    componentRestrictions: { country: 'us' },
-    bounds: CHICAGO_METRO_BOUNDS,
-    strictBounds: false,
-  })
-
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace() as PlaceResult
-    if (!place.address_components && !place.formatted_address) return
-    const resolved = resolveStreetAndZipForNavigation(lastTyped, place)
-    if (!resolved?.street) return
-    const { street, zip } = resolved
-    const zipInput = document.getElementById('prop-nav-zip') as HTMLInputElement | null
-    if (zipInput) zipInput.value = zip ?? ''
-    const slug = addressToSlug(street, zip)
-    window.location.href = `/address/${slug}`
-  })
-}
 
 type PropertyNavProps = { apiKey?: string }
 
 export default function PropertyNav({ apiKey }: PropertyNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [addressValue, setAddressValue] = useState('')
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
-  const registeredRef = useRef(false)
+  const zipInputRef = useRef<HTMLInputElement>(null)
+  const { suggestions, clearSuggestions } = useAddressAutocomplete(apiKey ? addressValue : '')
+  const safeHighlighted =
+    suggestions.length === 0 ? 0 : Math.min(highlighted, suggestions.length - 1)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -70,16 +35,53 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
     return () => document.removeEventListener('click', close)
   }, [menuOpen])
 
-  useEffect(() => {
-    if (!apiKey || registeredRef.current) return
-    registeredRef.current = true
-    window.initNavAutocomplete = initNavAutocomplete
-    return () => {
-      delete window.initNavAutocomplete
+  async function selectSuggestion(s: AddressSuggestion) {
+    const place = await fetchPlaceDetailsForNavigation(s.placeId)
+    const resolved = place ? resolveStreetAndZipForNavigation(addressValue, place) : null
+    if (resolved?.street) {
+      if (zipInputRef.current) zipInputRef.current.value = resolved.zip ?? ''
+      const slug = addressToSlug(resolved.street, resolved.zip)
+      window.location.href = `/address/${slug}`
+    } else {
+      const firstPart = s.description.split(',')[0]?.trim() ?? ''
+      if (firstPart) {
+        window.location.href = `/address/${encodeURIComponent(addressToSlug(firstPart))}`
+      }
     }
-  }, [apiKey])
+    setAddressValue('')
+    setSuggestionsOpen(false)
+    clearSuggestions()
+  }
 
-  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  function handleNavSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h + 1) % suggestions.length)
+      setSuggestionsOpen(true)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h === 0 ? suggestions.length - 1 : h - 1))
+      setSuggestionsOpen(true)
+      return
+    }
+    if (e.key === 'Enter') {
+      if (suggestionsOpen && suggestions.length > 0) {
+        e.preventDefault()
+        void selectSuggestion(suggestions[safeHighlighted])
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      setSuggestionsOpen(false)
+      clearSuggestions()
+    }
+  }
+
+  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
     const address = (form.querySelector('input[name="address"]') as HTMLInputElement)?.value?.trim()
@@ -92,18 +94,11 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
   return (
     <>
       <nav className="prop-nav">
-        {apiKey && (
-          <Script
-            src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initNavAutocomplete`}
-            strategy="afterInteractive"
-          />
-        )}
         <Link className="nav-brand" href="/">
           <span className="brand-wordmark-line">Property</span>
           <span className="brand-wordmark-line">Sentinel</span>
         </Link>
 
-        {/* Mobile: hamburger only */}
         <button
           type="button"
           className="nav-hamburger md:hidden flex items-center justify-center w-10 h-10 text-white border-0 bg-transparent cursor-pointer p-0"
@@ -114,7 +109,6 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
           <HamburgerIcon />
         </button>
 
-        {/* Desktop: search + hamburger (dropdown replaces About + Profile) */}
         <div className="nav-right hidden md:flex">
           <div className="nav-search-wrap">
             <svg
@@ -130,22 +124,56 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <form action="/search" method="GET" onSubmit={handleSearchSubmit}>
-              <input type="hidden" name="zip" value="" id="prop-nav-zip" />
+              <input type="hidden" name="zip" defaultValue="" id="prop-nav-zip" ref={zipInputRef} />
               <input
-                id={NAV_SEARCH_INPUT_ID}
                 className="nav-search-input"
                 type="text"
                 name="address"
                 placeholder="New Chicago search…"
                 autoComplete="off"
+                spellCheck={false}
+                value={addressValue}
+                onChange={(e) => {
+                  setAddressValue(e.target.value)
+                  setHighlighted(0)
+                  setSuggestionsOpen(true)
+                }}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => {
+                  setSearchFocused(false)
+                  setTimeout(() => setSuggestionsOpen(false), 150)
+                }}
+                onKeyDown={handleNavSearchKeyDown}
                 style={{
                   width: searchFocused ? 360 : 320,
                   transition: 'background 0.15s, border-color 0.15s, width 0.2s',
                 }}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
               />
             </form>
+            {apiKey && suggestionsOpen && suggestions.length > 0 ? (
+              <div className="prop-nav-address-suggestions" role="listbox">
+                {suggestions.map((s, idx) => (
+                  <button
+                    type="button"
+                    key={s.placeId}
+                    role="option"
+                    aria-selected={idx === safeHighlighted}
+                    className={
+                      idx === safeHighlighted
+                        ? 'prop-nav-address-suggestion prop-nav-address-suggestion-active'
+                        : 'prop-nav-address-suggestion'
+                    }
+                    onMouseDown={(ev) => {
+                      ev.preventDefault()
+                      void selectSuggestion(s)
+                    }}
+                    onMouseEnter={() => setHighlighted(idx)}
+                  >
+                    {s.description}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div
             ref={menuRef}
@@ -170,19 +198,13 @@ export default function PropertyNav({ apiKey }: PropertyNavProps) {
               <NavMenuDropdown
                 onClose={() => setMenuOpen(false)}
                 apiKey={apiKey}
-                skipMapsScript
               />
             )}
           </div>
         </div>
       </nav>
 
-      <MobileNavDrawer
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        apiKey={apiKey}
-        skipMapsScript
-      />
+      <MobileNavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} apiKey={apiKey} />
     </>
   )
 }

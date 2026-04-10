@@ -8,11 +8,9 @@ import NavClerkAuth from '@/app/components/NavClerkAuth'
 type NavMenuDropdownProps = {
   onClose: () => void
   apiKey: string | undefined
-  /** When true, HomeSearch will not load Maps script (parent already loaded it). */
-  skipMapsScript?: boolean
 }
 
-export default function NavMenuDropdown({ onClose, apiKey, skipMapsScript }: NavMenuDropdownProps) {
+export default function NavMenuDropdown({ onClose, apiKey }: NavMenuDropdownProps) {
   const pathname = usePathname()
   const isHomepage = pathname === '/'
   const isPropertyPage = pathname.startsWith('/address/')
@@ -30,7 +28,7 @@ export default function NavMenuDropdown({ onClose, apiKey, skipMapsScript }: Nav
       {showSearch && (
         <div className="min-h-[48px] flex items-center pl-5 pr-5 border-b border-[#f0f0f0]">
           <div className="w-full min-w-0">
-            <HomeSearch apiKey={apiKey} hideSubmitButton skipMapsScript={skipMapsScript} />
+            <HomeSearch apiKey={apiKey} hideSubmitButton />
           </div>
         </div>
       )}

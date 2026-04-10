@@ -2,7 +2,10 @@ import type { Metadata } from 'next'
 import React, { Suspense, cache } from 'react'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
+import { getCommunityAreaName } from '@/lib/chicago-community-areas'
+import { formatNeighborhoodWithCommunityArea, lookupNeighborhood } from '@/lib/neighborhood-lookup'
 import {
+  fetchParcelUniverse,
   fetchProperty,
   fetchSiblingPins,
   findApprovedUserRange,
@@ -151,7 +154,65 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       ? String(property.zip).trim()
       : slugToZip(decodedSlug)
 
-  const cityStateDisplay = displayZip ? `CHICAGO, IL ${displayZip}` : 'CHICAGO, IL'
+  const pinForParcelMeta =
+    property?.pin != null && String(property.pin).trim() !== ''
+      ? String(property.pin).trim()
+      : nearestParcel?.pin != null && String(nearestParcel.pin).trim() !== ''
+        ? String(nearestParcel.pin).trim()
+        : null
+
+  const { parcel: parcelMeta } = pinForParcelMeta ? await fetchParcelUniverse(pinForParcelMeta) : { parcel: null }
+
+  const municipalityName = parcelMeta?.municipality_name?.trim() ?? null
+
+  const caNameFromLookup = getCommunityAreaName(property?.community_area ?? nearestParcel?.community_area)
+  const caFromParcel = parcelMeta?.community_area_name?.trim() ?? null
+  /** Title-case community area for polygon label pairing; header uses uppercase via formatter. */
+  const communityAreaLabel = caFromParcel ?? caNameFromLookup ?? null
+
+  const wardRaw = parcelMeta?.ward ?? property?.ward ?? nearestParcel?.ward ?? null
+  const wardPart =
+    wardRaw != null && String(wardRaw).trim() !== ''
+      ? (() => {
+          const n = parseInt(String(wardRaw), 10)
+          return !Number.isNaN(n) ? `Ward ${n}` : `Ward ${String(wardRaw).trim()}`
+        })()
+      : null
+
+  /** Suburban Cook is determined by `parcel_universe.municipality_name`; missing parcel defaults to Chicago-style line. */
+  const isChicago =
+    municipalityName != null
+      ? ['CHICAGO', 'CITY OF CHICAGO'].includes(municipalityName.toUpperCase())
+      : true
+
+  const cityStateDisplay = isChicago
+    ? displayZip
+      ? `CHICAGO, IL ${displayZip}`
+      : 'CHICAGO, IL'
+    : municipalityName
+      ? displayZip
+        ? `${municipalityName.toUpperCase()}, IL ${displayZip}`
+        : `${municipalityName.toUpperCase()}, IL`
+      : displayZip
+        ? `IL ${displayZip}`
+        : 'IL'
+
+  const neighborhoodLookup =
+    isChicago &&
+    parcelMeta?.lat != null &&
+    parcelMeta?.lng != null &&
+    !Number.isNaN(Number(parcelMeta.lat)) &&
+    !Number.isNaN(Number(parcelMeta.lng))
+      ? await lookupNeighborhood(Number(parcelMeta.lat), Number(parcelMeta.lng))
+      : null
+
+  const neighborhoodDisplay = isChicago
+    ? formatNeighborhoodWithCommunityArea(neighborhoodLookup, communityAreaLabel)
+    : null
+
+  const addressBarMeta = [neighborhoodDisplay, isChicago ? wardPart : null, cityStateDisplay]
+    .filter(Boolean)
+    .join(' · ')
 
   const addressBarHeadline =
     isExpandedFromQuery && addressRange
@@ -180,7 +241,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
           <div className="property-identity-row">
             <div className="property-identity-left">
               <h1 className="property-identity-address">{addressBarHeadline}</h1>
-              <div className="property-identity-citystate">{cityStateDisplay}</div>
+              <div className="property-identity-citystate">{addressBarMeta}</div>
             </div>
             <AddressBarButtons
               addressRange={addressRange}

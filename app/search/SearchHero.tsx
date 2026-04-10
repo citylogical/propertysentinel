@@ -1,104 +1,76 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import Script from 'next/script'
-import { CHICAGO_METRO_BOUNDS, resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { fetchPlaceDetailsForNavigation, type AddressSuggestion } from '@/lib/google-maps-loader'
+import { useAddressAutocomplete } from '@/lib/use-address-autocomplete'
 
-type PlaceResult = {
-  address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
-  formatted_address?: string
-}
-
-declare global {
-  interface Window {
-    initSearchPageAutocomplete?: () => void
-  }
-}
-
-const INPUT_ID = 'search-page-address'
 const FORM_ID = 'search-page-form'
-
-let searchPageAutocompleteInited = false
-
-function initSearchPageAutocomplete(): void {
-  const input = document.getElementById(INPUT_ID) as HTMLInputElement | null
-  const form = document.getElementById(FORM_ID) as HTMLFormElement | null
-  const zipInput = document.getElementById('search-page-zip') as HTMLInputElement | null
-  if (!input || !form || !window.google?.maps?.places?.Autocomplete) return
-  if (searchPageAutocompleteInited) return
-  searchPageAutocompleteInited = true
-
-  let lastTyped = input.value
-  input.addEventListener('input', () => {
-    lastTyped = input.value
-  })
-
-  const autocomplete = new window.google.maps.places.Autocomplete(input, {
-    types: ['address'],
-    componentRestrictions: { country: 'us' },
-    bounds: CHICAGO_METRO_BOUNDS,
-    strictBounds: false,
-  })
-
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace() as PlaceResult
-    if (!place.address_components && !place.formatted_address) return
-    const resolved = resolveStreetAndZipForNavigation(lastTyped, place)
-    if (!resolved?.street) return
-    input.value = resolved.street
-    if (zipInput) zipInput.value = resolved.zip ?? ''
-    form.submit()
-  })
-}
 
 type Props = {
   apiKey: string | undefined
 }
 
 export default function SearchHero({ apiKey }: Props) {
-  const registeredRef = useRef(false)
-  const initedRef = useRef(false)
+  const [address, setAddress] = useState('')
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(0)
+  const zipInputRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const { suggestions, clearSuggestions } = useAddressAutocomplete(apiKey ? address : '')
+  const safeHighlighted =
+    suggestions.length === 0 ? 0 : Math.min(highlighted, suggestions.length - 1)
 
-  useEffect(() => {
-    if (!apiKey || registeredRef.current) return
-    registeredRef.current = true
-    window.initSearchPageAutocomplete = initSearchPageAutocomplete
-    return () => {
-      delete window.initSearchPageAutocomplete
+  async function selectSuggestion(s: AddressSuggestion) {
+    const place = await fetchPlaceDetailsForNavigation(s.placeId)
+    const resolved = place ? resolveStreetAndZipForNavigation(address, place) : null
+    if (resolved?.street) {
+      setAddress(resolved.street)
+      if (zipInputRef.current) zipInputRef.current.value = resolved.zip ?? ''
+    } else {
+      const first = s.description.split(',')[0]?.trim() ?? ''
+      setAddress(first || s.description)
     }
-  }, [apiKey])
+    clearSuggestions()
+    setSuggestionsOpen(false)
+    formRef.current?.requestSubmit()
+  }
 
-  useEffect(() => {
-    if (!apiKey) return
-    const run = () => {
-      if (initedRef.current) return
-      const input = document.getElementById(INPUT_ID)
-      if (!input || !window.google?.maps?.places?.Autocomplete) return
-      initedRef.current = true
-      initSearchPageAutocomplete()
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h + 1) % suggestions.length)
+      setSuggestionsOpen(true)
+      return
     }
-    run()
-    const t = setTimeout(run, 500)
-    return () => {
-      clearTimeout(t)
-      searchPageAutocompleteInited = false
-      initedRef.current = false
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h === 0 ? suggestions.length - 1 : h - 1))
+      setSuggestionsOpen(true)
+      return
     }
-  }, [apiKey])
+    if (e.key === 'Enter') {
+      if (suggestionsOpen && suggestions.length > 0) {
+        e.preventDefault()
+        void selectSuggestion(suggestions[safeHighlighted])
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      setSuggestionsOpen(false)
+      clearSuggestions()
+    }
+  }
 
   return (
     <div className="search-hero">
-      {apiKey && (
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initSearchPageAutocomplete`}
-          strategy="afterInteractive"
-        />
-      )}
       <div className="search-hero-grid" aria-hidden />
       <div className="search-hero-inner">
         <div className="search-hero-bar-wrap">
-          <form id={FORM_ID} action="/search" method="GET" className="search-bar">
-            <input type="hidden" id="search-page-zip" name="zip" value="" />
+          <form ref={formRef} id={FORM_ID} action="/search" method="GET" className="search-bar">
+            <input ref={zipInputRef} type="hidden" id="search-page-zip" name="zip" defaultValue="" />
             <div className="search-icon" aria-hidden>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="17" height="17">
                 <circle cx="11" cy="11" r="8" />
@@ -106,17 +78,49 @@ export default function SearchHero({ apiKey }: Props) {
               </svg>
             </div>
             <input
-              id={INPUT_ID}
+              id="search-page-address"
               type="text"
               name="address"
               required
               placeholder="Enter a Chicago address..."
               autoComplete="off"
+              spellCheck={false}
+              value={address}
+              onChange={(e) => {
+                setAddress(e.target.value)
+                setHighlighted(0)
+                setSuggestionsOpen(true)
+              }}
+              onFocus={() => setSuggestionsOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
+              onKeyDown={handleSearchKeyDown}
             />
             <button type="submit" className="search-btn">
               Search
             </button>
           </form>
+          {apiKey && suggestionsOpen && suggestions.length > 0 ? (
+            <div className="ps-address-suggestions" role="listbox">
+              {suggestions.map((s, idx) => (
+                <button
+                  type="button"
+                  key={s.placeId}
+                  role="option"
+                  aria-selected={idx === safeHighlighted}
+                  className={
+                    idx === safeHighlighted ? 'ps-address-suggestion ps-address-suggestion-active' : 'ps-address-suggestion'
+                  }
+                  onMouseDown={(ev) => {
+                    ev.preventDefault()
+                    void selectSuggestion(s)
+                  }}
+                  onMouseEnter={() => setHighlighted(idx)}
+                >
+                  {s.description}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

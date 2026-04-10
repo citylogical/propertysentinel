@@ -1,129 +1,133 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import Script from 'next/script'
-import { CHICAGO_METRO_BOUNDS, resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
+import { fetchPlaceDetailsForNavigation, type AddressSuggestion } from '@/lib/google-maps-loader'
+import { useAddressAutocomplete } from '@/lib/use-address-autocomplete'
 
-type PlaceResult = {
-  address_components?: Array<{ long_name: string; short_name: string; types: string[] }>
-  formatted_address?: string
-}
-
-declare global {
-  interface Window {
-    initAutocomplete?: () => void
-  }
-}
-
-const INPUT_ID = 'home-search-address'
 const FORM_ID = 'home-search-form'
-
-let homeSearchAutocompleteInited = false
-function initAutocomplete(): void {
-  const input = document.getElementById(INPUT_ID) as HTMLInputElement | null
-  const form = document.getElementById(FORM_ID) as HTMLFormElement | null
-  const zipInput = document.getElementById('home-search-zip') as HTMLInputElement | null
-  if (!input || !form || !window.google?.maps?.places?.Autocomplete) return
-  if (homeSearchAutocompleteInited) return
-  homeSearchAutocompleteInited = true
-
-  let lastTyped = input.value
-  input.addEventListener('input', () => {
-    lastTyped = input.value
-  })
-
-  const autocomplete = new window.google.maps.places.Autocomplete(input, {
-    types: ['address'],
-    componentRestrictions: { country: 'us' },
-    bounds: CHICAGO_METRO_BOUNDS,
-    strictBounds: false,
-  })
-
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace() as PlaceResult
-    if (!place.address_components && !place.formatted_address) return
-    const resolved = resolveStreetAndZipForNavigation(lastTyped, place)
-    if (!resolved?.street) return
-    input.value = resolved.street
-    if (zipInput) zipInput.value = resolved.zip ?? ''
-    form.submit()
-  })
-}
 
 type HomeSearchProps = {
   apiKey: string | undefined
-  /** When true, hide the submit button (e.g. for drawer); Enter key and autocomplete still trigger search */
+  /** When true, hide the submit button (e.g. for drawer); Enter still submits */
   hideSubmitButton?: boolean
-  /** When true, do not load the Maps script (e.g. when parent already loaded it); avoids duplicate script on property page */
-  skipMapsScript?: boolean
 }
 
-export default function HomeSearch({ apiKey, hideSubmitButton, skipMapsScript }: HomeSearchProps) {
-  const registeredRef = useRef(false)
-  const initedRef = useRef(false)
+export default function HomeSearch({ apiKey, hideSubmitButton }: HomeSearchProps) {
+  const [address, setAddress] = useState('')
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(0)
+  const zipInputRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const { suggestions, clearSuggestions } = useAddressAutocomplete(apiKey ? address : '')
+  const safeHighlighted =
+    suggestions.length === 0 ? 0 : Math.min(highlighted, suggestions.length - 1)
 
-  useEffect(() => {
-    if (!apiKey || registeredRef.current) return
-    registeredRef.current = true
-    window.initAutocomplete = initAutocomplete
-    return () => {
-      delete window.initAutocomplete
+  async function selectSuggestion(s: AddressSuggestion) {
+    const place = await fetchPlaceDetailsForNavigation(s.placeId)
+    const resolved = place ? resolveStreetAndZipForNavigation(address, place) : null
+    if (resolved?.street) {
+      setAddress(resolved.street)
+      if (zipInputRef.current) zipInputRef.current.value = resolved.zip ?? ''
+    } else {
+      const first = s.description.split(',')[0]?.trim() ?? ''
+      setAddress(first || s.description)
     }
-  }, [apiKey])
+    clearSuggestions()
+    setSuggestionsOpen(false)
+    formRef.current?.requestSubmit()
+  }
 
-  useEffect(() => {
-    if (!apiKey) return
-    /* When used in drawer (hideSubmitButton), allow re-init so autocomplete attaches after drawer opens */
-    if (hideSubmitButton) {
-      homeSearchAutocompleteInited = false
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h + 1) % suggestions.length)
+      setSuggestionsOpen(true)
+      return
     }
-    const run = () => {
-      if (initedRef.current) return
-      const input = document.getElementById(INPUT_ID)
-      if (!input || !window.google?.maps?.places?.Autocomplete) return
-      initedRef.current = true
-      initAutocomplete()
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (suggestions.length === 0) return
+      setHighlighted((h) => (h === 0 ? suggestions.length - 1 : h - 1))
+      setSuggestionsOpen(true)
+      return
     }
-    run()
-    const t = setTimeout(run, 500)
-    return () => {
-      clearTimeout(t)
-      homeSearchAutocompleteInited = false
+    if (e.key === 'Enter') {
+      if (suggestionsOpen && suggestions.length > 0) {
+        e.preventDefault()
+        void selectSuggestion(suggestions[safeHighlighted])
+      }
+      return
     }
-  }, [apiKey, hideSubmitButton])
+    if (e.key === 'Escape') {
+      setSuggestionsOpen(false)
+      clearSuggestions()
+    }
+  }
 
   return (
-    <>
-      {apiKey && !skipMapsScript && (
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initAutocomplete`}
-          strategy="afterInteractive"
+    <div className="search-wrap">
+      <form
+        ref={formRef}
+        id={FORM_ID}
+        action="/search"
+        method="GET"
+        className={hideSubmitButton ? 'search-bar search-bar-no-btn' : 'search-bar'}
+      >
+        <input ref={zipInputRef} type="hidden" id="home-search-zip" name="zip" defaultValue="" />
+        <div className="search-icon" aria-hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+            <circle cx="12" cy="9" r="2.5" />
+          </svg>
+        </div>
+        <input
+          id="homesearch-address-input"
+          type="text"
+          name="address"
+          required={!hideSubmitButton}
+          placeholder="Enter a Chicago address…"
+          autoComplete="off"
+          spellCheck={false}
+          value={address}
+          onChange={(e) => {
+            setAddress(e.target.value)
+            setHighlighted(0)
+            setSuggestionsOpen(true)
+          }}
+          onFocus={() => setSuggestionsOpen(true)}
+          onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
+          onKeyDown={handleSearchKeyDown}
         />
-      )}
-      <div className="search-wrap">
-        <form id={FORM_ID} action="/search" method="GET" className={hideSubmitButton ? 'search-bar search-bar-no-btn' : 'search-bar'}>
-          <input type="hidden" id="home-search-zip" name="zip" value="" />
-          <div className="search-icon" aria-hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-              <circle cx="12" cy="9" r="2.5" />
-            </svg>
-          </div>
-          <input
-            id={INPUT_ID}
-            type="text"
-            name="address"
-            required={!hideSubmitButton}
-            placeholder="Enter a Chicago address…"
-            autoComplete="off"
-          />
-          {!hideSubmitButton && (
-            <button type="submit" className="search-btn">
-              Search
+        {!hideSubmitButton && (
+          <button type="submit" className="search-btn">
+            Search
+          </button>
+        )}
+      </form>
+      {apiKey && suggestionsOpen && suggestions.length > 0 ? (
+        <div className="ps-address-suggestions" role="listbox">
+          {suggestions.map((s, idx) => (
+            <button
+              type="button"
+              key={s.placeId}
+              role="option"
+              aria-selected={idx === safeHighlighted}
+              className={
+                idx === safeHighlighted ? 'ps-address-suggestion ps-address-suggestion-active' : 'ps-address-suggestion'
+              }
+              onMouseDown={(ev) => {
+                ev.preventDefault()
+                void selectSuggestion(s)
+              }}
+              onMouseEnter={() => setHighlighted(idx)}
+            >
+              {s.description}
             </button>
-          )}
-        </form>
-      </div>
-    </>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }

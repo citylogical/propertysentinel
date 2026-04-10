@@ -155,8 +155,12 @@ export default function AboutClient() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  const sliderMin = 3
+  const sliderMax = 20
+  const sliderRange = sliderMax - sliderMin
+
   // Pricing math
-  const extra = Math.max(0, propertyCount - 3)
+  const extra = Math.max(0, propertyCount - sliderMin)
   const moBase = 25
   const moExtra = extra * 10
   const moTotal = moBase + moExtra
@@ -176,22 +180,28 @@ export default function AboutClient() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="address-header about-header">
-        <div className="about-header-inner">
-          <div className="address-header-street">About</div>
-          <div className="about-tabs">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`about-tab ${activeTab === t.key ? 'active' : ''}`}
-                onClick={() => switchTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
+      <div className="property-identity-row">
+        <div className="property-identity-left">
+          <h1 className="property-identity-address">About</h1>
+          <div className="property-identity-citystate">
+            for Chicago property owners, operators, tradesmen, and residents
           </div>
         </div>
+      </div>
+
+      <div className="about-tabs-row">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={
+              activeTab === t.key ? 'about-tab about-tab-active' : 'about-tab'
+            }
+            onClick={() => switchTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* ── Features ── */}
@@ -252,154 +262,281 @@ export default function AboutClient() {
       {/* ── Pricing ── */}
       {activeTab === 'pricing' && (
         <div key="pricing" className="about-panel about-pricing-panel">
-          <div className="pc-toggle">
-            <span className={`pc-tl ${!isAnnual ? 'on' : ''}`}>Monthly</span>
-            <button
-              type="button"
-              className={`pc-track ${isAnnual ? 'on' : ''}`}
-              onClick={() => setIsAnnual(!isAnnual)}
-            >
-              <span className="pc-knob" />
-            </button>
-            <span className={`pc-tl ${isAnnual ? 'on' : ''}`}>Annual</span>
-            {isAnnual && <span className="pc-save-pill">Save 20%</span>}
+          <div className="page-intro-callout">
+            <p className="pricing-intro">
+              Every Chicago address is free to search — unlimited lookups,
+              complete complaint, violation, permit, and assessment history.{' '}
+              <strong>No account required.</strong> If you&apos;re a researcher
+              or journalist,{' '}
+              <a
+                href="#contact"
+                onClick={(e) => {
+                  e.preventDefault()
+                  switchTab('contact')
+                }}
+              >
+                reach out
+              </a>{' '}
+              for a premium account.
+            </p>
           </div>
 
-          <p className="pc-free-text">
-            Every Chicago address is free to search — unlimited lookups, complete
-            complaint, violation, permit, and assessment history.{' '}
-            <strong>No account required.</strong>
-          </p>
-
-          <div className="pc-cards">
-            <div className="pc-card">
-              <div className="pc-tier pc-tier-dim">Account</div>
-              <div className="pc-price-num">Free</div>
-              <div className="pc-sub">with signup</div>
-              <div className="pc-features">
-                <div>1 saved property</div>
-                <div>STR + PBL intelligence</div>
-                <div>Weekly email digest</div>
+          <div className="pricing-two-col">
+            <div className="pricing-column pricing-column-monitoring">
+              <div className="pricing-section-header">
+                <h2 className="pricing-section-label">Property Monitoring</h2>
+                <p className="pricing-section-sub">
+                  Real-time SMS and email alerts for every complaint,
+                  violation, and permit at your properties.
+                </p>
               </div>
-            </div>
-            <div className="pc-card pc-card-feat">
-              <div className="pc-tier pc-tier-navy">Premium</div>
-              <div className="pc-price-row">
-                <span className="pc-price-num">
-                  ${isAnnual ? '20' : '25'}
+
+              <div className="pc-toggle">
+                <span className={`pc-tl ${!isAnnual ? 'on' : ''}`}>
+                  Monthly
                 </span>
-                <span className="pc-price-per">/mo</span>
-                {isAnnual && <span className="pc-price-strike">$25</span>}
-              </div>
-              <div className="pc-sub">
-                {isAnnual
-                  ? 'Billed annually at $240/yr'
-                  : '3 properties included'}
-              </div>
-              <div className="pc-features">
-                <div>3 properties included</div>
-                <div>Hourly SMS + email alerts</div>
-                <div>+{isAnnual ? '$8' : '$10'}/mo per additional</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="pc-slider-section">
-            <div className="pc-slider-header">
-              <span className="pc-slider-label">
-                How many properties do you manage?
-              </span>
-              <span className="pc-slider-count">{propertyCount}</span>
-            </div>
-            <input
-              type="range"
-              min={3}
-              max={10}
-              step={1}
-              value={propertyCount}
-              onChange={(e) => setPropertyCount(parseInt(e.target.value))}
-              className="pc-slider-input"
-              style={{
-                background: `linear-gradient(to right, #0f2744 ${((propertyCount - 3) / 7) * 100}%, #ddd9d0 ${((propertyCount - 3) / 7) * 100}%)`,
-              }}
-            />
-            <div className="pc-slider-ticks">
-              {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <span key={n}>{n}</span>
-              ))}
-            </div>
-
-            <div className="pc-breakdown">
-              <div className="pc-breakdown-row">
-                <span>Premium base (3 properties)</span>
-                <span>
-                  <span className="pc-breakdown-val">
-                    {isAnnual ? '$240/yr' : '$25/mo'}
-                  </span>
-                  {isAnnual && (
-                    <span className="pc-breakdown-strike">$300</span>
-                  )}
+                <button
+                  type="button"
+                  className={`pc-track ${isAnnual ? 'on' : ''}`}
+                  onClick={() => setIsAnnual(!isAnnual)}
+                >
+                  <span className="pc-knob" />
+                </button>
+                <span className={`pc-tl ${isAnnual ? 'on' : ''}`}>
+                  Annual
                 </span>
+                {isAnnual && <span className="pc-save-pill">Save 20%</span>}
               </div>
-              {extra > 0 && (
-                <div className="pc-breakdown-row">
-                  <span>
-                    +{extra} additional × {isAnnual ? '$96/yr' : '$10/mo'}
-                  </span>
-                  <span>
-                    <span className="pc-breakdown-val">
-                      {isAnnual ? `$${yrExtraTotal}` : `$${moExtra}`}
+
+              <div className="pc-cards">
+                <div className="pc-card">
+                  <div className="pc-tier pc-tier-dim">Account</div>
+                  <div className="pc-price-num">Free</div>
+                  <div className="pc-sub">with signup</div>
+                  <div className="pc-features">
+                    <div>1 saved property</div>
+                    <div>STR + PBL intelligence</div>
+                    <div>Weekly email digest</div>
+                  </div>
+                </div>
+                <div className="pc-card pc-card-feat">
+                  <div className="pc-tier pc-tier-navy">Premium</div>
+                  <div className="pc-price-row">
+                    <span className="pc-price-num">
+                      ${isAnnual ? '20' : '25'}
                     </span>
-                    {isAnnual && (
-                      <span className="pc-breakdown-strike">
-                        ${extra * 120}
-                      </span>
-                    )}
+                    <span className="pc-price-per">/mo</span>
+                    {isAnnual && <span className="pc-price-strike">$25</span>}
+                  </div>
+                  <div className="pc-sub">
+                    {isAnnual
+                      ? 'Billed annually at $240/yr'
+                      : '3 properties included'}
+                  </div>
+                  <div className="pc-features">
+                    <div>3 properties included</div>
+                    <div>Hourly SMS + email alerts</div>
+                    <div>
+                      +{isAnnual ? '$8' : '$10'}/mo per additional
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pc-slider-section">
+                <div className="pc-slider-header">
+                  <span className="pc-slider-label">
+                    How many properties do you manage?
+                  </span>
+                  <span className="pc-slider-count">{propertyCount}</span>
+                </div>
+                <input
+                  type="range"
+                  min={sliderMin}
+                  max={sliderMax}
+                  step={1}
+                  value={propertyCount}
+                  onChange={(e) =>
+                    setPropertyCount(parseInt(e.target.value, 10))
+                  }
+                  className="pc-slider-input"
+                  style={{
+                    background: `linear-gradient(to right, #0f2744 ${((propertyCount - sliderMin) / sliderRange) * 100}%, #ddd9d0 ${((propertyCount - sliderMin) / sliderRange) * 100}%)`,
+                  }}
+                />
+                <div className="pricing-slider-ticks">
+                  <span className="pricing-slider-tick" style={{ left: '0%' }}>
+                    3
+                  </span>
+                  <span
+                    className="pricing-slider-tick"
+                    style={{ left: '11.76%' }}
+                  >
+                    5
+                  </span>
+                  <span
+                    className="pricing-slider-tick"
+                    style={{ left: '41.18%' }}
+                  >
+                    10
+                  </span>
+                  <span
+                    className="pricing-slider-tick"
+                    style={{ left: '70.59%' }}
+                  >
+                    15
+                  </span>
+                  <span
+                    className="pricing-slider-tick"
+                    style={{ left: '100%' }}
+                  >
+                    20
                   </span>
                 </div>
-              )}
-              <div className="pc-breakdown-divider" />
-              <div className="pc-breakdown-total-row">
-                <span className="pc-breakdown-total-label">Total</span>
-                <div className="pc-breakdown-total-right">
-                  <span className="pc-breakdown-total">
-                    {isAnnual ? `$${yrTotal}` : `$${moTotal}`}
-                  </span>
-                  <span className="pc-breakdown-total-per">
-                    {isAnnual ? '/yr' : '/mo'}
-                  </span>
+
+                <div className="pc-breakdown">
+                  <div className="pc-breakdown-row">
+                    <span>Premium base (3 properties)</span>
+                    <span>
+                      <span className="pc-breakdown-val">
+                        {isAnnual ? '$240/yr' : '$25/mo'}
+                      </span>
+                      {isAnnual && (
+                        <span className="pc-breakdown-strike">$300</span>
+                      )}
+                    </span>
+                  </div>
+                  {extra > 0 && (
+                    <div className="pc-breakdown-row">
+                      <span>
+                        +{extra} additional ×{' '}
+                        {isAnnual ? '$96/yr' : '$10/mo'}
+                      </span>
+                      <span>
+                        <span className="pc-breakdown-val">
+                          {isAnnual ? `$${yrExtraTotal}` : `$${moExtra}`}
+                        </span>
+                        {isAnnual && (
+                          <span className="pc-breakdown-strike">
+                            ${extra * 120}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pc-breakdown-divider" />
+                  <div className="pc-breakdown-total-row">
+                    <span className="pc-breakdown-total-label">Total</span>
+                    <div className="pc-breakdown-total-right">
+                      <span className="pc-breakdown-total">
+                        {isAnnual ? `$${yrTotal}` : `$${moTotal}`}
+                      </span>
+                      <span className="pc-breakdown-total-per">
+                        {isAnnual ? '/yr' : '/mo'}
+                      </span>
+                      {isAnnual && (
+                        <div className="pc-breakdown-equiv">
+                          ${yrMonthly}/mo effective
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {isAnnual && (
-                    <div className="pc-breakdown-equiv">
-                      ${yrMonthly}/mo effective
+                    <div className="pc-breakdown-saved">
+                      You save ${yrSaved}/yr with annual billing (20% off)
                     </div>
                   )}
                 </div>
               </div>
-              {isAnnual && (
-                <div className="pc-breakdown-saved">
-                  You save ${yrSaved}/yr with annual billing (20% off)
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="pc-footer-text">
-            10+ properties —{' '}
-            <button
-              type="button"
-              className="pc-footer-link"
-              onClick={() => switchTab('contact')}
-            >
-              reach out
-            </button>{' '}
-            for enterprise pricing
+              <p className="pricing-enterprise">
+                20+ properties —{' '}
+                <a
+                  href="#contact"
+                  className="pc-footer-link"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    switchTab('contact')
+                  }}
+                >
+                  reach out
+                </a>{' '}
+                for enterprise pricing
+              </p>
+            </div>
+
+            <div className="pricing-column-divider" aria-hidden="true" />
+
+            <div className="pricing-column pricing-column-unlocks">
+              <div className="pricing-section-header">
+                <h2 className="pricing-section-label">Owner Unlocks</h2>
+                <p className="pricing-section-sub">
+                  Reveal owner names, mailing addresses, and phone numbers for
+                  any property. Bad data is automatically credited back.
+                </p>
+              </div>
+
+              <div className="pricing-payg-card">
+                <div className="pricing-payg-left">
+                  <div className="pricing-sublabel">Pay as you go</div>
+                  <div className="pricing-payg-price">
+                    <span className="pricing-payg-amount">$10</span>
+                    <span className="pricing-payg-unit">per unlock</span>
+                  </div>
+                  <p className="pricing-payg-meta">5 free unlocks at signup</p>
+                </div>
+                <div className="pricing-payg-right">
+                  Card on file, charged per reveal.
+                  <br />
+                  Wrong number? Auto-credited.
+                </div>
+              </div>
+
+              <div className="pricing-sublabel pricing-credit-packs-header">
+                Credit packs
+                <span className="pricing-credit-packs-sub">
+                  {' · '}Save up to 25% — never expire
+                </span>
+              </div>
+
+              <div className="pricing-credit-packs">
+                <div className="pricing-credit-pack">
+                  <div className="pricing-credit-pack-tier">Starter</div>
+                  <div className="pricing-credit-pack-price">$85</div>
+                  <div className="pricing-credit-pack-units">10 unlocks</div>
+                  <div className="pricing-credit-pack-each">
+                    $8.50 each · 15% off
+                  </div>
+                </div>
+                <div className="pricing-credit-pack">
+                  <div className="pricing-credit-pack-tier">Pro</div>
+                  <div className="pricing-credit-pack-price">$200</div>
+                  <div className="pricing-credit-pack-units">25 unlocks</div>
+                  <div className="pricing-credit-pack-each">
+                    $8.00 each · 20% off
+                  </div>
+                </div>
+                <div className="pricing-credit-pack">
+                  <div className="pricing-credit-pack-tier">Volume</div>
+                  <div className="pricing-credit-pack-price">$375</div>
+                  <div className="pricing-credit-pack-units">50 unlocks</div>
+                  <div className="pricing-credit-pack-each">
+                    $7.50 each · 25% off
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Contact ── */}
       {activeTab === 'contact' && (
-        <div key="contact" className="about-panel about-contact-panel">
+        <div
+          key="contact"
+          id="contact"
+          className="about-panel about-contact-panel"
+        >
           <div className="about-contact-row">
             <img
               src="/jim.jpg"
