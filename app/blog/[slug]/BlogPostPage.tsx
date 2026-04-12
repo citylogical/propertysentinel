@@ -144,6 +144,19 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
                       {children}
                     </td>
                   ),
+                  img: ({ src, alt }) => (
+                    <img
+                      src={src}
+                      alt={alt ?? ''}
+                      style={{
+                        maxWidth: '640px',
+                        width: '100%',
+                        display: 'block',
+                        margin: '24px auto',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  ),
                 }}
               >
                 {post.body}
