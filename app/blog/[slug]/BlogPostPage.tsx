@@ -149,7 +149,7 @@ export default function BlogPostPage({ post, otherPosts }: Props) {
                       src={src}
                       alt={alt ?? ''}
                       style={{
-                        maxWidth: '640px',
+                        maxWidth: '480px',
                         width: '100%',
                         display: 'block',
                         margin: '24px auto',
