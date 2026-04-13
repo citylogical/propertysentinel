@@ -8,7 +8,7 @@
  * with `address`, `slug`, `timestamp`.
  */
 
-import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
+import { SignInButton, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -54,10 +54,8 @@ function MobileDrawerSearchIcon() {
 export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDrawerProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { isSignedIn, isLoaded } = useUser()
-  const { signOut } = useClerk()
+   const { isSignedIn, isLoaded } = useUser()
   const [isAdmin, setIsAdmin] = useState(false)
-  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([])
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -71,7 +69,12 @@ export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDraw
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
-  const navItems = useMemo(() => getSidebarNavItems(isAdmin), [isAdmin])
+  const { drawerNavItems, accountNavItem } = useMemo(() => {
+    const items = getSidebarNavItems(isAdmin)
+    const account = items.find((i) => i.href === '/profile' && i.requiresAuth)
+    const rest = items.filter((i) => !(i.href === '/profile' && i.requiresAuth))
+    return { drawerNavItems: rest, accountNavItem: account }
+  }, [isAdmin])
 
   useEffect(() => {
     if (!open) {
@@ -167,51 +170,6 @@ export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDraw
 
   if (!open) return null
 
-  const signOutModal =
-    showSignOutConfirm &&
-    typeof document !== 'undefined' &&
-    createPortal(
-      <div className="building-modal-overlay">
-        <div className="building-modal" style={{ maxWidth: 320 }}>
-          <button
-            type="button"
-            className="building-modal-x"
-            onClick={() => setShowSignOutConfirm(false)}
-            aria-label="Close"
-          >
-            &times;
-          </button>
-          <div className="building-modal-title" style={{ marginBottom: 8 }}>
-            Sign out?
-          </div>
-          <div className="building-modal-subtitle" style={{ marginBottom: 16 }}>
-            You&apos;ll need to sign in again to access your portfolio and saved properties.
-          </div>
-          <div className="building-modal-buttons">
-            <button
-              type="button"
-              className="building-modal-btn building-modal-btn-navy"
-              onClick={() => {
-                signOut({ redirectUrl: '/' })
-                setShowSignOutConfirm(false)
-                onClose()
-              }}
-            >
-              Sign out
-            </button>
-            <button
-              type="button"
-              className="building-modal-btn building-modal-btn-outline"
-              onClick={() => setShowSignOutConfirm(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>,
-      document.body
-    )
-
   const drawer = (
     <div
       className="fixed inset-0 z-[9999] md:hidden mobile-drawer-overlay"
@@ -282,28 +240,45 @@ export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDraw
         </div>
 
         <nav className="mobile-drawer-nav">
-          {navItems
-            .filter((item) => !item.requiresAuth || isSignedIn)
-            .map((item) => {
-              const active = item.active ?? isActive(item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`mobile-drawer-link${active ? ' mobile-drawer-link-active' : ''}`}
-                  onClick={onClose}
-                >
-                  {item.icon}
-                  <span className="mobile-drawer-link-label">{item.label}</span>
-                  {item.badge === 'beta' ? (
-                    <span className="sidebar-badge sidebar-badge-beta">BETA</span>
-                  ) : null}
-                  {item.badge === 'admin' ? (
-                    <span className="sidebar-badge sidebar-badge-admin">ADMIN</span>
-                  ) : null}
-                </Link>
-              )
-            })}
+          {drawerNavItems.map((item) => {
+            const active = item.active ?? isActive(item.href)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`mobile-drawer-link${active ? ' mobile-drawer-link-active' : ''}`}
+                onClick={onClose}
+              >
+                {item.icon}
+                <span className="mobile-drawer-link-label">{item.label}</span>
+                {item.badge === 'beta' ? (
+                  <span className="sidebar-badge sidebar-badge-beta">BETA</span>
+                ) : null}
+                {item.badge === 'admin' ? (
+                  <span className="sidebar-badge sidebar-badge-admin">ADMIN</span>
+                ) : null}
+              </Link>
+            )
+          })}
+          {accountNavItem ? (
+            isLoaded && isSignedIn ? (
+              <Link
+                href="/profile"
+                className={`mobile-drawer-link${pathname.startsWith('/profile') ? ' mobile-drawer-link-active' : ''}`}
+                onClick={onClose}
+              >
+                {accountNavItem.icon}
+                <span className="mobile-drawer-link-label">Account</span>
+              </Link>
+            ) : (
+              <SignInButton mode="modal">
+                <button type="button" className="mobile-drawer-link" onClick={onClose}>
+                  {accountNavItem.icon}
+                  <span className="mobile-drawer-link-label">Sign in or sign up</span>
+                </button>
+              </SignInButton>
+            )
+          ) : null}
         </nav>
 
         {recentSearches.length > 0 ? (
@@ -321,56 +296,7 @@ export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDraw
             ))}
           </div>
         ) : null}
-
-        <div className="mobile-drawer-footer">
-          {isSignedIn ? (
-            <button
-              type="button"
-              className="mobile-drawer-link mobile-drawer-link--footer"
-              onClick={() => setShowSignOutConfirm(true)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              <span className="mobile-drawer-link-label">Sign out</span>
-            </button>
-          ) : (
-            <SignInButton mode="modal">
-              <button
-                type="button"
-                className="mobile-drawer-link mobile-drawer-link--footer"
-                onClick={onClose}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
-                  <polyline points="10 17 15 12 10 7" />
-                  <line x1="15" y1="12" x2="3" y2="12" />
-                </svg>
-                <span className="mobile-drawer-link-label">Sign in or sign up</span>
-              </button>
-            </SignInButton>
-          )}
-        </div>
       </div>
-      {signOutModal}
       <style>{`
         .mobile-drawer-overlay .sidebar-badge {
           font-family: var(--mono, 'DM Mono', monospace);
