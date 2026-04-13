@@ -4,6 +4,7 @@ import { useUser } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
+import BuildingLogoIcon from '@/components/BuildingLogoIcon'
 
 type Props = {
   apiKey: string | undefined
@@ -42,46 +43,15 @@ export default function MobileNav({ apiKey }: Props) {
         }
       `}</style>
       <header className="mobile-nav-bar" role="banner">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
-          <Link href="/" className="mobile-nav-brand">
+        <Link href="/" className="mobile-nav-brand">
+          <span className="mobile-nav-brand-icon">
+            <BuildingLogoIcon />
+          </span>
+          <span className="mobile-nav-brand-text">
             <span className="brand-wordmark-line">Property</span>
             <span className="brand-wordmark-line">Sentinel</span>
-          </Link>
-          <Link
-            href="/leads"
-            className="mobile-nav-leads-link"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              flex: 1,
-              minWidth: 0,
-              fontSize: 14,
-              fontWeight: 500,
-              color: 'rgba(255,255,255,0.88)',
-              textDecoration: 'none',
-            }}
-          >
-            <svg
-              width={18}
-              height={18}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              style={{ flexShrink: 0 }}
-            >
-              <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-              <path d="M9 18h6" />
-              <path d="M10 22h4" />
-            </svg>
-            <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap' }}>Leads</span>
-            <span className="sidebar-badge sidebar-badge-beta">BETA</span>
-          </Link>
-        </div>
+          </span>
+        </Link>
         <button
           type="button"
           className="mobile-nav-hamburger"

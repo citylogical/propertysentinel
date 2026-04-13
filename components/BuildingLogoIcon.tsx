@@ -1,0 +1,34 @@
+import type { SVGProps } from 'react'
+
+/** Building mark — same paths as desktop sidebar logo; size via props or CSS on parent. */
+export default function BuildingLogoIcon({
+  stroke = 'white',
+  ...props
+}: SVGProps<SVGSVGElement> & { stroke?: string }) {
+  return (
+    <svg
+      viewBox="0 0 50 90"
+      fill="none"
+      stroke={stroke}
+      strokeWidth="1.2"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
+      <line x1="25" y1="0" x2="25" y2="8" />
+      <path d="M19 14 Q25 5 31 14" />
+      <rect x="18" y="14" width="14" height="24" />
+      <line x1="23" y1="14" x2="23" y2="38" />
+      <line x1="27" y1="14" x2="27" y2="38" />
+      <line x1="7" y1="34" x2="7" y2="38" />
+      <path d="M4 38 Q7 32 10 38" />
+      <line x1="43" y1="34" x2="43" y2="38" />
+      <path d="M40 38 Q43 32 46 38" />
+      <rect x="4" y="38" width="42" height="42" />
+      <line x1="14" y1="38" x2="14" y2="80" />
+      <line x1="25" y1="38" x2="25" y2="80" />
+      <line x1="36" y1="38" x2="36" y2="80" />
+      <line x1="4" y1="80" x2="46" y2="80" />
+    </svg>
+  )
+}

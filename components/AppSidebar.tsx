@@ -11,7 +11,6 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { addressToSlug } from '@/lib/address-slug'
@@ -20,16 +19,8 @@ import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
 import { getRecentSearches } from '@/lib/recent-searches'
 import { fetchPlaceDetailsForNavigation } from '@/lib/google-maps-loader'
 import { useAddressAutocomplete, type AddressSuggestion } from '@/lib/use-address-autocomplete'
-
-type NavItem = {
-  label: string
-  href: string
-  icon: ReactNode
-  active?: boolean
-  badge?: 'beta' | 'admin'
-  /** When true, link is shown only to signed-in users (e.g. Account). */
-  requiresAuth?: boolean
-}
+import BuildingLogoIcon from '@/components/BuildingLogoIcon'
+import { getSidebarNavItems } from '@/components/sidebar-nav-items'
 
 export default function AppSidebar() {
   const pathname = usePathname()
@@ -180,101 +171,7 @@ export default function AppSidebar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
-  const navItems = useMemo((): NavItem[] => {
-    const items: NavItem[] = [
-      {
-        label: 'Portfolio',
-        href: '/portfolio',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-        ),
-      },
-    ]
-
-    if (isAdmin) {
-      items.push({
-        label: 'Explore',
-        href: '/explore',
-        badge: 'admin',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18" />
-            <path d="M9 21V9" />
-          </svg>
-        ),
-      })
-    }
-
-    items.push({
-      label: 'Leads',
-      href: '/leads',
-      badge: 'beta',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M16 10h2" />
-          <path d="M16 14h2" />
-          <path d="M6.17 15a3 3 0 0 1 5.66 0" />
-          <circle cx="9" cy="11" r="2" />
-          <rect x="2" y="5" width="20" height="14" rx="2" />
-        </svg>
-      ),
-    })
-
-    items.push(
-      {
-        label: 'About',
-        href: '/about',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 006 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-            <path d="M9 18h6" />
-            <path d="M10 22h4" />
-          </svg>
-        ),
-      },
-      {
-        label: 'Blog',
-        href: '/blog',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-            <path d="M14 2v6h6" />
-            <path d="M16 13H8" />
-            <path d="M16 17H8" />
-          </svg>
-        ),
-      },
-      {
-        label: 'Status',
-        href: '/status',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        ),
-      },
-      {
-        label: 'Account',
-        href: '/profile',
-        requiresAuth: true,
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
-        ),
-      }
-    )
-
-    return items
-  }, [isAdmin])
+  const navItems = useMemo(() => getSidebarNavItems(isAdmin), [isAdmin])
 
   return (
     <div
@@ -305,22 +202,7 @@ export default function AppSidebar() {
       <div className="app-sidebar-logo">
         <Link href="/" className="app-sidebar-logo-link" aria-label="Property Sentinel home">
           <span className="app-sidebar-logo-icon" aria-hidden="true">
-            <svg width="22" height="38" viewBox="0 0 50 90" fill="none" stroke="white" strokeWidth="1.2" xmlns="http://www.w3.org/2000/svg">
-              <line x1="25" y1="0" x2="25" y2="8" />
-              <path d="M19 14 Q25 5 31 14" />
-              <rect x="18" y="14" width="14" height="24" />
-              <line x1="23" y1="14" x2="23" y2="38" />
-              <line x1="27" y1="14" x2="27" y2="38" />
-              <line x1="7" y1="34" x2="7" y2="38" />
-              <path d="M4 38 Q7 32 10 38" />
-              <line x1="43" y1="34" x2="43" y2="38" />
-              <path d="M40 38 Q43 32 46 38" />
-              <rect x="4" y="38" width="42" height="42" />
-              <line x1="14" y1="38" x2="14" y2="80" />
-              <line x1="25" y1="38" x2="25" y2="80" />
-              <line x1="36" y1="38" x2="36" y2="80" />
-              <line x1="4" y1="80" x2="46" y2="80" />
-            </svg>
+            <BuildingLogoIcon width={22} height={38} />
           </span>
           <span className="app-sidebar-logo-text">
             <span className="brand-wordmark-line">Property</span>
@@ -454,7 +336,7 @@ export default function AppSidebar() {
                   <line x1="15" y1="12" x2="3" y2="12" />
                 </svg>
               </span>
-              <span className="app-sidebar-footer-label">Sign in</span>
+              <span className="app-sidebar-footer-label">Sign in or sign up</span>
             </button>
           </SignInButton>
         )}

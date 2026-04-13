@@ -1,14 +1,6 @@
 // app/status/page.tsx
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
-
-export const dynamic = 'force-dynamic'
-
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 type RunRow = {
   id: string
@@ -30,7 +22,56 @@ type DaySummary = {
   status: 'success' | 'partial' | 'failure' | 'no_data'
 }
 
-type Incident = RunRow & { isResolved: boolean }
+type StatusPagePayload = {
+  computed_at: string
+  latest_sync: {
+    ran_at: string
+    records_fetched: number
+    duration_ms: number | null
+    max_modified: string | null
+    lag_seconds: number | null
+  } | null
+  most_recent_run_status: 'success' | 'no_new_records' | 'failure' | null
+  complaint_count_90d: number
+  avg_lag_seconds: number | null
+  uptime_pct: number
+  daily_history: Array<{
+    run_date: string
+    run_count: number
+    success_count: number
+    failure_count: number
+  }>
+  incidents: Array<{
+    ran_at: string
+    status: string
+    error_message: string | null
+    is_ongoing: boolean
+  }>
+  recent_runs: RunRow[]
+  latest_complaint_modified: string | null
+  current_lag_seconds: number | null
+}
+
+type StatusPageData = StatusPagePayload & { cache_computed_at: string }
+
+const getStatusData = unstable_cache(
+  async (): Promise<StatusPageData> => {
+    const sb = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data, error } = await sb
+      .from('status_page_cache')
+      .select('payload, computed_at')
+      .eq('id', 1)
+      .single()
+    if (error || !data) throw new Error('status cache unavailable')
+    const payload = data.payload as StatusPagePayload
+    return { ...payload, cache_computed_at: data.computed_at }
+  },
+  ['status-page-data'],
+  { revalidate: 300, tags: ['status'] }
+)
 
 // Socrata stores Chicago local time but Supabase appends +00:00 (false UTC marker).
 // The stored value IS the CT local time. To display it correctly, format with timeZone: 'UTC'.
@@ -45,29 +86,10 @@ function formatSocrataTimeCT(socrataStr: string): string {
   }).format(d)
 }
 
-// Convert a Socrata CT-local timestamp to true UTC ms for lag calculation.
-function socrataToTrueUTCMs(socrataStr: string): number {
-  const clean = socrataStr.slice(0, 19)
-  const month = parseInt(clean.slice(5, 7))
-  const day = parseInt(clean.slice(8, 10))
-  // CDT (UTC-5): second Sunday in March through first Sunday in November
-  const isCDT = (month > 3 && month < 11) || (month === 3 && day >= 8)
-  const offsetMs = (isCDT ? 5 : 6) * 3600 * 1000
-  return new Date(clean + 'Z').getTime() + offsetMs
-}
-
-function computeLagSeconds(socrataLastModified: string, ranAt: string): number | null {
-  try {
-    const lagMs = new Date(ranAt).getTime() - socrataToTrueUTCMs(socrataLastModified)
-    const secs = Math.round(lagMs / 1000)
-    if (secs < 0 || secs > 86400) return null
-    return secs
-  } catch {
-    return null
-  }
-}
-
-function formatCT(isoStr: string) {
+function formatCT(isoStr: string | null | undefined) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago',
     month: 'short',
@@ -75,34 +97,31 @@ function formatCT(isoStr: string) {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(isoStr))
+  }).format(d)
 }
 
-function formatDateCT(isoStr: string) {
+function formatDateCT(isoStr: string | null | undefined) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(isoStr))
+  }).format(d)
 }
 
-function formatTimeCT(isoStr: string) {
+function formatTimeCT(isoStr: string | null | undefined) {
+  if (!isoStr) return '—'
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(isoStr))
-}
-
-function getDayCT(isoStr: string) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(isoStr))
+  }).format(d)
 }
 
 function formatLag(seconds: number): string {
@@ -141,96 +160,48 @@ function truncateError(msg: string | null): string | null {
   return clean.length > 120 ? clean.slice(0, 120) + '…' : clean
 }
 
-function buildDaySummaries(runs: RunRow[]): DaySummary[] {
-  const days: DaySummary[] = []
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    days.push({ date: getDayCT(d.toISOString()), total: 0, failures: 0, status: 'no_data' })
-  }
-  for (const run of runs) {
-    const entry = days.find(d => d.date === getDayCT(run.ran_at))
-    if (!entry) continue
-    entry.total++
-    if (run.status === 'failure') entry.failures++
-  }
-  for (const entry of days) {
-    if (entry.total === 0) entry.status = 'no_data'
-    else if (entry.failures === 0) entry.status = 'success'
-    else if (entry.failures < entry.total) entry.status = 'partial'
-    else entry.status = 'failure'
-  }
-  return days
+function daySummaryFromDailyHistory(row: StatusPagePayload['daily_history'][number]): DaySummary {
+  const total = row.run_count
+  const failures = row.failure_count
+  let status: DaySummary['status']
+  if (total === 0) status = 'no_data'
+  else if (failures === 0) status = 'success'
+  else if (failures < total) status = 'partial'
+  else status = 'failure'
+  return { date: row.run_date, total, failures, status }
 }
 
 export default async function StatusPage() {
-  const supabase = getSupabaseAdmin()
+  const data = await getStatusData()
 
-  const ninetyDaysAgo = new Date()
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+  const uptimePct = Number(data.uptime_pct).toFixed(1)
+  const failedRunsCount = data.daily_history.reduce((s, d) => s + d.failure_count, 0)
 
-  async function fetchRuns() {
-    return supabase
-      .from('worker_a_runs')
-      .select('*')
-      .gte('ran_at', ninetyDaysAgo.toISOString())
-      .order('ran_at', { ascending: false })
-      .limit(2000)
-  }
+  const lastSuccessRunAt = data.latest_sync?.ran_at ?? null
 
-  async function fetchLatestMod() {
-    return supabase
-      .from('complaints_311')
-      .select('last_modified_date')
-      .order('last_modified_date', { ascending: false })
-      .limit(1)
-      .single()
-  }
+  const avgLagSeconds =
+    data.avg_lag_seconds != null && Number.isFinite(data.avg_lag_seconds)
+      ? Math.round(data.avg_lag_seconds)
+      : null
 
-  const [runsResult, latestModResult] = await Promise.all([fetchRuns(), fetchLatestMod()])
+  const daySummaries = data.daily_history.map(daySummaryFromDailyHistory)
 
-  const allRuns: RunRow[] = runsResult.data ?? []
-  const lastModifiedStr: string | null = latestModResult.data?.last_modified_date ?? null
+  const incidents = data.incidents.map(inc => ({
+    ...inc,
+    isResolved: !inc.is_ongoing,
+  }))
 
-  // Stats
-  const totalRuns = allRuns.length
-  const failedRuns = allRuns.filter(r => r.status === 'failure').length
-  const uptimePct = totalRuns > 0
-    ? (((totalRuns - failedRuns) / totalRuns) * 100).toFixed(1)
-    : '100.0'
+  const isCurrentlyOperational =
+    data.most_recent_run_status === 'success' ||
+    data.most_recent_run_status === 'no_new_records'
 
-  const lastSuccessRun = allRuns.find(r => r.status === 'success' || r.status === 'no_new_records')
-  const totalRecords = allRuns.reduce((sum, r) => sum + (r.records_fetched ?? 0), 0)
+  const recentRuns = data.recent_runs ?? []
 
-  // Compute current lag fresh from complaints_311 MAX(last_modified_date)
-  const currentLag = lastModifiedStr && lastSuccessRun
-    ? computeLagSeconds(lastModifiedStr, lastSuccessRun.ran_at)
-    : null
-
-  // Average lag: exclude only corrupted log_import rows (which have NULL lag anyway).
-  // Includes both success and no_new_records runs — NO NEW lag reflects real staleness.
-  const runsWithLag = allRuns.filter(
-    r => r.lag_seconds != null && r.source !== 'log_import'
-  )
-  const avgLagSeconds = runsWithLag.length > 0
-    ? Math.round(runsWithLag.reduce((s, r) => s + r.lag_seconds!, 0) / runsWithLag.length)
-    : null
-
-  const isCurrentlyOperational = !allRuns[0] || allRuns[0].status !== 'failure'
-
-  const daySummaries = buildDaySummaries([...allRuns].reverse())
-
-  const incidents: Incident[] = allRuns
-    .filter(r => r.status === 'failure')
-    .map(inc => ({
-      ...inc,
-      isResolved: allRuns.some(
-        r => (r.status === 'success' || r.status === 'no_new_records') && r.ran_at > inc.ran_at
-      ),
-    }))
-
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const recentRuns = allRuns.filter(r => r.ran_at >= oneDayAgo)
+  const lastModifiedStr = data.latest_complaint_modified
+  const currentLag =
+    data.current_lag_seconds != null && Number.isFinite(data.current_lag_seconds)
+      ? Math.round(data.current_lag_seconds)
+      : null
 
   const barColor = (s: DaySummary['status']) => {
     if (s === 'success') return '#2d6a4f'
@@ -281,7 +252,7 @@ export default async function StatusPage() {
         </div>
 
         {/* Latest 311 record lag line */}
-        {lastModifiedStr && lastSuccessRun && (
+        {lastModifiedStr && lastSuccessRunAt && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 20,
             padding: '10px 16px', marginBottom: 24,
@@ -312,18 +283,18 @@ export default async function StatusPage() {
             {
               label: 'Uptime (90 days)',
               value: `${uptimePct}%`,
-              sub: `${failedRuns} incident${failedRuns !== 1 ? 's' : ''}`,
+              sub: `${failedRunsCount} incident${failedRunsCount !== 1 ? 's' : ''}`,
               color: '#2d6a4f',
             },
             {
               label: 'Last Sync',
-              value: lastSuccessRun ? formatTimeCT(lastSuccessRun.ran_at) : '—',
-              sub: lastSuccessRun ? formatDateCT(lastSuccessRun.ran_at) : '—',
+              value: lastSuccessRunAt ? formatTimeCT(lastSuccessRunAt) : '—',
+              sub: lastSuccessRunAt ? formatDateCT(lastSuccessRunAt) : '—',
               color: '#1a1a1a',
             },
             {
               label: 'Records (90d)',
-              value: totalRecords.toLocaleString(),
+              value: data.complaint_count_90d.toLocaleString(),
               sub: 'complaints synced',
               color: '#1a1a1a',
             },
@@ -398,18 +369,20 @@ export default async function StatusPage() {
 
         {/* Incident log */}
         <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
             <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
               Incident History
             </span>
-            <span style={{ fontSize: 11, color: '#8a94a0' }}>All times CT</span>
+            <span style={{ fontSize: 11, color: '#8a94a0' }}>
+              All times CT · Status data refreshed: {formatCT(data.cache_computed_at)}
+            </span>
           </div>
           {incidents.length === 0 ? (
             <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
               No incidents in the last 90 days.
             </div>
-          ) : incidents.map(inc => (
-            <div key={inc.id} style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 16, alignItems: 'start' }}>
+          ) : incidents.map((inc, idx) => (
+            <div key={`${inc.ran_at}-${idx}`} style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 16, alignItems: 'start' }}>
               <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0', paddingTop: 1, lineHeight: 1.5 }}>
                 {formatCT(inc.ran_at)}
               </div>
