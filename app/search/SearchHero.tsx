@@ -16,7 +16,6 @@ export default function SearchHero({ apiKey }: Props) {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const zipInputRef = useRef<HTMLInputElement>(null)
-  const formRef = useRef<HTMLFormElement>(null)
   const { suggestions, clearSuggestions } = useAddressAutocomplete(apiKey ? address : '')
   const safeHighlighted =
     suggestions.length === 0 ? 0 : Math.min(highlighted, suggestions.length - 1)
@@ -24,16 +23,24 @@ export default function SearchHero({ apiKey }: Props) {
   async function selectSuggestion(s: AddressSuggestion) {
     const place = await fetchPlaceDetailsForNavigation(s.placeId)
     const resolved = place ? resolveStreetAndZipForNavigation(address, place) : null
-    if (resolved?.street) {
-      setAddress(resolved.street)
-      if (zipInputRef.current) zipInputRef.current.value = resolved.zip ?? ''
-    } else {
-      const first = s.description.split(',')[0]?.trim() ?? ''
-      setAddress(first || s.description)
-    }
+
+    const finalAddress = resolved?.street
+      ? resolved.street
+      : (s.description.split(',')[0]?.trim() ?? s.description)
+    const finalZip = resolved?.zip ?? ''
+
+    // Update React state so the input reflects the selection if the user looks back
+    setAddress(finalAddress)
+    if (zipInputRef.current) zipInputRef.current.value = finalZip
+
     clearSuggestions()
     setSuggestionsOpen(false)
-    formRef.current?.requestSubmit()
+
+    // Navigate directly with the resolved values instead of relying on form state.
+    // requestSubmit() reads from the DOM, which won't have flushed React's setAddress yet.
+    const params = new URLSearchParams({ address: finalAddress })
+    if (finalZip) params.set('zip', finalZip)
+    window.location.href = `/search?${params.toString()}`
   }
 
   function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -69,7 +76,7 @@ export default function SearchHero({ apiKey }: Props) {
       <div className="search-hero-grid" aria-hidden />
       <div className="search-hero-inner">
         <div className="search-hero-bar-wrap">
-          <form ref={formRef} id={FORM_ID} action="/search" method="GET" className="search-bar">
+          <form id={FORM_ID} action="/search" method="GET" className="search-bar">
             <input ref={zipInputRef} type="hidden" id="search-page-zip" name="zip" defaultValue="" />
             <div className="search-icon" aria-hidden>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="17" height="17">

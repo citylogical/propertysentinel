@@ -408,14 +408,28 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
       }
     }
   } else {
+    const useFanOut = siblingAddresses.length > 1
     const [complaintsResult, violationsResult, permitsResult] = await Promise.all([
-      fetchComplaints(normalizedAddress),
-      fetchViolations(normalizedAddress),
-      fetchPermits(normalizedAddress),
+      useFanOut
+        ? fetchComplaintsByAddresses(siblingAddresses)
+        : fetchComplaints(normalizedAddress),
+      useFanOut
+        ? fetchViolationsByAddresses(siblingAddresses)
+        : fetchViolations(normalizedAddress),
+      useFanOut
+        ? fetchPermitsByAddresses(siblingAddresses)
+        : fetchPermits(normalizedAddress),
     ])
     complaints = complaintsResult.complaints ?? []
     violations = violationsResult.violations ?? []
     permits = permitsResult.permits ?? []
+
+    // When fanning out across a user-submitted range with no PIN,
+    // also force isExpanded so the page header range stays consistent
+    // with the aggregated data being displayed.
+    if (useFanOut) {
+      isExpanded = true
+    }
   }
 
   const pinsForMailingScan: string[] =
