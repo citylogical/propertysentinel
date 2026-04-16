@@ -5,9 +5,13 @@ import MobileNav from "@/components/MobileNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://propertysentinel.io"),
   title: "Property Sentinel",
   description:
     "Know what the city knows about your property. Real-time 311 complaints, building violations, and permit history for every Chicago address.",
+  alternates: {
+    canonical: "/",
+  },
 };
 
 export default function RootLayout({

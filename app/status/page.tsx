@@ -1,6 +1,16 @@
 // app/status/page.tsx
+import type { Metadata } from 'next'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
+
+export const metadata: Metadata = {
+  title: 'Chicago 311 Data Status — Property Sentinel',
+  description:
+    'Live sync status for the Chicago Open Data Portal 311 feed ingested by Property Sentinel.',
+  alternates: {
+    canonical: '/status',
+  },
+}
 
 type RunRow = {
   id: string
@@ -202,6 +212,10 @@ export default async function StatusPage() {
     data.current_lag_seconds != null && Number.isFinite(data.current_lag_seconds)
       ? Math.round(data.current_lag_seconds)
       : null
+  const syncLag =
+    data.latest_sync?.lag_seconds != null && Number.isFinite(data.latest_sync.lag_seconds)
+      ? Math.round(data.latest_sync.lag_seconds)
+      : null
 
   const barColor = (s: DaySummary['status']) => {
     if (s === 'success') return '#2d6a4f'
@@ -260,17 +274,17 @@ export default async function StatusPage() {
             fontFamily: '"DM Mono", monospace', fontSize: 11,
           }}>
             <span style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
-              Latest:{' '}
+              Most recent record:{' '}
               <span style={{ color: '#1a1a1a' }}>
                 {formatSocrataTimeCT(lastModifiedStr)} CT
               </span>
             </span>
-            {currentLag != null && (
+            {syncLag != null && (
               <>
                 <span style={{ color: '#ddd9d0' }}>·</span>
                 <span style={{ color: '#8a94a0' }}>
-                  Synced{' '}
-                  <span style={{ color: '#2d6a4f' }}>{formatLag(currentLag)} after modification</span>
+                  Current lag:{' '}
+                  <span style={{ color: '#2d6a4f' }}>{formatLag(syncLag)}</span>
                 </span>
               </>
             )}

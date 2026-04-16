@@ -29,7 +29,7 @@ export default function NavClerkAuth({ variant, onAfterAuthAction }: Props) {
             Sign out?
           </div>
           <div className="building-modal-subtitle" style={{ marginBottom: 16 }}>
-            You&apos;ll need to sign in again to access your portfolio and saved properties.
+            You&apos;ll need to sign in again to access your dashboard and saved properties.
           </div>
           <div className="building-modal-buttons">
             <button

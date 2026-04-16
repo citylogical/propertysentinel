@@ -25,7 +25,7 @@ export default function UnsavePropertyModal({
   const handleUnsave = async () => {
     setUnsaving(true)
     try {
-      const res = await fetch('/api/portfolio/unsave', {
+      const res = await fetch('/api/dashboard/unsave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ canonical_address: canonicalAddress }),
@@ -56,7 +56,7 @@ export default function UnsavePropertyModal({
           {displayName} is saved.
         </div>
         <div className="building-modal-subtitle" style={{ marginBottom: 16 }}>
-          Remove this property from your portfolio?
+          Remove this property from your dashboard?
         </div>
         <div className="building-modal-buttons">
           <button

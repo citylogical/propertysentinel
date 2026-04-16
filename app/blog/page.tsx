@@ -10,7 +10,7 @@ export const metadata = {
     title: 'Blog — Property Sentinel',
     description:
       'Chicago property intelligence, 311 data analysis, and building compliance.',
-    url: 'https://www.propertysentinel.io/blog',
+    url: 'https://propertysentinel.io/blog',
     siteName: 'Property Sentinel',
     type: 'website',
   },
@@ -21,7 +21,7 @@ export const metadata = {
       'Chicago property intelligence, 311 data analysis, and building compliance.',
   },
   alternates: {
-    canonical: 'https://www.propertysentinel.io/blog',
+    canonical: '/blog',
   },
 }
 

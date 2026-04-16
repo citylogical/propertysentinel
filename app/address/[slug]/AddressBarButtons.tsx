@@ -41,7 +41,7 @@ export default function AddressBarButtons({
 
   useEffect(() => {
     if (!saveData.canonicalAddress) return
-    fetch(`/api/portfolio/save?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`)
+    fetch(`/api/dashboard/save?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`)
       .then((res) => res.json())
       .then((data: { saved?: boolean }) => setIsSaved(!!data.saved))
       .catch(() => {})
@@ -98,8 +98,8 @@ export default function AddressBarButtons({
         <button
           type="button"
           className="address-header-icon-btn address-header-icon-btn-alert"
-          title={isSaved ? 'Remove from portfolio' : 'Save to portfolio'}
-          aria-label="Save to portfolio"
+          title={isSaved ? 'Remove from dashboard' : 'Save to dashboard'}
+          aria-label="Save to dashboard"
           onClick={openSaveFlow}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">

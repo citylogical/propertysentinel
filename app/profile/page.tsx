@@ -1,9 +1,13 @@
+import type { Metadata } from 'next'
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import ProfileContent from './ProfileContent'
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Property Sentinel — Account',
+  alternates: {
+    canonical: '/profile',
+  },
 }
 
 export default async function ProfilePage() {

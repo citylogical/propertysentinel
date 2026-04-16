@@ -121,7 +121,7 @@ export async function POST(request: Request) {
   if (error) {
     console.error('Portfolio save error:', error)
     if (error.code === '23505') {
-      return NextResponse.json({ error: 'This property is already in your portfolio' }, { status: 409 })
+      return NextResponse.json({ error: 'This property is already in your dashboard' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

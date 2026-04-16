@@ -22,8 +22,8 @@ export type SidebarNavItem = {
 export function getSidebarNavItems(isAdmin: boolean): SidebarNavItem[] {
   const items: SidebarNavItem[] = [
     {
-      label: 'Portfolio',
-      href: '/portfolio',
+      label: 'Dashboard',
+      href: '/dashboard',
       icon: <NavIconPortfolio />,
     },
   ]

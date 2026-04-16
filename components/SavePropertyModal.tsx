@@ -87,7 +87,7 @@ export default function SavePropertyModal({
     setError(null)
 
     try {
-      const res = await fetch('/api/portfolio/save', {
+      const res = await fetch('/api/dashboard/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,7 +134,7 @@ export default function SavePropertyModal({
         <div className="save-modal-header">
           <div>
             <div id="save-modal-title" className="save-modal-title">
-              Save to portfolio
+              Save to dashboard
             </div>
             <div className="save-modal-sub">{currentAddress}</div>
           </div>
@@ -291,7 +291,7 @@ export default function SavePropertyModal({
             onClick={handleSave}
             disabled={saveDisabled}
           >
-            {saving ? 'Saving...' : !user ? 'Sign in to save' : 'Save to portfolio'}
+            {saving ? 'Saving...' : !user ? 'Sign in to save' : 'Save to dashboard'}
           </button>
         </div>
       </div>

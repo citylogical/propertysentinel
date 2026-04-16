@@ -35,13 +35,15 @@ export async function generateMetadata({
     post.description ||
     post.body.replace(/[#*_\[\]()]/g, '').slice(0, 155) + '…'
 
+  const canonicalPath = `/blog/${slug}`
+
   return {
     title: `${post.title} — Property Sentinel`,
     description: desc,
     openGraph: {
       title: post.title,
       description: desc,
-      url: `https://www.propertysentinel.io/blog/${slug}`,
+      url: `https://propertysentinel.io${canonicalPath}`,
       siteName: 'Property Sentinel',
       type: 'article',
     },
@@ -51,7 +53,7 @@ export async function generateMetadata({
       description: desc,
     },
     alternates: {
-      canonical: `https://www.propertysentinel.io/blog/${slug}`,
+      canonical: canonicalPath,
     },
   }
 }

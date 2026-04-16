@@ -53,7 +53,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       : `${displayAddress} — View 311 complaints, violations, permits, and assessed values on Property Sentinel.`
 
   const title = `${displayAddress} — Property Sentinel`
-  const url = `https://www.propertysentinel.io/address/${encodeURIComponent(slug)}`
+  const canonicalPath = `/address/${slug}`
 
   return {
     title,
@@ -61,7 +61,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     openGraph: {
       title,
       description,
-      url,
+      url: `https://propertysentinel.io${canonicalPath}`,
       siteName: 'Property Sentinel',
       type: 'website',
       locale: 'en_US',
@@ -72,7 +72,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description,
     },
     alternates: {
-      canonical: url,
+      canonical: canonicalPath,
     },
   }
 }

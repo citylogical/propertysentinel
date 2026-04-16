@@ -28,7 +28,7 @@ export default function PortfolioDetail({ property: p, onClose }: Props) {
   useEffect(() => {
     setDetailLoading(true)
     setDetailData(null)
-    fetch(`/api/portfolio/detail?id=${encodeURIComponent(p.id)}`)
+    fetch(`/api/dashboard/detail?id=${encodeURIComponent(p.id)}`)
       .then((res) => res.json())
       .then((data: DetailPayload & { error?: string }) => {
         if (data.error) setDetailData(null)

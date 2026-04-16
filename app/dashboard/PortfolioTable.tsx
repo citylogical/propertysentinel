@@ -21,7 +21,7 @@ export default function PortfolioTable() {
   } | null>(null)
 
   const loadPortfolioList = useCallback(async () => {
-    const listData = await fetch('/api/portfolio/list').then((r) => r.json())
+    const listData = await fetch('/api/dashboard/list').then((r) => r.json())
     if (listData.error) {
       throw new Error(String(listData.error))
     }
@@ -82,7 +82,7 @@ export default function PortfolioTable() {
 
   const alertCount = properties.filter((p) => p.alerts_enabled).length
 
-  const headerTitle = orgName ? `${orgName} Portfolio` : 'Portfolio'
+  const headerTitle = orgName ? `${orgName} Dashboard` : 'Dashboard'
 
   const headerMeta = `${properties.length} properties · ${alertCount} alerts active`
 
@@ -104,7 +104,7 @@ export default function PortfolioTable() {
       <>
         <div className="address-header portfolio-page-header">
           <div style={{ flex: 1 }}>
-            <div className="address-header-street">Portfolio</div>
+            <div className="address-header-street">Dashboard</div>
           </div>
         </div>
         <div
@@ -116,7 +116,7 @@ export default function PortfolioTable() {
             color: 'var(--text-dim)',
           }}
         >
-          Loading portfolio...
+          Loading dashboard...
         </div>
       </>
     )
@@ -131,7 +131,7 @@ export default function PortfolioTable() {
           </div>
         </div>
         <div style={{ padding: '80px 28px', textAlign: 'center', fontSize: 13, color: 'var(--red)' }}>
-          Error loading portfolio: {error}
+          Error loading dashboard: {error}
         </div>
       </>
     )
@@ -150,7 +150,7 @@ export default function PortfolioTable() {
         <div style={{ padding: '80px 28px', textAlign: 'center' }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Add your first property</div>
           <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5, maxWidth: 360, margin: '0 auto' }}>
-            Search for any Chicago address and click the save icon to add it to your portfolio.
+            Search for any Chicago address and click the save icon to add it to your dashboard.
           </div>
         </div>
       </>
@@ -276,7 +276,7 @@ export default function PortfolioTable() {
                       <button
                         type="button"
                         className="portfolio-unsave-btn"
-                        title="Remove from portfolio"
+                        title="Remove from dashboard"
                         onClick={(e) => {
                           e.stopPropagation()
                           setUnsaveTarget({

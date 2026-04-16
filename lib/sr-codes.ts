@@ -72,6 +72,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'SCX',     label: 'Recycling Inspection Request',                category: 'other',              defaultVisible: true },
   { code: 'PET',     label: 'Pet Wellness Check Request',                  category: 'other',              defaultVisible: true },
   { code: 'BUNGALOW',label: 'Bungalow/Vintage Home Information Request',   category: 'other',              defaultVisible: true },
+  { code: 'SGA',     label: 'Rodent Baiting/Rat Complaint',                category: 'other',              defaultVisible: true },
 
   // ── STREET NUISANCE — hidden by default (graffiti, parking, waste) ─────────
   { code: 'GRAF',    label: 'Graffiti Removal Request',                    category: 'street_nuisance',    defaultVisible: false },
@@ -91,7 +92,6 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'SDR',     label: 'Fly Dumping Complaint',                       category: 'street_nuisance',    defaultVisible: false },
   { code: 'SGQ',     label: 'Dead Animal Pick-Up Request',                 category: 'street_nuisance',    defaultVisible: false },
   { code: 'SGV',     label: 'Dead Bird',                                   category: 'street_nuisance',    defaultVisible: false },
-  { code: 'SGA',     label: 'Rodent Baiting/Rat Complaint',                category: 'street_nuisance',    defaultVisible: false },
   { code: 'SGG',     label: 'Bee/Wasp Removal',                            category: 'street_nuisance',    defaultVisible: false },
   { code: 'NAA',     label: 'Clean and Green Program Request',             category: 'street_nuisance',    defaultVisible: false },
   { code: 'ESPC',    label: 'E-Scooter Parking Complaint',                 category: 'street_nuisance',    defaultVisible: false },
