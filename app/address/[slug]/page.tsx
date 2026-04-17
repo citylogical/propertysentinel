@@ -124,10 +124,10 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const hasDirectPropertyMatch = !!property
 
   let normalizedDataPin: string | null = null
-  if (hasDirectPropertyMatch && pin) {
+  if (pin) {
     const np = normalizePin(pin)
     if (np) normalizedDataPin = np
-  } else if (!hasDirectPropertyMatch && isExpandedFromQuery && siblingPinsForPortfolio.length > 0) {
+  } else if (siblingPinsForPortfolio.length > 0) {
     const np = normalizePin(String(siblingPinsForPortfolio[0]))
     if (np) normalizedDataPin = np
   }
@@ -157,9 +157,11 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const pinForParcelMeta =
     property?.pin != null && String(property.pin).trim() !== ''
       ? String(property.pin).trim()
-      : nearestParcel?.pin != null && String(nearestParcel.pin).trim() !== ''
-        ? String(nearestParcel.pin).trim()
-        : null
+      : siblingPinsForPortfolio.length > 0
+        ? String(siblingPinsForPortfolio[0]).trim()
+        : nearestParcel?.pin != null && String(nearestParcel.pin).trim() !== ''
+          ? String(nearestParcel.pin).trim()
+          : null
 
   const { parcel: parcelMeta } = pinForParcelMeta ? await fetchParcelUniverse(pinForParcelMeta) : { parcel: null }
 

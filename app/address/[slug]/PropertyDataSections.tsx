@@ -196,6 +196,10 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
   let siblingPinsForPortfolio = [...props.siblingPins]
   let addressRange = props.addressRange
 
+  if (!pin && siblingAddresses.length > 1) {
+    isExpanded = true
+  }
+
   let complaints: Awaited<ReturnType<typeof fetchComplaints>>['complaints'] = []
   let violations: Awaited<ReturnType<typeof fetchViolations>>['violations'] = []
   let permits: Awaited<ReturnType<typeof fetchPermits>>['permits'] = []
@@ -216,10 +220,10 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
   let mailingRowsEarly: { mailing_name: string | null; pin: string | null }[] = []
 
   let normalizedDataPin: string | null = null
-  if (hasDirectPropertyMatch && pin) {
+  if (pin) {
     const np = normalizePin(pin)
     if (np) normalizedDataPin = np
-  } else if (!hasDirectPropertyMatch && isExpandedFromQuery && siblingPinsForPortfolio.length > 0) {
+  } else if (siblingPinsForPortfolio.length > 0) {
     const np = normalizePin(String(siblingPinsForPortfolio[0]))
     if (np) normalizedDataPin = np
   }

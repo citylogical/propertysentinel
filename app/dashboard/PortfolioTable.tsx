@@ -1,24 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
-
-type FilterTag = 'all' | 'risk' | 'pbl' | 'str'
 
 export default function PortfolioTable() {
   const [properties, setProperties] = useState<PortfolioProperty[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterTag>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [syncedAt, setSyncedAt] = useState<string>('')
   const [orgName, setOrgName] = useState('')
-  const [unsaveTarget, setUnsaveTarget] = useState<{
-    displayName: string
-    canonicalAddress: string
-  } | null>(null)
 
   const loadPortfolioList = useCallback(async () => {
     const listData = await fetch('/api/dashboard/list').then((r) => r.json())
@@ -59,52 +51,30 @@ export default function PortfolioTable() {
     }
   }, [loadPortfolioList])
 
-  const getStatus = (p: PortfolioProperty): { label: string; cls: string; tags: string[] } => {
-    const tags: string[] = []
-    if (p.is_pbl) tags.push('pbl', 'risk')
-    if (p.shvr_count > 0) tags.push('str', 'risk')
-    if (p.has_stop_work) tags.push('risk')
-    if (p.open_violations > 10) tags.push('risk')
-
-    if (p.is_pbl) return { label: 'PBL', cls: 'badge-red', tags }
-    if (p.shvr_count > 0) return { label: 'STR risk', cls: 'badge-amber', tags }
-    if (p.has_stop_work) return { label: 'Stop work', cls: 'badge-red', tags }
-    return { label: 'Clear', cls: 'badge-green', tags }
-  }
-
-  const filtered = properties.filter((p) => {
-    if (filter === 'all') return true
-    const { tags } = getStatus(p)
-    return tags.includes(filter)
-  })
+  const filtered = properties
 
   const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
 
-  const alertCount = properties.filter((p) => p.alerts_enabled).length
-
   const headerTitle = orgName ? `${orgName} Dashboard` : 'Dashboard'
 
-  const headerMeta = `${properties.length} properties · ${alertCount} alerts active`
-
-  const syncedLabel = (
-    <span
-      style={{
-        fontFamily: 'var(--mono)',
-        fontSize: '10px',
-        color: 'var(--text-dim)',
-        letterSpacing: '0.04em',
-      }}
-    >
-      Synced {syncedAt || '—'}
-    </span>
-  )
+  const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
+    if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
+    if (p.open_violations >= 3) return { label: `${p.open_violations} open viol`, color: 'red' }
+    if (p.open_violations > 0) return { label: `${p.open_violations} open viol`, color: 'red' }
+    if (p.is_pbl) return { label: 'PBL', color: 'amber' }
+    if (p.shvr_count > 0) return { label: `${p.shvr_count} SHVR`, color: 'amber' }
+    return null
+  }
 
   if (loading) {
     return (
       <>
-        <div className="address-header portfolio-page-header">
-          <div style={{ flex: 1 }}>
-            <div className="address-header-street">Dashboard</div>
+        <div className="dashboard-identity-row">
+          <div className="dashboard-identity-left">
+            <div className="dashboard-logo">PS</div>
+            <div className="dashboard-identity-text">
+              <h1 className="dashboard-identity-name">Dashboard</h1>
+            </div>
           </div>
         </div>
         <div
@@ -125,9 +95,12 @@ export default function PortfolioTable() {
   if (error) {
     return (
       <>
-        <div className="address-header portfolio-page-header">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="address-header-street">{headerTitle}</div>
+        <div className="dashboard-identity-row">
+          <div className="dashboard-identity-left">
+            <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
+            <div className="dashboard-identity-text">
+              <h1 className="dashboard-identity-name">{headerTitle}</h1>
+            </div>
           </div>
         </div>
         <div style={{ padding: '80px 28px', textAlign: 'center', fontSize: 13, color: 'var(--red)' }}>
@@ -140,12 +113,16 @@ export default function PortfolioTable() {
   if (properties.length === 0) {
     return (
       <>
-        <div className="address-header portfolio-page-header">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="address-header-street">{headerTitle}</div>
-            <div className="address-header-meta">{headerMeta}</div>
+        <div className="dashboard-identity-row">
+          <div className="dashboard-identity-left">
+            <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
+            <div className="dashboard-identity-text">
+              <h1 className="dashboard-identity-name">{headerTitle}</h1>
+              <div className="dashboard-identity-sub">
+                {properties.length} properties · {syncedAt ? `Updated ${syncedAt}` : ''}
+              </div>
+            </div>
           </div>
-          {syncedLabel}
         </div>
         <div style={{ padding: '80px 28px', textAlign: 'center' }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Add your first property</div>
@@ -159,60 +136,110 @@ export default function PortfolioTable() {
 
   return (
     <>
-      <div className="address-header portfolio-page-header">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="address-header-street">{headerTitle}</div>
-          <div className="address-header-meta">{headerMeta}</div>
-        </div>
-        {syncedLabel}
-      </div>
-      <div style={{ padding: '20px 28px' }}>
-        <div className="portfolio-toolbar">
-          <div className="portfolio-toggle-group">
-            {(['all', 'risk', 'pbl', 'str'] as FilterTag[]).map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                className={`portfolio-toggle-btn ${filter === tag ? 'active' : ''}`}
-                onClick={() => {
-                  setFilter(tag)
-                  setSelectedId(null)
-                }}
-              >
-                {tag === 'all' ? 'All buildings' : tag === 'risk' ? 'At risk' : tag === 'pbl' ? 'PBL' : 'STR activity'}
-              </button>
-            ))}
+      <div className="dashboard-identity-row">
+        <div className="dashboard-identity-left">
+          <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
+          <div className="dashboard-identity-text">
+            <h1 className="dashboard-identity-name">{headerTitle}</h1>
+            <div className="dashboard-identity-sub">
+              {properties.length} properties · Last 12 months ·{' '}
+              {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </div>
           </div>
         </div>
-
-        <div className="portfolio-table-wrap">
-          <table className="portfolio-table">
+        <div className="dashboard-inline-stats">
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">
+              {properties.reduce((s, p) => s + (p.open_complaints ?? 0), 0)}
+            </div>
+            <div className="dashboard-istat-label">Complaints</div>
+          </div>
+          <div className="dashboard-istat-sep" />
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">
+              {properties.reduce((s, p) => s + (p.open_violations ?? 0), 0)}
+            </div>
+            <div className="dashboard-istat-label">Violations</div>
+          </div>
+          <div className="dashboard-istat-sep" />
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">
+              {properties.filter((p) => p.open_violations > 0).reduce((s, p) => s + p.open_violations, 0)}
+            </div>
+            <div className="dashboard-istat-label">Open</div>
+          </div>
+          <div className="dashboard-istat-sep" />
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">
+              {properties.reduce((s, p) => s + (p.total_permits ?? 0), 0)}
+            </div>
+            <div className="dashboard-istat-label">Permits</div>
+          </div>
+          <div className="dashboard-istat-sep" />
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">
+              {properties.filter((p) => p.shvr_count > 0 || p.is_pbl).length}
+            </div>
+            <div className="dashboard-istat-label">STR flags</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: '20px 28px' }}>
+        <div className="dashboard-banner-row">
+          <div className="dashboard-banner dashboard-banner-monitor">
+            <span>
+              <strong>Set up real-time monitoring</strong> — get alerts the moment something hits your portfolio
+            </span>
+            <button
+              type="button"
+              className="dashboard-banner-monitor-btn"
+              onClick={() => {
+                alert('Alert setup coming soon')
+              }}
+            >
+              Set up →
+            </button>
+          </div>
+          <div className="dashboard-banner dashboard-banner-right">
+            <div className="dashboard-banner-right-left">
+              <div className="dashboard-banner-count">{properties.length}</div>
+              <div className="dashboard-banner-count-text">
+                <strong>properties tracked</strong>
+                <br />
+                Search any address to add more
+              </div>
+            </div>
+            <button
+              type="button"
+              className="dashboard-banner-add-btn"
+              onClick={() => {
+                window.dispatchEvent(
+                  new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
+                )
+              }}
+            >
+              + Add property
+            </button>
+          </div>
+        </div>
+        {selectedProperty && <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} />}
+        <div className="dashboard-table-wrap">
+          <table className="dashboard-table">
             <thead>
               <tr>
-                <th>Building</th>
-                <th>Status</th>
-                <th>Neighborhood</th>
-                <th className="right">Units</th>
-                <th className="right">Sqft</th>
-                <th className="center">311</th>
-                <th className="center">STR</th>
-                <th className="center">Violations</th>
-                <th className="center">Permits</th>
-                <th className="center">Alerts</th>
-                <th className="center" aria-label="Remove" style={{ width: 40 }} />
+                <th>Address</th>
+                <th className="r">Complaints</th>
+                <th className="r">Violations</th>
+                <th className="r">Open</th>
+                <th className="r">Permits</th>
+                <th className="r">STR</th>
+                <th>Flags</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((p) => {
-                const status = getStatus(p)
-                const chars = p.building_chars as { building_sqft?: number | string | null } | null
-                const charSqft = chars?.building_sqft
-                const sqftDisplay =
-                  p.sqft_override != null
-                    ? p.sqft_override.toLocaleString()
-                    : charSqft != null && String(charSqft) !== ''
-                      ? Number(charSqft).toLocaleString()
-                      : 'N/A'
+                const flag = getFlag(p)
+                const strCount = (p.shvr_count ?? 0) + (p.is_pbl ? 1 : 0)
                 return (
                   <tr
                     key={p.id}
@@ -220,104 +247,36 @@ export default function PortfolioTable() {
                     onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
                   >
                     <td>
-                      <div className="portfolio-bld-name">{p.display_name || p.address_range || p.canonical_address}</div>
-                      <div className="portfolio-bld-addr">
-                        {p.address_range || p.canonical_address}
-                        {(p.additional_streets ?? []).map((s, i) => (
-                          <span key={i}>
-                            {' & '}
-                            {s}
-                          </span>
-                        ))}
-                      </div>
+                      <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
+                      <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                     </td>
+                    <td className="r">
+                      {p.open_complaints > 0 ? p.open_complaints : <span className="zero">0</span>}
+                    </td>
+                    <td className="r">
+                      {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
+                    </td>
+                    <td className="r">
+                      {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
+                    </td>
+                    <td className="r">
+                      {p.total_permits > 0 ? p.total_permits : <span className="zero">0</span>}
+                    </td>
+                    <td className="r">{strCount > 0 ? strCount : <span className="zero">0</span>}</td>
                     <td>
-                      <span className={`portfolio-badge ${status.cls}`}>{status.label}</span>
-                    </td>
-                    <td>
-                      <span className="portfolio-meta">{p.community_area || 'N/A'}</span>
-                    </td>
-                    <td className="right">
-                      <span className="portfolio-meta">{p.units_override != null ? p.units_override.toLocaleString() : 'N/A'}</span>
-                    </td>
-                    <td className="right">
-                      <span className="portfolio-meta">{sqftDisplay}</span>
-                    </td>
-                    <td className="center">
-                      <span
-                        className={
-                          p.open_complaints > 5
-                            ? 'portfolio-num-amber'
-                            : p.open_complaints > 0
-                              ? 'portfolio-num-dim'
-                              : 'portfolio-num-green'
-                        }
-                      >
-                        {p.open_complaints}
-                      </span>
-                    </td>
-                    <td className="center">
-                      {p.shvr_count > 0 ? (
-                        <span className="portfolio-badge badge-red">{p.shvr_count} SHVR</span>
-                      ) : (
-                        <span className="portfolio-num-dim">—</span>
-                      )}
-                    </td>
-                    <td className="center">
-                      <span className={p.open_violations > 0 ? 'portfolio-num-red' : 'portfolio-num-green'}>{p.open_violations}</span>
-                    </td>
-                    <td className="center">
-                      <span className="portfolio-num-dim">{p.total_permits}</span>
-                    </td>
-                    <td className="center">
-                      <span className={`portfolio-alert-dot ${p.alerts_enabled ? 'on' : 'off'}`} />
-                    </td>
-                    <td className="center">
-                      <button
-                        type="button"
-                        className="portfolio-unsave-btn"
-                        title="Remove from dashboard"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setUnsaveTarget({
-                            displayName: p.display_name || p.address_range || p.canonical_address,
-                            canonicalAddress: p.canonical_address,
-                          })
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        </svg>
-                      </button>
+                      {flag ? (
+                        <span className={`dashboard-flag ${flag.color}`}>
+                          <span className={`dashboard-flag-dot ${flag.color}`} />
+                          {flag.label}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          <div className="portfolio-table-footer">
-            Showing {filtered.length} of {properties.length} buildings
-          </div>
         </div>
-
-        {selectedProperty && <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} />}
-
-        <UnsavePropertyModal
-          isOpen={!!unsaveTarget}
-          onClose={(didUnsave) => {
-            if (didUnsave && unsaveTarget) {
-              const ca = unsaveTarget.canonicalAddress
-              const removedId = properties.find((p) => p.canonical_address === ca)?.id
-              if (removedId && selectedId === removedId) setSelectedId(null)
-              loadPortfolioList().catch(() => {})
-            }
-            setUnsaveTarget(null)
-          }}
-          displayName={unsaveTarget?.displayName ?? ''}
-          canonicalAddress={unsaveTarget?.canonicalAddress ?? ''}
-        />
       </div>
     </>
   )
