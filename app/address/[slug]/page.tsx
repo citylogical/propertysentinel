@@ -14,6 +14,7 @@ import {
   normalizePin,
 } from '@/lib/supabase-search'
 import { getClassDescription } from '@/lib/class-codes'
+import { PortfolioSaveStatsProvider } from '@/components/PortfolioSaveStatsContext'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
 import PropertyDataSections from './PropertyDataSections'
@@ -239,6 +240,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     <div className="address-page">
       <RecordSearch address={addressBarHeadline} slug={decodedSlug} />
       <div className="prop-page-shell">
+        <PortfolioSaveStatsProvider>
         <div className="prop-main-content">
           <div className="property-identity-row">
             <div className="property-identity-left">
@@ -275,6 +277,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
             </Suspense>
           </div>
         </div>
+        </PortfolioSaveStatsProvider>
       </div>
     </div>
   )

@@ -25,6 +25,8 @@ export type PortfolioProperty = {
   created_at: string
   open_violations: number
   open_complaints: number
+  total_complaints_12mo: number
+  total_violations_12mo: number
   total_permits: number
   shvr_count: number
   is_pbl: boolean

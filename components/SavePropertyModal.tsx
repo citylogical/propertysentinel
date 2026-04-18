@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUser } from '@clerk/nextjs'
+import type { PortfolioSaveStatsPayload } from '@/lib/portfolio-save-stats'
 
 export type SavePropertyModalProps = {
   isOpen: boolean
@@ -18,6 +19,8 @@ export type SavePropertyModalProps = {
   allPins: string[]
   assessorSqft: number | null
   assessorUnits: number | null
+  /** Snapshot from property page (after feed loads); omitted when unavailable */
+  portfolioStats?: PortfolioSaveStatsPayload | null
 }
 
 function initialAddressLine(buildingAddressRange: string | null, currentAddress: string) {
@@ -38,6 +41,7 @@ export default function SavePropertyModal({
   allPins,
   assessorSqft,
   assessorUnits,
+  portfolioStats = null,
 }: SavePropertyModalProps) {
   const { user } = useUser()
   const [saving, setSaving] = useState(false)
@@ -101,6 +105,22 @@ export default function SavePropertyModal({
           sqft_override: sqft.trim() ? parseInt(sqft.replace(/,/g, ''), 10) : null,
           notes: notes.trim() || null,
           alerts_enabled: alertsEnabled,
+          ...(portfolioStats
+            ? {
+                open_complaints: portfolioStats.open_complaints,
+                total_complaints_12mo: portfolioStats.total_complaints_12mo,
+                open_violations: portfolioStats.open_violations,
+                total_violations_12mo: portfolioStats.total_violations_12mo,
+                total_permits_12mo: portfolioStats.total_permits_12mo,
+                shvr_count: portfolioStats.shvr_count,
+                has_stop_work: portfolioStats.has_stop_work,
+                implied_value: portfolioStats.implied_value,
+                property_class: portfolioStats.property_class,
+                year_built: portfolioStats.year_built,
+                community_area: portfolioStats.community_area,
+                stats_updated_at: portfolioStats.stats_updated_at,
+              }
+            : {}),
         }),
       })
 

@@ -1,6 +1,53 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { normalizePinSilent } from '@/lib/supabase-search'
+
+async function resolveIsPbl(supabase: ReturnType<typeof getSupabaseAdmin>, pinsRaw: string[]): Promise<boolean> {
+  const uniq = new Set<string>()
+  for (const p of pinsRaw) {
+    const n = normalizePinSilent(String(p).trim())
+    if (!n) continue
+    uniq.add(n)
+    uniq.add(n.replace(/-/g, ''))
+  }
+  const list = [...uniq]
+  if (!list.length) return false
+  const { data } = await supabase.from('str_prohibited_buildings').select('pin').in('pin', list)
+  return !!data?.length
+}
+
+function parseNonNegInt(v: unknown, fallback: number): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.trunc(v))
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseInt(v.replace(/,/g, ''), 10)
+    if (Number.isFinite(n)) return Math.max(0, n)
+  }
+  return fallback
+}
+
+function parseBool(v: unknown): boolean {
+  return v === true
+}
+
+function parseImpliedValue(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v.replace(/,/g, ''))
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+function parseYearBuilt(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v)
+  const s = String(v).trim()
+  if (!s) return null
+  const n = parseInt(s.replace(/\D/g, '').slice(0, 4), 10)
+  return n >= 1600 && n <= 2100 ? n : null
+}
 
 export async function GET(request: Request) {
   const { userId } = await auth()
@@ -92,7 +139,30 @@ export async function POST(request: Request) {
   const alert_email = alerts_enabled
   const alert_sms = false
 
+  const open_complaints = parseNonNegInt(body.open_complaints, 0)
+  const total_complaints_12mo = parseNonNegInt(body.total_complaints_12mo, 0)
+  const open_violations = parseNonNegInt(body.open_violations, 0)
+  const total_violations_12mo = parseNonNegInt(body.total_violations_12mo, 0)
+  const total_permits_12mo = parseNonNegInt(body.total_permits_12mo, 0)
+  const shvr_count = parseNonNegInt(body.shvr_count, 0)
+  const has_stop_work = parseBool(body.has_stop_work)
+  const implied_value = parseImpliedValue(body.implied_value)
+  const property_class =
+    typeof body.property_class === 'string' && body.property_class.trim() !== ''
+      ? body.property_class.trim()
+      : null
+  const community_area =
+    typeof body.community_area === 'string' && body.community_area.trim() !== ''
+      ? body.community_area.trim()
+      : null
+  const year_built = parseYearBuilt(body.year_built)
+  const stats_updated_at =
+    typeof body.stats_updated_at === 'string' && body.stats_updated_at.trim() !== ''
+      ? body.stats_updated_at.trim()
+      : new Date().toISOString()
+
   const supabase = getSupabaseAdmin()
+  const is_pbl = await resolveIsPbl(supabase, pins)
 
   const { data, error } = await supabase
     .from('portfolio_properties')
@@ -112,6 +182,19 @@ export async function POST(request: Request) {
         alert_email,
         alert_sms,
         updated_at: new Date().toISOString(),
+        open_complaints,
+        total_complaints_12mo,
+        open_violations,
+        total_violations_12mo,
+        total_permits_12mo,
+        shvr_count,
+        is_pbl,
+        has_stop_work,
+        implied_value,
+        property_class,
+        year_built,
+        community_area,
+        stats_updated_at,
       },
       { onConflict: 'user_id,canonical_address' }
     )

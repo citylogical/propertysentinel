@@ -3,6 +3,7 @@
 import { useUser } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 import BuildingDetectionModal from '@/components/BuildingDetectionModal'
+import { usePortfolioSaveStats } from '@/components/PortfolioSaveStatsContext'
 import SavePropertyModal from '@/components/SavePropertyModal'
 import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 
@@ -33,6 +34,7 @@ export default function AddressBarButtons({
   isFullBuildingView,
   saveData,
 }: Props) {
+  const { stats: portfolioStats } = usePortfolioSaveStats()
   const { isSignedIn, isLoaded } = useUser()
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [unsaveModalOpen, setUnsaveModalOpen] = useState(false)
@@ -123,6 +125,7 @@ export default function AddressBarButtons({
         allPins={saveData.allPins}
         assessorSqft={saveData.assessorSqft}
         assessorUnits={saveData.assessorUnits}
+        portfolioStats={portfolioStats}
       />
       <UnsavePropertyModal
         isOpen={unsaveModalOpen}

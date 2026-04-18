@@ -36,6 +36,8 @@ import {
   ResidentialCharacteristicTopRows,
 } from './PropertyDetailsCharBlocks'
 import type { SiblingPin } from './PropertyDetailsExpanded'
+import PortfolioSaveStatsUpdater from '@/components/PortfolioSaveStatsUpdater'
+import { computePortfolioSaveStats } from '@/lib/portfolio-save-stats'
 import OwnerPortfolioCard from './OwnerPortfolioCard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import React from 'react'
@@ -667,6 +669,27 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         })()
       : null
 
+  const impliedValueForSave = impliedMarketValueTotal ?? singleImpliedValue ?? null
+  const yearBuiltForSave =
+    charsResidential?.year_built ??
+    charsCondo?.year_built ??
+    (commercialChars.length > 0
+      ? (commercialChars[0] as { year_built?: number | string | null }).year_built ?? null
+      : null)
+  const communityAreaForSave = parcel?.community_area_name ?? null
+  const propertyClassForSave =
+    displayClass != null && String(displayClass).trim() !== '' ? String(displayClass).trim() : null
+
+  const portfolioSaveStatsPayload = computePortfolioSaveStats({
+    complaints,
+    violations,
+    permits,
+    impliedValue: impliedValueForSave,
+    propertyClass: propertyClassForSave,
+    yearBuilt: yearBuiltForSave,
+    communityArea: communityAreaForSave,
+  })
+
   return (
     <>
       <div className="profile">
@@ -901,6 +924,7 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         currentSlug={slug}
         serverTime={Date.now()}
       />
+      <PortfolioSaveStatsUpdater payload={portfolioSaveStatsPayload} />
     </>
   )
 }
