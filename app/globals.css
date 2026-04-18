@@ -3122,6 +3122,12 @@ button.save-toggle-switch {
   margin-bottom: 2px;
 }
 
+.dashboard-dl-range {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 2px;
+}
+
 .dashboard-dl-hood {
   font-size: 11px;
   color: #999;

@@ -111,8 +111,14 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
       <div className="dashboard-detail-inner">
         <div className="dashboard-detail-left">
           <div className="dashboard-dl-addr">
-            {p.display_name || p.address_range || p.canonical_address}
+            {p.display_name || p.canonical_address}
           </div>
+          {p.address_range && p.address_range !== p.canonical_address && (
+            <div className="dashboard-dl-range">{p.address_range}</div>
+          )}
+          {(p.additional_streets ?? []).length > 0 && (
+            <div className="dashboard-dl-range">{(p.additional_streets ?? []).join(' & ')}</div>
+          )}
           <div className="dashboard-dl-hood">{p.community_area || ''}</div>
 
           <div className="dashboard-dl-group">
