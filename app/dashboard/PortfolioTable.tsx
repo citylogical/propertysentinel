@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
 
@@ -64,6 +64,24 @@ export default function PortfolioTable() {
     if (p.is_pbl) return { label: 'PBL', color: 'amber' }
     if (p.shvr_count > 0) return { label: `${p.shvr_count} SHVR`, color: 'amber' }
     return null
+  }
+
+  const handleDelete = async (e: MouseEvent, prop: PortfolioProperty) => {
+    e.stopPropagation()
+    if (!confirm(`Remove ${prop.display_name || prop.canonical_address} from your portfolio?`)) return
+    try {
+      const res = await fetch('/api/dashboard/unsave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ canonical_address: prop.canonical_address }),
+      })
+      if (res.ok) {
+        if (selectedId === prop.id) setSelectedId(null)
+        await loadPortfolioList()
+      }
+    } catch (err) {
+      console.error('Failed to remove property:', err)
+    }
   }
 
   if (loading) {
@@ -234,6 +252,7 @@ export default function PortfolioTable() {
                 <th className="r">Permits</th>
                 <th className="r">STR</th>
                 <th>Flags</th>
+                <th className="dashboard-th-actions" aria-label="Remove" />
               </tr>
             </thead>
             <tbody>
@@ -270,6 +289,20 @@ export default function PortfolioTable() {
                           {flag.label}
                         </span>
                       ) : null}
+                    </td>
+                    <td className="dashboard-td-actions">
+                      <button
+                        type="button"
+                        className="dashboard-delete-btn"
+                        title="Remove from portfolio"
+                        aria-label="Remove from portfolio"
+                        onClick={(e) => handleDelete(e, p)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 )

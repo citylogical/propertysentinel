@@ -3095,6 +3095,32 @@ button.save-toggle-switch {
   background: #b87514;
 }
 
+.dashboard-th-actions {
+  width: 36px;
+}
+
+.dashboard-td-actions {
+  width: 36px;
+  text-align: center;
+  padding: 0 !important;
+}
+
+.dashboard-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ccc;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+
+.dashboard-delete-btn:hover {
+  color: #b8302a;
+}
+
 /* Dashboard detail panel — two-column, above table */
 .dashboard-detail {
   margin-bottom: 16px;
