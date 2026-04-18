@@ -1,52 +1,34 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
+import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { normalizePinSilent } from '@/lib/supabase-search'
 
-async function resolveIsPbl(supabase: ReturnType<typeof getSupabaseAdmin>, pinsRaw: string[]): Promise<boolean> {
-  const uniq = new Set<string>()
-  for (const p of pinsRaw) {
-    const n = normalizePinSilent(String(p).trim())
-    if (!n) continue
-    uniq.add(n)
-    uniq.add(n.replace(/-/g, ''))
-  }
-  const list = [...uniq]
-  if (!list.length) return false
-  const { data } = await supabase.from('str_prohibited_buildings').select('pin').in('pin', list)
-  return !!data?.length
+function parseOptInt(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : parseInt(String(v).replace(/,/g, ''), 10)
+  return Number.isFinite(n) ? n : null
 }
 
-function parseNonNegInt(v: unknown, fallback: number): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.trunc(v))
-  if (typeof v === 'string' && v.trim() !== '') {
-    const n = parseInt(v.replace(/,/g, ''), 10)
-    if (Number.isFinite(n)) return Math.max(0, n)
-  }
-  return fallback
-}
-
-function parseBool(v: unknown): boolean {
-  return v === true
-}
-
-function parseImpliedValue(v: unknown): number | null {
+function parseImpliedFromBody(v: unknown): number | null {
   if (v === null || v === undefined) return null
   if (typeof v === 'number' && Number.isFinite(v)) return v
   if (typeof v === 'string' && v.trim() !== '') {
     const n = Number(v.replace(/,/g, ''))
-    if (Number.isFinite(n)) return n
+    return Number.isFinite(n) ? n : null
   }
   return null
 }
 
-function parseYearBuilt(v: unknown): number | null {
-  if (v === null || v === undefined) return null
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v)
+function parseYearBuiltFromBody(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
   const s = String(v).trim()
-  if (!s) return null
-  const n = parseInt(s.replace(/\D/g, '').slice(0, 4), 10)
-  return n >= 1600 && n <= 2100 ? n : null
+  return s !== '' ? s : null
+}
+
+function parseOptionalString(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  return t !== '' ? t : null
 }
 
 export async function GET(request: Request) {
@@ -123,12 +105,6 @@ export async function POST(request: Request) {
     ? body.pins.filter((p): p is string => typeof p === 'string' && p.trim() !== '').map((p) => p.trim())
     : []
 
-  const parseOptInt = (v: unknown): number | null => {
-    if (v === null || v === undefined || v === '') return null
-    const n = typeof v === 'number' ? v : parseInt(String(v).replace(/,/g, ''), 10)
-    return Number.isFinite(n) ? n : null
-  }
-
   const units_override = parseOptInt(body.units_override)
   const sqft_override = parseOptInt(body.sqft_override)
 
@@ -139,32 +115,14 @@ export async function POST(request: Request) {
   const alert_email = alerts_enabled
   const alert_sms = false
 
-  const open_complaints = parseNonNegInt(body.open_complaints, 0)
-  const total_complaints_12mo = parseNonNegInt(body.total_complaints_12mo, 0)
-  const open_violations = parseNonNegInt(body.open_violations, 0)
-  const total_violations_12mo = parseNonNegInt(body.total_violations_12mo, 0)
-  const total_permits_12mo = parseNonNegInt(body.total_permits_12mo, 0)
-  const shvr_count = parseNonNegInt(body.shvr_count, 0)
-  const has_stop_work = parseBool(body.has_stop_work)
-  const implied_value = parseImpliedValue(body.implied_value)
-  const property_class =
-    typeof body.property_class === 'string' && body.property_class.trim() !== ''
-      ? body.property_class.trim()
-      : null
-  const community_area =
-    typeof body.community_area === 'string' && body.community_area.trim() !== ''
-      ? body.community_area.trim()
-      : null
-  const year_built = parseYearBuilt(body.year_built)
-  const stats_updated_at =
-    typeof body.stats_updated_at === 'string' && body.stats_updated_at.trim() !== ''
-      ? body.stats_updated_at.trim()
-      : new Date().toISOString()
+  const year_built = parseYearBuiltFromBody(body.year_built)
+  const implied_value = parseImpliedFromBody(body.implied_value)
+  const community_area = parseOptionalString(body.community_area)
+  const property_class = parseOptionalString(body.property_class)
 
   const supabase = getSupabaseAdmin()
-  const is_pbl = await resolveIsPbl(supabase, pins)
 
-  const { data, error } = await supabase
+  const { data: insertedRow, error } = await supabase
     .from('portfolio_properties')
     .upsert(
       {
@@ -182,23 +140,14 @@ export async function POST(request: Request) {
         alert_email,
         alert_sms,
         updated_at: new Date().toISOString(),
-        open_complaints,
-        total_complaints_12mo,
-        open_violations,
-        total_violations_12mo,
-        total_permits_12mo,
-        shvr_count,
-        is_pbl,
-        has_stop_work,
-        implied_value,
-        property_class,
         year_built,
+        implied_value,
         community_area,
-        stats_updated_at,
+        property_class,
       },
       { onConflict: 'user_id,canonical_address' }
     )
-    .select()
+    .select('id')
     .single()
 
   if (error) {
@@ -209,5 +158,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, id: data.id })
+  if (insertedRow?.id) {
+    try {
+      const activity = await fetchPortfolioActivity(
+        supabase,
+        canonical_address,
+        address_range,
+        additional_streets.length > 0 ? additional_streets : null
+      )
+
+      await supabase
+        .from('portfolio_properties')
+        .update({
+          ...activity.stats,
+          stats_updated_at: new Date().toISOString(),
+        })
+        .eq('id', insertedRow.id as string)
+    } catch (statsErr) {
+      console.error('Portfolio stats computation failed (non-fatal):', statsErr)
+      console.error('Inputs were:', { canonical_address, address_range, additional_streets })
+    }
+  }
+
+  return NextResponse.json({ success: true, id: insertedRow?.id })
 }

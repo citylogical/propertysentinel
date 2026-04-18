@@ -818,6 +818,26 @@ export const fetchParcelUniverse = unstable_cache(
   { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['parcel-universe'] }
 )
 
+/** Latest `parcel_universe.class` for a PIN (tax_year desc). Used when assessed_values class is 299 for all units. */
+export async function fetchParcelUniverseClass(pin: string): Promise<string | null> {
+  if (!pin || !normalizePinSilent(pin)) return null
+  const pinQuery = normalizePinSilent(pin)
+  try {
+    const { data, error } = await supabase
+      .from('parcel_universe')
+      .select('class')
+      .eq('pin', pinQuery)
+      .order('tax_year', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (data?.class == null) return null
+    return String(data.class)
+  } catch {
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Complaints
 // ---------------------------------------------------------------------------

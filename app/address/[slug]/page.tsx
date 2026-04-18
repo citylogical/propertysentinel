@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
 import React, { Suspense, cache } from 'react'
+import { auth } from '@clerk/nextjs/server'
 import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { formatNeighborhoodWithCommunityArea, lookupNeighborhood } from '@/lib/neighborhood-lookup'
+import { additionalStreetSegmentsForPortfolio } from '@/lib/portfolio-address-expansion'
+import { getPortfolioSaveBuildingSnapshot } from '@/lib/portfolio-save-building-snapshot'
 import {
   fetchParcelUniverse,
   fetchProperty,
@@ -14,6 +17,7 @@ import {
   normalizePin,
 } from '@/lib/supabase-search'
 import { getClassDescription } from '@/lib/class-codes'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { PortfolioSaveStatsProvider } from '@/components/PortfolioSaveStatsContext'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
@@ -217,34 +221,83 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
     .filter(Boolean)
     .join(' · ')
 
-  const addressBarHeadline =
+  const saveContextHeadline =
     isExpandedFromQuery && addressRange
       ? formatRangeForDisplay(addressRange)
       : displayAddressFormatted
 
+  const titularDisplay = formatAddressForDisplay(normalizedAddress)
+  const rangeFormatted = addressRange ? formatRangeForDisplay(addressRange) : null
+  const showRangeSubtitle =
+    isExpandedFromQuery && rangeFormatted != null && rangeFormatted !== titularDisplay
+
+  let portfolioDisplayName: string | null = null
+  const { userId } = await auth()
+  if (userId) {
+    const supabase = getSupabaseAdmin()
+    const { data } = await supabase
+      .from('portfolio_properties')
+      .select('display_name')
+      .eq('user_id', userId)
+      .eq('canonical_address', normalizedAddress)
+      .maybeSingle()
+    const dn = data?.display_name
+    portfolioDisplayName = typeof dn === 'string' && dn.trim() !== '' ? dn.trim() : null
+  }
+
+  const identityHeadline = portfolioDisplayName ?? titularDisplay
+
+  const saveBuildingSnapshot = await getPortfolioSaveBuildingSnapshot({
+    normalizedPin: normalizedDataPin,
+    siblingPins: siblingPinsForPortfolio,
+    useMultiPinImplied:
+      siblingPinsForPortfolio.length > 1 && (isExpandedFromQuery || addressRange != null),
+    propertyClassFallback:
+      property?.property_class != null
+        ? String(property.property_class)
+        : parcelMeta?.class != null
+          ? String(parcelMeta.class)
+          : null,
+    communityArea: communityAreaLabel,
+  })
+
   const stubPortfolioSaveData = {
-    currentAddress: addressBarHeadline,
+    currentAddress: saveContextHeadline,
     canonicalAddress: normalizedAddress,
     isPartOfBuilding: !!(addressRange && (addressRange !== displayAddressFromSlug || !pin)),
     buildingAddressRange: addressRange
       ? formatRangeForDisplay(addressRange)
-      : addressBarHeadline || null,
-    additionalStreets:
-      addressBarHeadline.includes(' & ') ? addressBarHeadline.split(' & ').slice(1).map((s) => s.trim()).filter(Boolean) : [],
+      : saveContextHeadline || null,
+    additionalStreets: additionalStreetSegmentsForPortfolio(addressRange, normalizedAddress).map((seg) =>
+      formatAddressForDisplay(seg)
+    ),
+    portfolioAddressRangeRaw: addressRange,
     allPins: siblingPinsForPortfolio.length > 0 ? siblingPinsForPortfolio : pin ? [pin] : [],
     assessorSqft: null,
     assessorUnits: null,
+    yearBuilt: saveBuildingSnapshot.yearBuilt,
+    impliedValue: saveBuildingSnapshot.impliedValue,
+    communityArea: saveBuildingSnapshot.communityArea ?? neighborhoodDisplay,
+    propertyClass: saveBuildingSnapshot.propertyClass,
   }
 
   return (
     <div className="address-page">
-      <RecordSearch address={addressBarHeadline} slug={decodedSlug} />
+      <RecordSearch address={titularDisplay} slug={decodedSlug} />
       <div className="prop-page-shell">
         <PortfolioSaveStatsProvider>
         <div className="prop-main-content">
           <div className="property-identity-row">
             <div className="property-identity-left">
-              <h1 className="property-identity-address">{addressBarHeadline}</h1>
+              <div className="property-identity-head-block">
+                <h1 className="property-identity-address">{identityHeadline}</h1>
+                {portfolioDisplayName ? (
+                  <div className="property-address-canonical">{titularDisplay}</div>
+                ) : null}
+                {showRangeSubtitle ? (
+                  <div className="property-address-range">{rangeFormatted}</div>
+                ) : null}
+              </div>
               <div className="property-identity-citystate">{addressBarMeta}</div>
             </div>
             <AddressBarButtons

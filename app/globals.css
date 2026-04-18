@@ -1253,15 +1253,40 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
   min-width: 0;
 }
 
+.address-page .property-identity-head-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
 .address-page .property-identity-address {
   font-family: "Merriweather", Georgia, serif;
   font-size: 22px;
   font-weight: 600;
   color: #162d47;
-  margin: 0 0 8px;
+  margin: 0;
   letter-spacing: -0.01em;
   line-height: 1.2;
   word-break: break-word;
+}
+
+.address-page .property-address-canonical {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim, #7a6f62);
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+.address-page .property-address-range {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim, #7a6f62);
+  margin-top: 4px;
+  font-weight: 400;
 }
 
 .address-page .property-identity-citystate {
@@ -3152,12 +3177,18 @@ button.save-toggle-switch {
   font-size: 12px;
   color: #666;
   margin-bottom: 2px;
+  margin-top: 0;
 }
 
 .dashboard-dl-hood {
   font-size: 11px;
   color: #999;
-  margin-bottom: 14px;
+  margin-bottom: 4px;
+}
+
+.dashboard-dl-hood + .dashboard-dl-group,
+.dashboard-dl-range + .dashboard-dl-group {
+  margin-top: 12px;
 }
 
 .dashboard-dl-group {
@@ -3278,20 +3309,28 @@ button.save-toggle-switch {
 }
 
 .dashboard-tl-date {
-  width: 48px;
+  width: 90px;
   flex-shrink: 0;
   font-size: 11px;
   color: #999;
   font-variant-numeric: tabular-nums;
+  padding-right: 8px;
 }
 
 .dashboard-tl-type {
-  width: 52px;
+  width: 68px;
   flex-shrink: 0;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #999;
+  padding-right: 8px;
+}
+
+.dashboard-tl-detail {
+  font-size: 10px;
+  color: #bbb;
+  margin-left: 6px;
 }
 
 .dashboard-tl-desc {

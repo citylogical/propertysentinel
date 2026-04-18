@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUser } from '@clerk/nextjs'
-import type { PortfolioSaveStatsPayload } from '@/lib/portfolio-save-stats'
+import { formatAddressForDisplay } from '@/lib/formatAddress'
 
 export type SavePropertyModalProps = {
   isOpen: boolean
@@ -16,17 +16,15 @@ export type SavePropertyModalProps = {
   /** Detected building range for hint text and optional pre-fill (with currentAddress). */
   buildingAddressRange: string | null
   additionalStreets: string[]
+  /** Raw `address_range` for multi-segment buildings (not shown on line 1). */
+  portfolioAddressRangeRaw: string | null
   allPins: string[]
   assessorSqft: number | null
   assessorUnits: number | null
-  /** Snapshot from property page (after feed loads); omitted when unavailable */
-  portfolioStats?: PortfolioSaveStatsPayload | null
-}
-
-function initialAddressLine(buildingAddressRange: string | null, currentAddress: string) {
-  const b = buildingAddressRange?.trim()
-  if (b) return b
-  return currentAddress
+  yearBuilt?: string | null
+  impliedValue?: number | null
+  communityArea?: string | null
+  propertyClass?: string | null
 }
 
 export default function SavePropertyModal({
@@ -38,17 +36,21 @@ export default function SavePropertyModal({
   isPartOfBuilding,
   buildingAddressRange,
   additionalStreets: initialAdditionalStreets,
+  portfolioAddressRangeRaw,
   allPins,
   assessorSqft,
   assessorUnits,
-  portfolioStats = null,
+  yearBuilt = null,
+  impliedValue = null,
+  communityArea = null,
+  propertyClass = null,
 }: SavePropertyModalProps) {
   const { user } = useUser()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [displayName, setDisplayName] = useState(currentAddress)
-  const [addressRange, setAddressRange] = useState(() => initialAddressLine(buildingAddressRange, currentAddress))
+  const [displayName, setDisplayName] = useState(() => formatAddressForDisplay(canonicalAddress))
+  const [addressRange, setAddressRange] = useState(() => formatAddressForDisplay(canonicalAddress))
   const [additionalStreets, setAdditionalStreets] = useState<string[]>(initialAdditionalStreets || [])
   const [units, setUnits] = useState<string>(assessorUnits?.toString() || '')
   const [sqft, setSqft] = useState<string>(
@@ -60,8 +62,8 @@ export default function SavePropertyModal({
   useEffect(() => {
     if (!isOpen) return
     setError(null)
-    setDisplayName(currentAddress)
-    setAddressRange(initialAddressLine(buildingAddressRange, currentAddress))
+    setDisplayName(formatAddressForDisplay(canonicalAddress))
+    setAddressRange(formatAddressForDisplay(canonicalAddress))
     setAdditionalStreets(initialAdditionalStreets?.length ? [...initialAdditionalStreets] : [])
     setUnits(assessorUnits?.toString() || '')
     setSqft(
@@ -69,7 +71,7 @@ export default function SavePropertyModal({
     )
     setNotes('')
     setAlertsEnabled(false)
-  }, [isOpen, currentAddress, buildingAddressRange, initialAdditionalStreets, assessorSqft, assessorUnits])
+  }, [isOpen, canonicalAddress, currentAddress, buildingAddressRange, initialAdditionalStreets, assessorSqft, assessorUnits])
 
   const handleAddStreet = () => {
     setAdditionalStreets([...additionalStreets, ''])
@@ -96,7 +98,10 @@ export default function SavePropertyModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           canonical_address: canonicalAddress,
-          address_range: addressRange.trim() || null,
+          address_range:
+            portfolioAddressRangeRaw && portfolioAddressRangeRaw.trim() !== ''
+              ? portfolioAddressRangeRaw.trim()
+              : addressRange.trim() || null,
           additional_streets: additionalStreets.map((s) => s.trim()).filter(Boolean),
           pins: allPins,
           slug,
@@ -105,22 +110,10 @@ export default function SavePropertyModal({
           sqft_override: sqft.trim() ? parseInt(sqft.replace(/,/g, ''), 10) : null,
           notes: notes.trim() || null,
           alerts_enabled: alertsEnabled,
-          ...(portfolioStats
-            ? {
-                open_complaints: portfolioStats.open_complaints,
-                total_complaints_12mo: portfolioStats.total_complaints_12mo,
-                open_violations: portfolioStats.open_violations,
-                total_violations_12mo: portfolioStats.total_violations_12mo,
-                total_permits_12mo: portfolioStats.total_permits_12mo,
-                shvr_count: portfolioStats.shvr_count,
-                has_stop_work: portfolioStats.has_stop_work,
-                implied_value: portfolioStats.implied_value,
-                property_class: portfolioStats.property_class,
-                year_built: portfolioStats.year_built,
-                community_area: portfolioStats.community_area,
-                stats_updated_at: portfolioStats.stats_updated_at,
-              }
-            : {}),
+          year_built: yearBuilt,
+          implied_value: impliedValue,
+          community_area: communityArea,
+          property_class: propertyClass,
         }),
       })
 
@@ -156,7 +149,7 @@ export default function SavePropertyModal({
             <div id="save-modal-title" className="save-modal-title">
               Save to dashboard
             </div>
-            <div className="save-modal-sub">{currentAddress}</div>
+            <div className="save-modal-sub">{formatAddressForDisplay(canonicalAddress)}</div>
           </div>
           <button type="button" className="save-modal-close" onClick={() => onClose()} aria-label="Close">
             &times;

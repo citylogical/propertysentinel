@@ -31,6 +31,8 @@ export type PortfolioProperty = {
   shvr_count: number
   is_pbl: boolean
   has_stop_work: boolean
+  str_registrations?: number
+  is_restricted_zone?: boolean
   implied_value: number | null
   community_area: string | null
   property_class: string | null

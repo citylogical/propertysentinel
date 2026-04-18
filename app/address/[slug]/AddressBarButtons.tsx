@@ -1,9 +1,8 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
+import { SignInButton, useUser } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 import BuildingDetectionModal from '@/components/BuildingDetectionModal'
-import { usePortfolioSaveStats } from '@/components/PortfolioSaveStatsContext'
 import SavePropertyModal from '@/components/SavePropertyModal'
 import UnsavePropertyModal from '@/components/UnsavePropertyModal'
 
@@ -13,9 +12,15 @@ export type PortfolioSaveData = {
   isPartOfBuilding: boolean
   buildingAddressRange: string | null
   additionalStreets: string[]
+  /** Raw multi-street range for API `address_range` when the building spans multiple segments. */
+  portfolioAddressRangeRaw: string | null
   allPins: string[]
   assessorSqft: number | null
   assessorUnits: number | null
+  yearBuilt: string | null
+  impliedValue: number | null
+  communityArea: string | null
+  propertyClass: string | null
 }
 
 type Props = {
@@ -34,7 +39,6 @@ export default function AddressBarButtons({
   isFullBuildingView,
   saveData,
 }: Props) {
-  const { stats: portfolioStats } = usePortfolioSaveStats()
   const { isSignedIn, isLoaded } = useUser()
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [unsaveModalOpen, setUnsaveModalOpen] = useState(false)
@@ -42,25 +46,37 @@ export default function AddressBarButtons({
   const [shareCopied, setShareCopied] = useState(false)
 
   useEffect(() => {
+    if (!isSignedIn) {
+      setIsSaved(false)
+      return
+    }
     if (!saveData.canonicalAddress) return
     fetch(`/api/dashboard/save?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`)
       .then((res) => res.json())
       .then((data: { saved?: boolean }) => setIsSaved(!!data.saved))
       .catch(() => {})
-  }, [saveData.canonicalAddress])
+  }, [isSignedIn, saveData.canonicalAddress])
 
   const openSaveFlow = () => {
     if (!isLoaded) return
-    if (!isSignedIn) {
-      window.location.href = '/sign-in'
-      return
-    }
+    if (!isSignedIn) return
     if (isSaved) {
       setUnsaveModalOpen(true)
     } else {
       setSaveModalOpen(true)
     }
   }
+
+  const returnAfterAuth =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}${window.location.search}`
+      : '/'
+
+  const bookmarkIcon = (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  )
 
   return (
     <>
@@ -97,17 +113,38 @@ export default function AddressBarButtons({
           )}
         </button>
 
-        <button
-          type="button"
-          className="address-header-icon-btn address-header-icon-btn-alert"
-          title={isSaved ? 'Remove from dashboard' : 'Save to dashboard'}
-          aria-label="Save to dashboard"
-          onClick={openSaveFlow}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
+        {!isLoaded ? (
+          <button
+            type="button"
+            className="address-header-icon-btn address-header-icon-btn-alert"
+            title="Save to dashboard"
+            aria-label="Save to dashboard"
+            disabled
+          >
+            {bookmarkIcon}
+          </button>
+        ) : !isSignedIn ? (
+          <SignInButton mode="modal" forceRedirectUrl={returnAfterAuth} signUpForceRedirectUrl={returnAfterAuth}>
+            <button
+              type="button"
+              className="address-header-icon-btn address-header-icon-btn-alert"
+              title="Sign in to save to dashboard"
+              aria-label="Sign in to save to dashboard"
+            >
+              {bookmarkIcon}
+            </button>
+          </SignInButton>
+        ) : (
+          <button
+            type="button"
+            className="address-header-icon-btn address-header-icon-btn-alert"
+            title={isSaved ? 'Remove from dashboard' : 'Save to dashboard'}
+            aria-label="Save to dashboard"
+            onClick={openSaveFlow}
+          >
+            {bookmarkIcon}
+          </button>
+        )}
       </div>
 
       <SavePropertyModal
@@ -122,10 +159,14 @@ export default function AddressBarButtons({
         isPartOfBuilding={saveData.isPartOfBuilding}
         buildingAddressRange={saveData.buildingAddressRange}
         additionalStreets={saveData.additionalStreets}
+        portfolioAddressRangeRaw={saveData.portfolioAddressRangeRaw}
         allPins={saveData.allPins}
         assessorSqft={saveData.assessorSqft}
         assessorUnits={saveData.assessorUnits}
-        portfolioStats={portfolioStats}
+        yearBuilt={saveData.yearBuilt}
+        impliedValue={saveData.impliedValue}
+        communityArea={saveData.communityArea}
+        propertyClass={saveData.propertyClass}
       />
       <UnsavePropertyModal
         isOpen={unsaveModalOpen}

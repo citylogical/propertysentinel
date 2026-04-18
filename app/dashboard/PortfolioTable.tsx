@@ -168,14 +168,14 @@ export default function PortfolioTable() {
         <div className="dashboard-inline-stats">
           <div className="dashboard-istat">
             <div className="dashboard-istat-num">
-              {properties.reduce((s, p) => s + (p.open_complaints ?? 0), 0)}
+              {properties.reduce((s, p) => s + (p.total_complaints_12mo ?? p.open_complaints ?? 0), 0)}
             </div>
             <div className="dashboard-istat-label">Complaints</div>
           </div>
           <div className="dashboard-istat-sep" />
           <div className="dashboard-istat">
             <div className="dashboard-istat-num">
-              {properties.reduce((s, p) => s + (p.open_violations ?? 0), 0)}
+              {properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0)}
             </div>
             <div className="dashboard-istat-label">Violations</div>
           </div>
@@ -270,10 +270,14 @@ export default function PortfolioTable() {
                       <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                     </td>
                     <td className="r">
-                      {p.open_complaints > 0 ? p.open_complaints : <span className="zero">0</span>}
+                      {(p.total_complaints_12mo ?? p.open_complaints ?? 0) > 0 ? (
+                        p.total_complaints_12mo ?? p.open_complaints ?? 0
+                      ) : (
+                        <span className="zero">0</span>
+                      )}
                     </td>
                     <td className="r">
-                      {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
+                      {(p.total_violations_12mo ?? 0) > 0 ? p.total_violations_12mo ?? 0 : <span className="zero">0</span>}
                     </td>
                     <td className="r">
                       {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
