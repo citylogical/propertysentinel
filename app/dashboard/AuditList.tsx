@@ -31,24 +31,24 @@ export default function AuditList() {
     void load()
   }, [load])
 
-  const handleDelete = async (audit: AuditRow) => {
-    if (
-      !confirm(
-        `Deactivate audit "${audit.pm_company_name || audit.slug}"? The public link will stop working.`
-      )
-    )
-      return
+  const handleAction = async (audit: AuditRow, action: 'deactivate' | 'reactivate' | 'delete') => {
+    const messages: Record<'deactivate' | 'reactivate' | 'delete', string> = {
+      deactivate: `Deactivate "${audit.pm_company_name || audit.slug}"? The public link will stop working until reactivated.`,
+      reactivate: `Reactivate "${audit.pm_company_name || audit.slug}"? The public link will start working again.`,
+      delete: `Permanently delete "${audit.pm_company_name || audit.slug}"? This cannot be undone.`,
+    }
+    if (!confirm(messages[action])) return
     const res = await fetch('/api/dashboard/audit/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audit_id: audit.id }),
+      body: JSON.stringify({ audit_id: audit.id, action }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      alert(typeof err.error === 'string' ? err.error : 'Could not deactivate audit')
+      alert(typeof err.error === 'string' ? err.error : 'Request failed')
       return
     }
-    load()
+    void load()
   }
 
   if (loading || audits.length === 0) return null
@@ -67,7 +67,7 @@ export default function AuditList() {
             <th>Status</th>
             <th>Created</th>
             <th>Expires</th>
-            <th style={{ width: 80 }} />
+            <th style={{ width: 200 }} />
           </tr>
         </thead>
         <tbody>
@@ -97,23 +97,30 @@ export default function AuditList() {
                     ? new Date(a.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                     : 'Never'}
                 </td>
-                <td style={{ textAlign: 'right' }}>
-                  {isLive ? (
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="audit-action-link"
-                      style={{ marginRight: 8 }}
-                    >
-                      View
-                    </a>
-                  ) : null}
+                <td className="audit-actions-cell">
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="audit-action-link">
+                    View
+                  </a>
                   {a.is_active ? (
-                    <button type="button" className="audit-action-delete" onClick={() => void handleDelete(a)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="audit-action-deactivate"
+                      onClick={() => void handleAction(a, 'deactivate')}
+                    >
+                      Deactivate
                     </button>
-                  ) : null}
+                  ) : (
+                    <button
+                      type="button"
+                      className="audit-action-reactivate"
+                      onClick={() => void handleAction(a, 'reactivate')}
+                    >
+                      Reactivate
+                    </button>
+                  )}
+                  <button type="button" className="audit-action-delete" onClick={() => void handleAction(a, 'delete')}>
+                    Delete
+                  </button>
                 </td>
               </tr>
             )
