@@ -173,6 +173,8 @@ export default function AppSidebar() {
 
   const navItems = useMemo(() => getSidebarNavItems(isAdmin), [isAdmin])
 
+  if (pathname?.startsWith('/audit')) return null
+
   return (
     <div
       ref={sidebarRef}

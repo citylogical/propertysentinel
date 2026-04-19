@@ -42,6 +42,9 @@ export async function GET(request: Request) {
       recent_permits: [],
       latest_violation_date: null,
       latest_permit_date: null,
+      str_registrations: 0,
+      is_restricted_zone: false,
+      nearby_listings: 0,
     })
   }
 
@@ -63,5 +66,6 @@ export async function GET(request: Request) {
     latest_permit_date: p0?.issue_date ?? null,
     str_registrations: result.stats.str_registrations,
     is_restricted_zone: result.stats.is_restricted_zone,
+    nearby_listings: result.stats.nearby_listings,
   })
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import CreateAuditModal from './CreateAuditModal'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
 
@@ -9,6 +10,9 @@ export default function PortfolioTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [syncedAt, setSyncedAt] = useState<string>('')
   const [orgName, setOrgName] = useState('')
 
@@ -51,7 +55,50 @@ export default function PortfolioTable() {
     }
   }, [loadPortfolioList])
 
+  useEffect(() => {
+    fetch('/api/profile/role')
+      .then((res) => res.json())
+      .then((data: { is_admin?: boolean }) => setIsAdmin(data.is_admin === true))
+      .catch(() => {})
+  }, [])
+
   const filtered = properties
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map((p) => p.id)))
+    }
+  }
+
+  const handleRemoveSelected = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Remove ${selectedIds.size} properties from your portfolio?`)) return
+    const idsToRemove = new Set(selectedIds)
+    for (const id of idsToRemove) {
+      const prop = properties.find((p) => p.id === id)
+      if (prop) {
+        await fetch('/api/dashboard/unsave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canonical_address: prop.canonical_address }),
+        })
+      }
+    }
+    setSelectedIds(new Set())
+    if (selectedId && idsToRemove.has(selectedId)) setSelectedId(null)
+    await loadPortfolioList()
+  }
 
   const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
 
@@ -77,6 +124,11 @@ export default function PortfolioTable() {
       })
       if (res.ok) {
         if (selectedId === prop.id) setSelectedId(null)
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(prop.id)
+          return next
+        })
         await loadPortfolioList()
       }
     } catch (err) {
@@ -240,11 +292,38 @@ export default function PortfolioTable() {
             </button>
           </div>
         </div>
-        {selectedProperty && <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} />}
+        {isAdmin && selectedIds.size > 0 ? (
+          <div className="dashboard-sel-bar">
+            <div className="dashboard-sel-text">{selectedIds.size} selected</div>
+            <div className="dashboard-sel-btns">
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-audit"
+                onClick={() => setShowAuditModal(true)}
+              >
+                Create audit
+              </button>
+              <button type="button" className="dashboard-sel-btn dashboard-sel-btn-remove" onClick={() => void handleRemoveSelected()}>
+                Remove properties
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {selectedProperty ? <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} /> : null}
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">
             <thead>
               <tr>
+                {isAdmin ? (
+                  <th className="dashboard-th-ck">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === filtered.length && filtered.length > 0}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all properties"
+                    />
+                  </th>
+                ) : null}
                 <th>Address</th>
                 <th className="r">Complaints</th>
                 <th className="r">Violations</th>
@@ -262,9 +341,19 @@ export default function PortfolioTable() {
                 return (
                   <tr
                     key={p.id}
-                    className={selectedId === p.id ? 'selected' : ''}
+                    className={`${selectedId === p.id ? 'selected' : ''} ${selectedIds.has(p.id) ? 'checked' : ''}`}
                     onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
                   >
+                    {isAdmin ? (
+                      <td className="dashboard-td-ck" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                          aria-label={`Select ${p.display_name || p.canonical_address}`}
+                        />
+                      </td>
+                    ) : null}
                     <td>
                       <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
                       <span className="dashboard-addr-hood">{p.community_area || ''}</span>
@@ -315,6 +404,16 @@ export default function PortfolioTable() {
           </table>
         </div>
       </div>
+      {showAuditModal ? (
+        <CreateAuditModal
+          isOpen={showAuditModal}
+          onClose={(created) => {
+            setShowAuditModal(false)
+            if (created) setSelectedIds(new Set())
+          }}
+          selectedProperties={properties.filter((p) => selectedIds.has(p.id))}
+        />
+      ) : null}
     </>
   )
 }

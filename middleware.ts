@@ -1,6 +1,9 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
-/** Property pages, marketing, and search stay public; only account areas require sign-in. */
+/**
+ * Property pages, marketing, search, and public portfolio audits stay public;
+ * only account areas require sign-in. (/audit/* is intentionally not protected.)
+ */
 const isProtectedRoute = createRouteMatcher(['/profile(.*)', '/dashboard(.*)'])
 
 export default clerkMiddleware(async (auth, req) => {

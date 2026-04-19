@@ -1,8 +1,9 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
 import BuildingLogoIcon from '@/components/BuildingLogoIcon'
 
@@ -12,6 +13,7 @@ type Props = {
 
 /** Fixed 48px bar + drawer for viewports ≤768px (homepage and any non–address-page shell). */
 export default function MobileNav({ apiKey }: Props) {
+  const pathname = usePathname()
   const { isSignedIn, isLoaded } = useUser()
   const [open, setOpen] = useState(false)
 
@@ -19,6 +21,8 @@ export default function MobileNav({ apiKey }: Props) {
     if (!isLoaded) return
     if (!isSignedIn) setOpen(false)
   }, [isLoaded, isSignedIn])
+
+  if (pathname?.startsWith('/audit')) return null
 
   return (
     <>

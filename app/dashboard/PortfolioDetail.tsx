@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import NearbyListingsModal from '@/components/NearbyListingsModal'
 import type { PortfolioProperty } from './types'
 
 type Props = {
@@ -16,6 +17,7 @@ type DetailPayload = {
   latest_permit_date?: string | null
   str_registrations?: number
   is_restricted_zone?: boolean
+  nearby_listings?: number
 }
 
 type ActivityItem = {
@@ -30,6 +32,8 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(true)
+  const [showListings, setShowListings] = useState(false)
+  const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null)
 
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -47,6 +51,31 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
       .catch(() => setDetailData(null))
       .finally(() => setDetailLoading(false))
   }, [p.id])
+
+  useEffect(() => {
+    const pin = p.pins?.[0]
+    if (!pin) {
+      setPropertyCoords(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/parcel-coords?pin=${encodeURIComponent(pin)}`)
+      .then((res) => res.json())
+      .then((data: { lat?: number | null; lng?: number | null }) => {
+        if (cancelled) return
+        if (data.lat != null && data.lng != null && Number.isFinite(data.lat) && Number.isFinite(data.lng)) {
+          setPropertyCoords({ lat: data.lat, lng: data.lng })
+        } else {
+          setPropertyCoords(null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPropertyCoords(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [p.id, p.pins?.[0] ?? ''])
 
   const money = (val: number | null) =>
     val != null && Number.isFinite(val) ? `$${val.toLocaleString()}` : 'N/A'
@@ -155,6 +184,7 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
   const isRestrictedZone = detailData?.is_restricted_zone ?? p.is_restricted_zone
   const strRegistrations =
     detailData?.str_registrations ?? p.str_registrations ?? 0
+  const nearbyListings = detailData?.nearby_listings ?? p.nearby_listings ?? 0
 
   const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
 
@@ -206,17 +236,11 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
           <div className="dashboard-dl-group">
             <div className="dashboard-dl-group-label">Short-term rentals</div>
             <div className="dashboard-dl-row">
-              <span className="dashboard-dl-key">Prohibited bldg list</span>
+              <span className="dashboard-dl-key">PBL / Restricted zone</span>
               {isPbl ? (
-                <span className="dashboard-dl-val dashboard-val-yes">YES</span>
-              ) : (
-                <span className="dashboard-dl-val dashboard-val-no">No</span>
-              )}
-            </div>
-            <div className="dashboard-dl-row">
-              <span className="dashboard-dl-key">Restricted zone</span>
-              {isRestrictedZone ? (
-                <span className="dashboard-dl-val dashboard-val-yes">YES</span>
+                <span className="dashboard-dl-val dashboard-val-yes">Prohibited</span>
+              ) : isRestrictedZone ? (
+                <span className="dashboard-dl-val dashboard-val-warn">Restricted</span>
               ) : (
                 <span className="dashboard-dl-val dashboard-val-no">No</span>
               )}
@@ -225,6 +249,22 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
               <span className="dashboard-dl-key">Registrations</span>
               {strRegistrations > 0 ? (
                 <span className="dashboard-dl-val dashboard-val-warn">{strRegistrations} at address</span>
+              ) : (
+                <span className="dashboard-dl-val dashboard-val-no">None</span>
+              )}
+            </div>
+            <div className="dashboard-dl-row">
+              <span className="dashboard-dl-key">Listings nearby</span>
+              {nearbyListings > 0 ? (
+                <button
+                  type="button"
+                  className="dashboard-dl-val dashboard-val-warn dashboard-val-link"
+                  disabled={!propertyCoords}
+                  title={!propertyCoords ? 'Loading map position…' : undefined}
+                  onClick={() => setShowListings(true)}
+                >
+                  {nearbyListings} within 150m
+                </button>
               ) : (
                 <span className="dashboard-dl-val dashboard-val-no">None</span>
               )}
@@ -267,6 +307,15 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
           </a>
         </div>
       </div>
+      {showListings && propertyCoords ? (
+        <NearbyListingsModal
+          isOpen={showListings}
+          onClose={() => setShowListings(false)}
+          address={p.display_name || p.canonical_address}
+          lat={propertyCoords.lat}
+          lng={propertyCoords.lng}
+        />
+      ) : null}
     </div>
   )
 }

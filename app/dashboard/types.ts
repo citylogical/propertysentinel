@@ -33,6 +33,7 @@ export type PortfolioProperty = {
   has_stop_work: boolean
   str_registrations?: number
   is_restricted_zone?: boolean
+  nearby_listings?: number
   implied_value: number | null
   community_area: string | null
   property_class: string | null

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 /**
  * Expand display-formatted address ranges into individual normalized addresses.
@@ -85,6 +86,7 @@ export interface PortfolioActivityStats {
   has_stop_work: boolean
   str_registrations: number
   is_restricted_zone: boolean
+  nearby_listings: number
 }
 
 export interface PortfolioActivityDetail {
@@ -125,8 +127,16 @@ export async function fetchPortfolioActivity(
   const addresses = getAllAddresses(canonicalAddress, addressRange, additionalStreets)
   const twelveMonthsAgo = new Date(Date.now() - 365 * 86400000).toISOString()
 
-  const [complaintResults, violationResults, permitResults, openViolResults, pblResults, strRegResults, isRestrictedZone] =
-    await Promise.all([
+  const [
+    complaintResults,
+    violationResults,
+    permitResults,
+    openViolResults,
+    pblResults,
+    strRegResults,
+    isRestrictedZone,
+    nearbyListings,
+  ] = await Promise.all([
       Promise.all(
         addresses.map((addr) =>
           supabase
@@ -221,9 +231,47 @@ export async function fetchPortfolioActivity(
         }
         return false
       })(),
+      (async () => {
+        for (const addr of addresses) {
+          const { data: propRow } = await supabase
+            .from('properties')
+            .select('pin')
+            .eq('address_normalized', addr)
+            .limit(1)
+            .maybeSingle()
+          if (propRow?.pin) {
+            const { data: parcel } = await supabase
+              .from('parcel_universe')
+              .select('lat, lng')
+              .eq('pin', String(propRow.pin).trim())
+              .order('tax_year', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            const lat = parcel?.lat != null ? Number(parcel.lat) : NaN
+            const lng = parcel?.lng != null ? Number(parcel.lng) : NaN
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              const latDelta = 0.00135
+              const lngDelta = 0.00185
+              const { count } = await supabase
+                .from('airbnb_listings')
+                .select('id', { count: 'exact', head: true })
+                .gte('latitude', lat - latDelta)
+                .lte('latitude', lat + latDelta)
+                .gte('longitude', lng - lngDelta)
+                .lte('longitude', lng + lngDelta)
+              return count ?? 0
+            }
+          }
+        }
+        return 0
+      })(),
     ])
 
-  const allComplaints = complaintResults.flat()
+  const allComplaintsRaw = complaintResults.flat()
+  const allComplaints = allComplaintsRaw.filter((c) => {
+    const code = ((c as { sr_short_code?: string | null }).sr_short_code ?? '').toUpperCase()
+    return DEFAULT_VISIBLE_CODES.has(code)
+  })
   const allViolations12 = violationResults.flat()
   const allPermits = permitResults.flat()
 
@@ -268,6 +316,7 @@ export async function fetchPortfolioActivity(
       has_stop_work: hasStopWork,
       str_registrations: strRegistrations,
       is_restricted_zone: isRestrictedZone,
+      nearby_listings: nearbyListings,
     },
   }
 }
