@@ -7,6 +7,10 @@ import type { PortfolioProperty } from './types'
 type Props = {
   property: PortfolioProperty
   onClose: () => void
+  /** When set, fetches activity from this URL instead of the authenticated dashboard detail API. */
+  detailEndpoint?: string
+  /** When false, hides the foot link under recent activity (e.g. public audit). Defaults to true. */
+  showHistoricalActivityBar?: boolean
 }
 
 type DetailPayload = {
@@ -28,7 +32,12 @@ type ActivityItem = {
   detail?: string
 }
 
-export default function PortfolioDetail({ property: p, onClose: _onClose }: Props) {
+export default function PortfolioDetail({
+  property: p,
+  onClose: _onClose,
+  detailEndpoint,
+  showHistoricalActivityBar = true,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(true)
@@ -42,7 +51,8 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
   useEffect(() => {
     setDetailLoading(true)
     setDetailData(null)
-    fetch(`/api/dashboard/detail?id=${encodeURIComponent(p.id)}`)
+    const url = detailEndpoint ?? `/api/dashboard/detail?id=${encodeURIComponent(p.id)}`
+    fetch(url)
       .then((res) => res.json())
       .then((data: DetailPayload & { error?: string }) => {
         if (data.error) setDetailData(null)
@@ -50,7 +60,7 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
       })
       .catch(() => setDetailData(null))
       .finally(() => setDetailLoading(false))
-  }, [p.id])
+  }, [p.id, detailEndpoint])
 
   useEffect(() => {
     const pin = p.pins?.[0]
@@ -302,9 +312,11 @@ export default function PortfolioDetail({ property: p, onClose: _onClose }: Prop
               )}
             </div>
           </div>
-          <a href={`/address/${encodeURIComponent(slug)}`} className="dashboard-bar-link dashboard-bar-light">
-            See all historical activity →
-          </a>
+          {showHistoricalActivityBar ? (
+            <a href={`/address/${encodeURIComponent(slug)}`} className="dashboard-bar-link dashboard-bar-light">
+              See all historical activity →
+            </a>
+          ) : null}
         </div>
       </div>
       {showListings && propertyCoords ? (

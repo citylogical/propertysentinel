@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import NearbyListingsModal from '@/components/NearbyListingsModal'
+import AuditList from './AuditList'
 import CreateAuditModal from './CreateAuditModal'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
@@ -15,6 +17,8 @@ export default function PortfolioTable() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [syncedAt, setSyncedAt] = useState<string>('')
   const [orgName, setOrgName] = useState('')
+  const [listingsProperty, setListingsProperty] = useState<PortfolioProperty | null>(null)
+  const [listingsCoords, setListingsCoords] = useState<{ lat: number; lng: number } | null>(null)
 
   const loadPortfolioList = useCallback(async () => {
     const listData = await fetch('/api/dashboard/list').then((r) => r.json())
@@ -61,6 +65,39 @@ export default function PortfolioTable() {
       .then((data: { is_admin?: boolean }) => setIsAdmin(data.is_admin === true))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!listingsProperty) return
+
+    let cancelled = false
+    const pin = listingsProperty.pins?.[0]
+    if (!pin) {
+      const id = globalThis.setTimeout(() => {
+        if (!cancelled) setListingsCoords(null)
+      }, 0)
+      return () => {
+        cancelled = true
+        globalThis.clearTimeout(id)
+      }
+    }
+
+    fetch(`/api/parcel-coords?pin=${encodeURIComponent(pin)}`)
+      .then((r) => r.json())
+      .then((d: { lat?: number | null; lng?: number | null }) => {
+        if (cancelled) return
+        if (d.lat != null && d.lng != null && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+          setListingsCoords({ lat: d.lat, lng: d.lng })
+        } else {
+          setListingsCoords(null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setListingsCoords(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [listingsProperty])
 
   const filtered = properties
 
@@ -303,8 +340,19 @@ export default function PortfolioTable() {
               >
                 Create audit
               </button>
-              <button type="button" className="dashboard-sel-btn dashboard-sel-btn-remove" onClick={() => void handleRemoveSelected()}>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-remove"
+                onClick={() => void handleRemoveSelected()}
+              >
                 Remove properties
+              </button>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-unselect"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Unselect
               </button>
             </div>
           </div>
@@ -325,19 +373,28 @@ export default function PortfolioTable() {
                   </th>
                 ) : null}
                 <th>Address</th>
-                <th className="r">Complaints</th>
-                <th className="r">Violations</th>
-                <th className="r">Open</th>
-                <th className="r">Permits</th>
-                <th className="r">STR</th>
-                <th>Flags</th>
+                <th className="r" style={{ width: 95 }}>
+                  Complaints
+                </th>
+                <th className="r" style={{ width: 95 }}>
+                  Violations
+                </th>
+                <th className="r" style={{ width: 70 }}>
+                  Open
+                </th>
+                <th className="r" style={{ width: 80 }}>
+                  Permits
+                </th>
+                <th className="r" style={{ width: 100 }}>
+                  STR Listings
+                </th>
+                <th style={{ width: 130 }}>Flags</th>
                 <th className="dashboard-th-actions" aria-label="Remove" />
               </tr>
             </thead>
             <tbody>
               {filtered.map((p) => {
                 const flag = getFlag(p)
-                const strCount = (p.shvr_count ?? 0) + (p.is_pbl ? 1 : 0)
                 return (
                   <tr
                     key={p.id}
@@ -374,7 +431,23 @@ export default function PortfolioTable() {
                     <td className="r">
                       {p.total_permits > 0 ? p.total_permits : <span className="zero">0</span>}
                     </td>
-                    <td className="r">{strCount > 0 ? strCount : <span className="zero">0</span>}</td>
+                    <td className="r">
+                      {(p.nearby_listings ?? 0) > 0 ? (
+                        <button
+                          type="button"
+                          className="dashboard-val-link"
+                          style={{ color: '#b87514', fontWeight: 500 }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setListingsProperty(p)
+                          }}
+                        >
+                          {p.nearby_listings}
+                        </button>
+                      ) : (
+                        <span className="zero">0</span>
+                      )}
+                    </td>
                     <td>
                       {flag ? (
                         <span className={`dashboard-flag ${flag.color}`}>
@@ -403,6 +476,7 @@ export default function PortfolioTable() {
             </tbody>
           </table>
         </div>
+        {isAdmin ? <AuditList /> : null}
       </div>
       {showAuditModal ? (
         <CreateAuditModal
@@ -412,6 +486,18 @@ export default function PortfolioTable() {
             if (created) setSelectedIds(new Set())
           }}
           selectedProperties={properties.filter((p) => selectedIds.has(p.id))}
+        />
+      ) : null}
+      {listingsProperty && listingsCoords ? (
+        <NearbyListingsModal
+          isOpen
+          onClose={() => {
+            setListingsProperty(null)
+            setListingsCoords(null)
+          }}
+          address={listingsProperty.display_name || listingsProperty.canonical_address}
+          lat={listingsCoords.lat}
+          lng={listingsCoords.lng}
         />
       ) : null}
     </>

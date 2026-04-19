@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-/** Full-bleed shell: sidebar/mobile nav hidden via `body:has(.audit-route-root)` in globals.css */
+/** Sidebar + main column come from `app/layout.tsx`; this segment only groups audit routes. */
 export default function AuditLayout({ children }: { children: ReactNode }) {
-  return <div className="audit-route-root">{children}</div>
+  return children
 }

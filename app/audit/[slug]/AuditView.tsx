@@ -1,7 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import NearbyListingsModal from '@/components/NearbyListingsModal'
+import PortfolioDetail from '@/app/dashboard/PortfolioDetail'
+import type { PortfolioProperty } from '@/app/dashboard/types'
 
 export type AuditProperty = {
   id: string
@@ -53,6 +56,43 @@ function asAudit(a: Record<string, unknown>): Audit {
   }
 }
 
+function auditPropertyToPortfolioProperty(p: AuditProperty): PortfolioProperty {
+  return {
+    id: p.id,
+    canonical_address: p.canonical_address,
+    address_range: p.address_range,
+    additional_streets: p.additional_streets,
+    pins: p.pins,
+    slug: p.slug ?? '',
+    display_name: p.display_name,
+    units_override: null,
+    sqft_override: null,
+    notes: null,
+    alerts_enabled: false,
+    created_at: '',
+    open_violations: p.open_violations,
+    open_complaints: p.open_complaints,
+    total_complaints_12mo: p.total_complaints_12mo,
+    total_violations_12mo: p.total_violations_12mo,
+    total_permits: p.total_permits_12mo,
+    shvr_count: p.shvr_count,
+    is_pbl: p.is_pbl,
+    has_stop_work: p.has_stop_work,
+    str_registrations: p.str_registrations,
+    is_restricted_zone: p.is_restricted_zone,
+    nearby_listings: p.nearby_listings,
+    implied_value: p.implied_value,
+    community_area: p.community_area,
+    property_class: p.property_class,
+    building_chars: { year_built: p.year_built },
+    latest_violation_date: null,
+    latest_permit_date: null,
+    recent_complaints: [],
+    recent_violations: [],
+    recent_permits: [],
+  }
+}
+
 function asAuditProperty(p: Record<string, unknown>): AuditProperty {
   return {
     id: String(p.id ?? ''),
@@ -85,6 +125,42 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
   const properties = propertiesRaw.map(asAuditProperty)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selectedProperty = properties.find((row) => row.id === selectedId) ?? null
+  const [listingsProperty, setListingsProperty] = useState<AuditProperty | null>(null)
+  const [listingsCoords, setListingsCoords] = useState<{ lat: number; lng: number } | null>(null)
+
+  useEffect(() => {
+    if (!listingsProperty) return
+
+    let cancelled = false
+    const pin = listingsProperty.pins?.[0]
+    if (!pin) {
+      const id = globalThis.setTimeout(() => {
+        if (!cancelled) setListingsCoords(null)
+      }, 0)
+      return () => {
+        cancelled = true
+        globalThis.clearTimeout(id)
+      }
+    }
+
+    fetch(`/api/parcel-coords?pin=${encodeURIComponent(pin)}`)
+      .then((r) => r.json())
+      .then((d: { lat?: number | null; lng?: number | null }) => {
+        if (cancelled) return
+        if (d.lat != null && d.lng != null && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+          setListingsCoords({ lat: d.lat, lng: d.lng })
+        } else {
+          setListingsCoords(null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setListingsCoords(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [listingsProperty])
 
   const totalComplaints = properties.reduce((s, p) => s + (p.total_complaints_12mo ?? p.open_complaints ?? 0), 0)
   const totalViolations = properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0)
@@ -185,23 +261,41 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
         </Link>
       </div>
 
+      {selectedProperty ? (
+        <PortfolioDetail
+          property={auditPropertyToPortfolioProperty(selectedProperty)}
+          onClose={() => setSelectedId(null)}
+          detailEndpoint={`/api/audit/detail?slug=${encodeURIComponent(audit.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
+          showHistoricalActivityBar={false}
+        />
+      ) : null}
+
       <div className="dashboard-table-wrap">
         <table className="dashboard-table">
           <thead>
             <tr>
               <th>Address</th>
-              <th className="r">Complaints</th>
-              <th className="r">Violations</th>
-              <th className="r">Open</th>
-              <th className="r">Permits</th>
-              <th className="r">STR</th>
-              <th>Flags</th>
+              <th className="r" style={{ width: 95 }}>
+                Complaints
+              </th>
+              <th className="r" style={{ width: 95 }}>
+                Violations
+              </th>
+              <th className="r" style={{ width: 70 }}>
+                Open
+              </th>
+              <th className="r" style={{ width: 80 }}>
+                Permits
+              </th>
+              <th className="r" style={{ width: 100 }}>
+                STR Listings
+              </th>
+              <th style={{ width: 130 }}>Flags</th>
             </tr>
           </thead>
           <tbody>
             {properties.map((p) => {
               const flag = getFlag(p)
-              const strCount = (p.shvr_count ?? 0) + (p.is_pbl ? 1 : 0)
               return (
                 <tr
                   key={p.id}
@@ -230,7 +324,23 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
                   <td className="r">
                     {p.total_permits_12mo > 0 ? p.total_permits_12mo : <span className="zero">0</span>}
                   </td>
-                  <td className="r">{strCount > 0 ? strCount : <span className="zero">0</span>}</td>
+                  <td className="r">
+                    {(p.nearby_listings ?? 0) > 0 ? (
+                      <button
+                        type="button"
+                        className="dashboard-val-link"
+                        style={{ color: '#b87514', fontWeight: 500 }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setListingsProperty(p)
+                        }}
+                      >
+                        {p.nearby_listings}
+                      </button>
+                    ) : (
+                      <span className="zero">0</span>
+                    )}
+                  </td>
                   <td>
                     {flag ? (
                       <span className={`dashboard-flag ${flag.color}`}>
@@ -262,6 +372,19 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
             {audit.contact_email}
           </a>
         </div>
+      ) : null}
+
+      {listingsProperty && listingsCoords ? (
+        <NearbyListingsModal
+          isOpen
+          onClose={() => {
+            setListingsProperty(null)
+            setListingsCoords(null)
+          }}
+          address={listingsProperty.display_name || listingsProperty.canonical_address}
+          lat={listingsCoords.lat}
+          lng={listingsCoords.lng}
+        />
       ) : null}
     </div>
   )
