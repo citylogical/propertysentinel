@@ -29,7 +29,9 @@ export async function GET() {
 
   const { data: audits } = await supabase
     .from('portfolio_audits')
-    .select('id, slug, pm_company_name, contact_email, expires_at, is_active, created_at')
+    .select(
+      'id, slug, pm_company_name, contact_email, expires_at, is_active, created_at, total_views, unique_visitors, last_viewed_at'
+    )
     .eq('created_by', userId)
     .order('created_at', { ascending: false })
 
@@ -50,6 +52,9 @@ export async function GET() {
     property_count: countMap[a.id as string] ?? 0,
     is_expired: a.expires_at ? new Date(String(a.expires_at)) < new Date() : false,
     url: `/audit/${a.slug}`,
+    total_views: Number(a.total_views ?? 0),
+    unique_visitors: Number(a.unique_visitors ?? 0),
+    last_viewed_at: (a.last_viewed_at as string | null) ?? null,
   }))
 
   return NextResponse.json({ audits: mapped })

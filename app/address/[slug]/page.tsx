@@ -18,6 +18,7 @@ import {
 } from '@/lib/supabase-search'
 import { getClassDescription } from '@/lib/class-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import EnrichmentHealthCheck from '@/components/EnrichmentHealthCheck'
 import { PortfolioSaveStatsProvider } from '@/components/PortfolioSaveStatsContext'
 import AddressBarButtons from './AddressBarButtons'
 import RecordSearch from './RecordSearch'
@@ -300,13 +301,23 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
               </div>
               <div className="property-identity-citystate">{addressBarMeta}</div>
             </div>
-            <AddressBarButtons
-              addressRange={addressRange}
-              slug={decodedSlug}
-              isExpanded={isExpandedFromQuery}
-              isFullBuildingView={isExpandedFromQuery}
-              saveData={stubPortfolioSaveData}
-            />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                flexShrink: 0,
+              }}
+            >
+              <AddressBarButtons
+                addressRange={addressRange}
+                slug={decodedSlug}
+                isExpanded={isExpandedFromQuery}
+                isFullBuildingView={isExpandedFromQuery}
+                saveData={stubPortfolioSaveData}
+              />
+              <EnrichmentHealthCheck />
+            </div>
           </div>
 
           <div className="prop-page">

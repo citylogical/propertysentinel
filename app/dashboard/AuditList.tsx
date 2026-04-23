@@ -13,6 +13,9 @@ type AuditRow = {
   property_count: number
   is_expired: boolean
   url: string
+  total_views: number
+  unique_visitors: number
+  last_viewed_at: string | null
 }
 
 export default function AuditList() {
@@ -65,6 +68,7 @@ export default function AuditList() {
             <th>Audit</th>
             <th className="r">Properties</th>
             <th>Status</th>
+            <th className="r">Views</th>
             <th>Created</th>
             <th>Expires</th>
             <th style={{ width: 200 }} />
@@ -87,6 +91,22 @@ export default function AuditList() {
                     <span className="audit-status-badge audit-status-expired">Expired</span>
                   ) : (
                     <span className="audit-status-badge audit-status-inactive">Inactive</span>
+                  )}
+                </td>
+                <td className="r" style={{ fontSize: 12 }}>
+                  {a.unique_visitors > 0 ? (
+                    <span title={`${a.total_views} total page loads from ${a.unique_visitors} unique visitors`}>
+                      <strong style={{ color: '#1a1a1a' }}>{a.unique_visitors}</strong>
+                      <span style={{ color: '#999' }}> unique</span>
+                      {a.last_viewed_at ? (
+                        <div style={{ fontSize: 10, color: '#999', marginTop: 1 }}>
+                          Last{' '}
+                          {new Date(a.last_viewed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#d0ccc0' }}>—</span>
                   )}
                 </td>
                 <td style={{ fontSize: 12, color: '#999' }}>

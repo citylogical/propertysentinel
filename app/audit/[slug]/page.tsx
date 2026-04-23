@@ -1,4 +1,6 @@
+import crypto from 'crypto'
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import AuditView from './AuditView'
@@ -34,6 +36,66 @@ export default async function AuditPage({ params }: PageProps) {
 
   if (audit.expires_at && new Date(String(audit.expires_at)) < new Date()) {
     return notFound()
+  }
+
+  try {
+    const headersList = await headers()
+    const ip =
+      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      headersList.get('x-real-ip') ||
+      'unknown'
+    const ua = headersList.get('user-agent') || ''
+    const visitorHash = crypto
+      .createHash('sha256')
+      .update(`${ip}|${ua}`)
+      .digest('hex')
+      .slice(0, 16)
+
+    const { data: existingView } = await supabase
+      .from('portfolio_audit_views')
+      .select('id, view_count')
+      .eq('audit_id', audit.id)
+      .eq('visitor_hash', visitorHash)
+      .maybeSingle()
+
+    if (existingView) {
+      await supabase
+        .from('portfolio_audit_views')
+        .update({
+          view_count: (existingView.view_count ?? 0) + 1,
+          last_viewed_at: new Date().toISOString(),
+        })
+        .eq('id', existingView.id)
+    } else {
+      await supabase.from('portfolio_audit_views').insert({
+        audit_id: audit.id,
+        visitor_hash: visitorHash,
+        view_count: 1,
+        last_viewed_at: new Date().toISOString(),
+      })
+    }
+
+    const { count: uniqueCount } = await supabase
+      .from('portfolio_audit_views')
+      .select('id', { count: 'exact', head: true })
+      .eq('audit_id', audit.id)
+
+    const { data: totalData } = await supabase.from('portfolio_audit_views').select('view_count').eq('audit_id', audit.id)
+
+    const totalViews = (totalData ?? []).reduce((s: number, r: { view_count?: number | null }) => {
+      return s + (r.view_count ?? 0)
+    }, 0)
+
+    await supabase
+      .from('portfolio_audits')
+      .update({
+        total_views: totalViews,
+        unique_visitors: uniqueCount ?? 0,
+        last_viewed_at: new Date().toISOString(),
+      })
+      .eq('id', audit.id)
+  } catch (trackErr) {
+    console.error('Audit view tracking failed:', trackErr)
   }
 
   const { data: properties } = await supabase
