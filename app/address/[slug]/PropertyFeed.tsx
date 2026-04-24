@@ -1,7 +1,10 @@
 'use client'
 
+import { useUser } from '@clerk/nextjs'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { EnrichedComplaint } from '@/components/ComplaintEnrichmentBlock'
+import ComplaintEnrichmentBlock from '@/components/ComplaintEnrichmentBlock'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
 import { isDefaultVisible } from '@/lib/sr-codes'
 
@@ -399,6 +402,7 @@ function PermitCards({
 }
 
 type PropertyFeedProps = {
+  addressNormalized: string
   complaints: ComplaintRow[]
   complaintsOpenCount: number
   violations: ViolationRow[]
@@ -412,6 +416,7 @@ type PropertyFeedProps = {
 }
 
 export default function PropertyFeed({
+  addressNormalized,
   complaints,
   complaintsOpenCount: _complaintsOpenCount,
   violations,
@@ -422,6 +427,9 @@ export default function PropertyFeed({
   currentSlug,
   serverTime,
 }: PropertyFeedProps) {
+  const { user, isLoaded } = useUser()
+  const isAdmin = (user?.publicMetadata as { role?: string } | undefined)?.role === 'admin'
+  const [enrichedBySr, setEnrichedBySr] = useState<Map<string, EnrichedComplaint>>(() => new Map())
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
   const [showAllSRCodes, setShowAllSRCodes] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)
@@ -455,6 +463,25 @@ export default function PropertyFeed({
     const el = document.getElementById('complaints-stat-slot')
     if (el) setStatSlot(el)
   }, [])
+
+  useEffect(() => {
+    if (!isLoaded || !isAdmin || !addressNormalized) return
+    let cancelled = false
+    void fetch(`/api/complaints/enriched?address=${encodeURIComponent(addressNormalized)}`, {
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : Promise.resolve(null)))
+      .then((rows: EnrichedComplaint[] | null) => {
+        if (cancelled || !rows || !Array.isArray(rows)) return
+        const m = new Map<string, EnrichedComplaint>()
+        for (const row of rows) m.set(String(row.sr_number), row)
+        setEnrichedBySr(m)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isLoaded, isAdmin, addressNormalized])
 
   useEffect(() => {
     const btn = activeBtnRef.current
@@ -634,6 +661,55 @@ export default function PropertyFeed({
             <>
               {visibleComplaints.map((c) => {
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
+                const enrich = isAdmin && isLoaded ? enrichedBySr.get(String(c.sr_number)) : undefined
+
+                if (enrich) {
+                  return (
+                    <div
+                      key={c.sr_number}
+                      className="complaint"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: 0,
+                        gap: 0,
+                        alignItems: 'stretch',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr auto',
+                          gap: 12,
+                          alignItems: 'start',
+                          width: '100%',
+                          padding: '14px 16px',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <div>
+                          <div className="complaint-type-name">{c.sr_type ?? '—'}</div>
+                          <div className="complaint-dept">
+                            {[c.owner_department, c.origin].filter(Boolean).join(' · ')}
+                          </div>
+                          <div className="complaint-dates">
+                            <span>
+                              Filed: <strong>{formatDate(c.created_date)}</strong>
+                            </span>
+                            {c.closed_date && (
+                              <span>Closed: <strong>{formatDate(c.closed_date)}</strong></span>
+                            )}
+                          </div>
+                          <div className="complaint-sr">#{c.sr_number}</div>
+                        </div>
+                        <div className={`status-badge ${statusClass}`}>
+                          {isOpen(c.status) ? 'Open' : 'Completed'}
+                        </div>
+                      </div>
+                      <ComplaintEnrichmentBlock data={enrich} />
+                    </div>
+                  )
+                }
 
                 return (
                   <div key={c.sr_number} className="complaint">

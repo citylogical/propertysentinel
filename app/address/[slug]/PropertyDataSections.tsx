@@ -914,6 +914,7 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
       </div>
 
       <PropertyFeed
+        addressNormalized={normalizedAddress}
         complaints={complaints}
         complaintsOpenCount={complaintsOpenCount}
         violations={violations}
