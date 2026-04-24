@@ -28,6 +28,34 @@ export type EnrichedComplaint = {
   enriched_at: string | null
 }
 
+/** Aligns with WorkType → QUESTION_MAP in the on-demand enrichment API. */
+const ENRICHABLE_SR_SHORT_CODES = new Set([
+  'BBA',
+  'BBC',
+  'BBD',
+  'BBK',
+  'BPI',
+  'HDF',
+  'SCB',
+  'HFB',
+  'RBL',
+  'CAFE',
+  'CORNVEND',
+  'SHVR',
+  'CSF',
+  'CST',
+  'BAG',
+  'BAM',
+  'FPC',
+  'ODM',
+  'MWC',
+])
+
+function isEnrichableComplaint(srShort: string | null): boolean {
+  if (!srShort) return false
+  return ENRICHABLE_SR_SHORT_CODES.has(srShort.trim().toUpperCase())
+}
+
 export function mergeComplaintWithEnrichPayload(
   c: ComplaintRow,
   data: Record<string, unknown>,
@@ -241,7 +269,7 @@ function MobileStackFallback({
             marginTop: 8,
             marginBottom: 4,
             padding: '14px 16px',
-            background: '#fdfaf4',
+            background: '#ffffff',
             border: '1px solid #e5e1d6',
             borderLeft: '2px solid #c17d2a',
             boxSizing: 'border-box',
@@ -254,7 +282,7 @@ function MobileStackFallback({
   )
 }
 
-const rightPanelTransition = 'flex-basis 200ms ease, opacity 200ms ease'
+const rightPanelTransition = 'flex-basis 200ms ease, opacity 200ms ease, padding 200ms ease'
 
 const spinKeyframes = `
   @keyframes complaintEnrichSpin {
@@ -289,34 +317,35 @@ function ChevronToggleButton({
       aria-expanded={expanded}
       aria-label={ariaLabel}
       style={{
-        width: 28,
-        height: 28,
+        width: 30,
+        height: 30,
         padding: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'none',
+        background: '#ffffff',
         border: baseBorder,
         color: errorFlash ? '#c0392b' : '#7a6f62',
         fontFamily: "var(--mono, 'DM Mono', monospace)",
-        fontSize: 13,
+        fontSize: 12,
         lineHeight: 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        borderRadius: 2,
+        borderRadius: '50%',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
         opacity: disabled && !isLoading ? 0.5 : 1,
         transform: expanded ? 'rotate(180deg)' : 'none',
-        transition: 'transform 200ms ease, background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s',
+        transition: 'all 0.15s, transform 200ms ease',
         boxSizing: 'border-box',
       }}
       onMouseEnter={(e) => {
         if (disabled || isLoading) return
-        e.currentTarget.style.background = '#ede7d6'
+        e.currentTarget.style.background = '#f5f0e8'
         e.currentTarget.style.color = '#1a1410'
         e.currentTarget.style.border = `1px ${borderStyle} #c17d2a`
         if (errorFlash) e.currentTarget.style.border = '1px solid #c0392b'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'none'
+        e.currentTarget.style.background = '#ffffff'
         e.currentTarget.style.color = errorFlash ? '#c0392b' : '#7a6f62'
         e.currentTarget.style.border = baseBorder
       }}
@@ -360,12 +389,14 @@ export default function ComplaintRowEnriched({
   const [errorFlash, setErrorFlash] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const srKey = String(c.sr_number)
+  const isEnrichable = isEnrichableComplaint(c.sr_short_code)
   const hasEnrich = Boolean(enrichFromParent)
   const thisRowLoading = enrichActiveSr === srKey
   const anotherRowBusy = enrichActiveSr != null && enrichActiveSr !== srKey
   const chevronLocked = anotherRowBusy
 
   const borderStyle: 'dashed' | 'solid' = hasEnrich ? 'solid' : 'dashed'
+  const showDesktopChevron = isEnrichable && !narrow
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -404,6 +435,7 @@ export default function ComplaintRowEnriched({
   }, [c, onEnriched, onEnrichSessionChange, srKey])
 
   const onMainChevron = useCallback(() => {
+    if (!isEnrichable) return
     if (chevronLocked) return
     if (hasEnrich) {
       setExpanded((e) => !e)
@@ -411,12 +443,13 @@ export default function ComplaintRowEnriched({
     }
     if (thisRowLoading) return
     void runOnDemand()
-  }, [chevronLocked, hasEnrich, thisRowLoading, runOnDemand])
+  }, [isEnrichable, chevronLocked, hasEnrich, thisRowLoading, runOnDemand])
 
   const onMobileLoadDetails = useCallback(() => {
+    if (!isEnrichable) return
     if (chevronLocked || thisRowLoading) return
     void runOnDemand()
-  }, [chevronLocked, thisRowLoading, runOnDemand])
+  }, [isEnrichable, chevronLocked, thisRowLoading, runOnDemand])
 
   const open = isStatusOpen(c.status)
   const metaBits = [c.owner_department, c.origin].filter(Boolean)
@@ -449,7 +482,9 @@ export default function ComplaintRowEnriched({
     borderColor: '#c3e6cb',
   }
 
-  const leftBody = (
+  const rightPanelOpen = isEnrichable && hasEnrich && expanded
+
+  const leftContent = (includeChevron: boolean) => (
     <div
       style={{
         flex: '1 1 0%',
@@ -484,7 +519,7 @@ export default function ComplaintRowEnriched({
               fontFamily: '"DM Sans", var(--sans, system-ui, sans-serif)',
               fontSize: 12,
               color: '#7a6f62',
-              marginTop: 4,
+              marginTop: 3,
               lineHeight: 1.4,
             }}
           >
@@ -506,7 +541,35 @@ export default function ComplaintRowEnriched({
             #{c.sr_number}
           </div>
         </div>
-        <span style={open ? badgeOpen : badgeDone}>{open ? 'Open' : 'Completed'}</span>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: includeChevron ? 8 : 0,
+            flexShrink: 0,
+            marginLeft: 12,
+          }}
+        >
+          <span style={open ? badgeOpen : badgeDone}>{open ? 'Open' : 'Completed'}</span>
+          {includeChevron ? (
+            <ChevronToggleButton
+              expanded={expanded}
+              onClick={onMainChevron}
+              borderStyle={borderStyle}
+              disabled={chevronLocked || thisRowLoading}
+              isLoading={thisRowLoading}
+              errorFlash={errorFlash}
+              ariaLabel={
+                hasEnrich
+                  ? expanded
+                    ? 'Collapse complaint details'
+                    : 'Expand complaint details'
+                  : 'Load complaint details from CHI 311'
+              }
+            />
+          ) : null}
+        </div>
       </div>
       {hasEnrich && (sla || stepLine) ? (
         <div
@@ -533,16 +596,16 @@ export default function ComplaintRowEnriched({
         className="complaint-row-enriched"
         style={{
           border: '1px solid #e5e1d6',
-          background: '#fdfaf4',
+          background: '#ffffff',
           marginBottom: 8,
           display: 'flex',
           flexDirection: 'column',
         }}
       >
         <ChevronWithSpinStyle />
-        {leftBody}
+        {leftContent(false)}
         <div style={{ padding: '0 16px 12px' }}>
-          {!hasEnrich ? (
+          {isEnrichable && !hasEnrich ? (
             <div>
               <span
                 role="button"
@@ -570,7 +633,7 @@ export default function ComplaintRowEnriched({
                 {thisRowLoading ? 'Loading…' : 'Load details'}
               </span>
             </div>
-          ) : d ? (
+          ) : isEnrichable && d ? (
             <MobileStackFallback d={d} open={mobileOpen} onToggle={() => setMobileOpen((o) => !o)} />
           ) : null}
         </div>
@@ -583,7 +646,7 @@ export default function ComplaintRowEnriched({
       className="complaint-row-enriched"
       style={{
         border: '1px solid #e5e1d6',
-        background: '#fdfaf4',
+        background: '#ffffff',
         marginBottom: 8,
         display: 'flex',
         alignItems: 'flex-start',
@@ -591,84 +654,28 @@ export default function ComplaintRowEnriched({
       }}
     >
       <ChevronWithSpinStyle />
-      {leftBody}
+      {leftContent(showDesktopChevron)}
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 10px',
-          borderLeft: '1px solid #e5e1d6',
-          flexShrink: 0,
-        }}
-      >
-        <ChevronToggleButton
-          expanded={expanded}
-          onClick={onMainChevron}
-          borderStyle={borderStyle}
-          disabled={chevronLocked || thisRowLoading}
-          isLoading={thisRowLoading}
-          errorFlash={errorFlash}
-          ariaLabel={
-            hasEnrich
-              ? expanded
-                ? 'Collapse complaint details'
-                : 'Expand complaint details'
-              : 'Load complaint details from CHI 311'
-          }
-        />
-      </div>
-
-      <div
-        style={{
-          flexGrow: 0,
-          flexShrink: 0,
-          flexBasis: expanded && hasEnrich ? '50%' : '0%',
-          minWidth: 0,
-          overflow: expanded && hasEnrich ? 'auto' : 'hidden',
-          maxHeight: expanded && hasEnrich ? 300 : 0,
-          opacity: expanded && hasEnrich ? 1 : 0,
-          transition: rightPanelTransition,
-          background: '#ffffff',
-          borderLeft: expanded && hasEnrich ? '1px solid #e5e1d6' : 'none',
-          boxSizing: 'border-box',
-          pointerEvents: expanded && hasEnrich ? 'auto' : 'none',
-        }}
-      >
-        {d && hasEnrich ? (
-          <div
-            style={{
-              width: '100%',
-              maxWidth: '100%',
-              padding: '16px 20px',
-              boxSizing: 'border-box',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 0,
-              minHeight: '100%',
-            }}
-          >
-            <EnrichmentPanelContent d={d} />
-            <div
-              style={{
-                marginTop: 8,
-                display: 'flex',
-                justifyContent: 'flex-end',
-              }}
-            >
-              <ChevronToggleButton
-                expanded={expanded}
-                onClick={() => !chevronLocked && !thisRowLoading && setExpanded(false)}
-                borderStyle="solid"
-                disabled={chevronLocked || thisRowLoading}
-                isLoading={false}
-                errorFlash={false}
-                ariaLabel="Collapse complaint details"
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
+      {isEnrichable ? (
+        <div
+          style={{
+            flexGrow: 0,
+            flexShrink: 0,
+            flexBasis: rightPanelOpen ? '50%' : '0%',
+            minWidth: 0,
+            overflow: rightPanelOpen ? 'auto' : 'hidden',
+            opacity: rightPanelOpen ? 1 : 0,
+            padding: rightPanelOpen ? '14px 16px' : '14px 0',
+            transition: rightPanelTransition,
+            background: '#ffffff',
+            borderLeft: rightPanelOpen ? '1px solid #e5e1d6' : 'none',
+            boxSizing: 'border-box',
+            pointerEvents: rightPanelOpen ? 'auto' : 'none',
+          }}
+        >
+          {d && hasEnrich && expanded ? <EnrichmentPanelContent d={d} /> : null}
+        </div>
+      ) : null}
     </div>
   )
 }
