@@ -169,7 +169,7 @@ function unwrapReturnValue(rv: unknown): unknown {
 function getFirstActionJson(json: unknown): { returnValue: unknown; error?: unknown } {
   const j = json as { actions?: { returnValue?: unknown; error?: unknown; state?: string }[] }
   const a = j?.actions?.[0]
-  if (a && 'error' in a && a.error != null) {
+  if (a && Array.isArray(a.error) && a.error.length > 0) {
     return { returnValue: undefined, error: a.error }
   }
   return { returnValue: a?.returnValue }

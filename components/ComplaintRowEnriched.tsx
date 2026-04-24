@@ -241,7 +241,7 @@ function MobileStackFallback({
             marginTop: 8,
             marginBottom: 4,
             padding: '14px 16px',
-            background: '#f9f6f0',
+            background: '#fdfaf4',
             border: '1px solid #e5e1d6',
             borderLeft: '2px solid #c17d2a',
             boxSizing: 'border-box',
@@ -254,7 +254,7 @@ function MobileStackFallback({
   )
 }
 
-const transition = 'width 200ms ease, opacity 200ms ease, padding 200ms ease'
+const rightPanelTransition = 'flex-basis 200ms ease, opacity 200ms ease'
 
 const spinKeyframes = `
   @keyframes complaintEnrichSpin {
@@ -452,7 +452,7 @@ export default function ComplaintRowEnriched({
   const leftBody = (
     <div
       style={{
-        flex: 1,
+        flex: '1 1 0%',
         minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -621,13 +621,15 @@ export default function ComplaintRowEnriched({
 
       <div
         style={{
-          width: expanded && hasEnrich ? 280 : 0,
+          flexGrow: 0,
+          flexShrink: 0,
+          flexBasis: expanded && hasEnrich ? '42%' : '0%',
+          minWidth: 0,
           overflow: 'hidden',
           opacity: expanded && hasEnrich ? 1 : 0,
-          transition: transition,
-          background: '#f9f6f0',
+          transition: rightPanelTransition,
+          background: '#fdfaf4',
           borderLeft: expanded && hasEnrich ? '1px solid #e5e1d6' : 'none',
-          flexShrink: 0,
           boxSizing: 'border-box',
           pointerEvents: expanded && hasEnrich ? 'auto' : 'none',
         }}
@@ -635,7 +637,8 @@ export default function ComplaintRowEnriched({
         {d && hasEnrich ? (
           <div
             style={{
-              width: 280,
+              width: '100%',
+              maxWidth: '100%',
               padding: '16px 20px',
               boxSizing: 'border-box',
               display: 'flex',
