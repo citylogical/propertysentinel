@@ -3,8 +3,8 @@
 import { useUser } from '@clerk/nextjs'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { EnrichedComplaint } from '@/components/ComplaintEnrichmentBlock'
-import ComplaintEnrichmentBlock from '@/components/ComplaintEnrichmentBlock'
+import type { EnrichedComplaint } from '@/components/ComplaintRowEnriched'
+import ComplaintRowEnriched from '@/components/ComplaintRowEnriched'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
 import { isDefaultVisible } from '@/lib/sr-codes'
 
@@ -430,6 +430,7 @@ export default function PropertyFeed({
   const { user, isLoaded } = useUser()
   const [isAdmin, setIsAdmin] = useState(false)
   const [enrichedBySr, setEnrichedBySr] = useState<Map<string, EnrichedComplaint>>(() => new Map())
+  const [enrichActiveSr, setEnrichActiveSr] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
@@ -680,51 +681,22 @@ export default function PropertyFeed({
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
                 const enrich = isAdmin && isLoaded ? enrichedBySr.get(String(c.sr_number)) : undefined
 
-                if (enrich) {
+                if (isLoaded && isAdmin) {
                   return (
-                    <div
+                    <ComplaintRowEnriched
                       key={c.sr_number}
-                      className="complaint"
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        padding: 0,
-                        gap: 0,
-                        alignItems: 'stretch',
+                      complaint={c}
+                      enrich={enrich}
+                      onEnriched={(row) => {
+                        setEnrichedBySr((prev) => {
+                          const next = new Map(prev)
+                          next.set(String(row.sr_number), row)
+                          return next
+                        })
                       }}
-                    >
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr auto',
-                          gap: 12,
-                          alignItems: 'start',
-                          width: '100%',
-                          padding: '14px 16px',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        <div>
-                          <div className="complaint-type-name">{c.sr_type ?? '—'}</div>
-                          <div className="complaint-dept">
-                            {[c.owner_department, c.origin].filter(Boolean).join(' · ')}
-                          </div>
-                          <div className="complaint-dates">
-                            <span>
-                              Filed: <strong>{formatDate(c.created_date)}</strong>
-                            </span>
-                            {c.closed_date && (
-                              <span>Closed: <strong>{formatDate(c.closed_date)}</strong></span>
-                            )}
-                          </div>
-                          <div className="complaint-sr">#{c.sr_number}</div>
-                        </div>
-                        <div className={`status-badge ${statusClass}`}>
-                          {isOpen(c.status) ? 'Open' : 'Completed'}
-                        </div>
-                      </div>
-                      <ComplaintEnrichmentBlock data={enrich} />
-                    </div>
+                      enrichActiveSr={enrichActiveSr}
+                      onEnrichSessionChange={setEnrichActiveSr}
+                    />
                   )
                 }
 
