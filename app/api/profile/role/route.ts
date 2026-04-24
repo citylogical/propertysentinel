@@ -14,5 +14,5 @@ export async function GET() {
   const row = data as { role?: string | null; is_admin?: boolean } | null
   const role = row?.role != null ? String(row.role) : ''
   const is_admin = row?.is_admin === true || role === 'admin'
-  return NextResponse.json({ is_admin })
+  return NextResponse.json({ is_admin, role: role || null })
 }

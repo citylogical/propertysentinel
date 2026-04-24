@@ -428,8 +428,25 @@ export default function PropertyFeed({
   serverTime,
 }: PropertyFeedProps) {
   const { user, isLoaded } = useUser()
-  const isAdmin = (user?.publicMetadata as { role?: string } | undefined)?.role === 'admin'
+  const [isAdmin, setIsAdmin] = useState(false)
   const [enrichedBySr, setEnrichedBySr] = useState<Map<string, EnrichedComplaint>>(() => new Map())
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (!user) {
+      setIsAdmin(false)
+      return
+    }
+    void fetch('/api/profile/role', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d: { role?: string | null }) => {
+        if (d.role === 'admin') setIsAdmin(true)
+        else setIsAdmin(false)
+      })
+      .catch(() => {
+        setIsAdmin(false)
+      })
+  }, [isLoaded, user])
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
   const [showAllSRCodes, setShowAllSRCodes] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)

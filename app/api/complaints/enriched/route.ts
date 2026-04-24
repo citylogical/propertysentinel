@@ -15,8 +15,17 @@ export async function GET(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const role = (user.publicMetadata as { role?: string } | null | undefined)?.role
-  if (role !== 'admin') {
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const { data: subscriber } = await supabaseAdmin
+    .from('subscribers')
+    .select('role')
+    .eq('clerk_id', user.id)
+    .maybeSingle()
+  const subRole = (subscriber as { role?: string | null } | null)?.role != null
+    ? String((subscriber as { role?: string | null }).role)
+    : ''
+  if (!subscriber || !['admin', 'approved'].includes(subRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -26,7 +35,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing address' }, { status: 400 })
   }
 
-  const supabase = getSupabaseAdmin()
+  const supabase = supabaseAdmin
   const { data, error } = await supabase
     .from('complaints_311')
     .select(SELECT_FIELDS)
