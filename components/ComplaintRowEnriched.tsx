@@ -586,7 +586,7 @@ export default function ComplaintRowEnriched({
         background: '#fdfaf4',
         marginBottom: 8,
         display: 'flex',
-        alignItems: 'stretch',
+        alignItems: 'flex-start',
         boxSizing: 'border-box',
       }}
     >
@@ -623,12 +623,13 @@ export default function ComplaintRowEnriched({
         style={{
           flexGrow: 0,
           flexShrink: 0,
-          flexBasis: expanded && hasEnrich ? '42%' : '0%',
+          flexBasis: expanded && hasEnrich ? '50%' : '0%',
           minWidth: 0,
-          overflow: 'hidden',
+          overflow: expanded && hasEnrich ? 'auto' : 'hidden',
+          maxHeight: expanded && hasEnrich ? 300 : 0,
           opacity: expanded && hasEnrich ? 1 : 0,
           transition: rightPanelTransition,
-          background: '#fdfaf4',
+          background: '#ffffff',
           borderLeft: expanded && hasEnrich ? '1px solid #e5e1d6' : 'none',
           boxSizing: 'border-box',
           pointerEvents: expanded && hasEnrich ? 'auto' : 'none',
