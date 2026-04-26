@@ -267,6 +267,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
           onClose={() => setSelectedId(null)}
           detailEndpoint={`/api/audit/detail?slug=${encodeURIComponent(audit.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
           showHistoricalActivityBar={false}
+          showParaphrasedReports={true}
         />
       ) : null}
 

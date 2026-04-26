@@ -11,6 +11,8 @@ type Props = {
   detailEndpoint?: string
   /** When false, hides the foot link under recent activity (e.g. public audit). Defaults to true. */
   showHistoricalActivityBar?: boolean
+  /** When true, renders the third "RECENT 311 REPORTS" column with up to 3 paraphrased descriptions. Audit only. */
+  showParaphrasedReports?: boolean
 }
 
 type DetailPayload = {
@@ -37,6 +39,7 @@ export default function PortfolioDetail({
   onClose: _onClose,
   detailEndpoint,
   showHistoricalActivityBar = true,
+  showParaphrasedReports = false,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
@@ -318,6 +321,34 @@ export default function PortfolioDetail({
             </a>
           ) : null}
         </div>
+        {showParaphrasedReports ? (() => {
+          const paraphrased = (detailData?.recent_complaints ?? [])
+            .map((c) => c as {
+              sr_number?: string | null
+              sr_type?: string | null
+              created_date?: string | null
+              standard_description?: string | null
+              urgency_tier?: string | null
+            })
+            .filter((c) => c.standard_description && c.standard_description.trim().length > 0)
+            .slice(0, 3)
+
+          if (paraphrased.length === 0) return null
+
+          return (
+            <div className="dashboard-detail-reports">
+              <div className="dashboard-dr-label">Recent 311 reports</div>
+              <div className="dashboard-reports-list">
+                {paraphrased.map((c, i) => (
+                  <div className="dashboard-report-row" key={`report-${c.sr_number ?? i}`}>
+                    <div className="dashboard-report-date">{formatDate(c.created_date ?? '')}</div>
+                    <div className="dashboard-report-desc">{c.standard_description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })() : null}
       </div>
       {showListings && propertyCoords ? (
         <NearbyListingsModal
