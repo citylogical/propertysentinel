@@ -1,6 +1,7 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { paraphraseComplaint } from '@/lib/paraphrase-complaint'
 
 /** Aurora config; update `fwuid` and `loaded` when the city deploys Salesforce changes. */
 const AURA_CONTEXT = JSON.stringify({
@@ -468,6 +469,58 @@ export async function POST(request: Request) {
       { success: false, error: 'No matching complaint row' },
       { status: 404 },
     )
+  }
+
+  // --- Best-effort paraphrase overlay ---
+  // Runs after Aura enrichment is committed. paraphraseComplaint returns null
+  // on any failure, in which case we skip the second update and return the
+  // Aura data as-is. Never throws, never blocks the success response.
+  const { data: srRow } = await supabaseAdmin
+    .from('complaints_311')
+    .select('sr_short_code, sr_type')
+    .eq('sr_number', sr_number)
+    .maybeSingle()
+
+  const sr_short_code = (srRow as { sr_short_code?: string | null } | null)?.sr_short_code ?? null
+  const sr_type = (srRow as { sr_type?: string | null } | null)?.sr_type ?? null
+
+  const asString = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+
+  if (sr_short_code) {
+    const paraphrase = await paraphraseComplaint({
+      sr_short_code,
+      sr_type,
+      description: asString(update.complaint_description),
+      complainant_type: asString(update.complainant_type),
+      unit_number: asString(update.unit_number),
+      danger_reported: asString(update.danger_reported),
+      owner_notified: asString(update.owner_notified),
+      owner_occupied: asString(update.owner_occupied),
+      concern_category: asString(update.concern_category),
+      restaurant_name: asString(update.restaurant_name),
+      business_name: asString(update.business_name),
+      problem_category: asString(update.problem_category),
+    })
+
+    if (paraphrase) {
+      const paraphrasedAt = new Date().toISOString()
+      const { error: paraErr } = await supabaseAdmin
+        .from('complaints_311')
+        .update({
+          standard_description: paraphrase.standard_description,
+          trade_category: paraphrase.trade_category,
+          urgency_tier: paraphrase.urgency_tier,
+          paraphrased_at: paraphrasedAt,
+        })
+        .eq('sr_number', sr_number)
+
+      if (!paraErr) {
+        update.standard_description = paraphrase.standard_description
+        update.trade_category = paraphrase.trade_category
+        update.urgency_tier = paraphrase.urgency_tier
+        update.paraphrased_at = paraphrasedAt
+      }
+    }
   }
 
   return NextResponse.json({ success: true, data: update })
