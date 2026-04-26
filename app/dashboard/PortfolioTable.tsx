@@ -81,7 +81,7 @@ export default function PortfolioTable() {
     const tick = async () => {
       if (cancelled) return
       try {
-        const res = await fetch('/api/portfolio/backfill/process', {
+        const res = await fetch('/api/dashboard/backfill/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ job_id: backfillJob.job_id }),
@@ -197,7 +197,7 @@ export default function PortfolioTable() {
     if (selectedIds.size === 0) return
     setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'pending' })
     try {
-      const res = await fetch('/api/portfolio/backfill/start', {
+      const res = await fetch('/api/dashboard/backfill/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ property_ids: Array.from(selectedIds) }),
