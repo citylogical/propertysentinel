@@ -3560,6 +3560,22 @@ button.save-toggle-switch {
   border-color: #999;
 }
 
+.dashboard-sel-btn-backfill {
+  background: #dbe9ff;
+  color: #0f2744;
+  border: 1px solid #b3d0ff;
+}
+
+.dashboard-sel-btn-backfill:hover:not(:disabled) {
+  background: #c5dcff;
+  border-color: #8eb8ff;
+}
+
+.dashboard-sel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .dashboard-th-ck {
   width: 36px;
   text-align: center;

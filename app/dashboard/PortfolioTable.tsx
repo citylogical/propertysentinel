@@ -19,6 +19,14 @@ export default function PortfolioTable() {
   const [orgName, setOrgName] = useState('')
   const [listingsProperty, setListingsProperty] = useState<PortfolioProperty | null>(null)
   const [listingsCoords, setListingsCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [backfillJob, setBackfillJob] = useState<{
+    job_id: string | null
+    total: number
+    processed: number
+    failed: number
+    status: 'pending' | 'running' | 'done' | 'idle' | 'error'
+    message?: string
+  } | null>(null)
 
   const loadPortfolioList = useCallback(async () => {
     const listData = await fetch('/api/dashboard/list').then((r) => r.json())
@@ -65,6 +73,73 @@ export default function PortfolioTable() {
       .then((data: { is_admin?: boolean }) => setIsAdmin(data.is_admin === true))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!backfillJob || backfillJob.status !== 'running' || !backfillJob.job_id) return
+
+    let cancelled = false
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        const res = await fetch('/api/portfolio/backfill/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_id: backfillJob.job_id }),
+        })
+        const data = (await res.json()) as {
+          job_id: string
+          total: number
+          processed: number
+          failed: number
+          status: 'running' | 'done'
+          error?: string
+        }
+        if (cancelled) return
+        if (data.error) {
+          setBackfillJob((prev) =>
+            prev
+              ? { ...prev, status: 'error', message: data.error }
+              : prev
+          )
+          return
+        }
+        if (data.status === 'done') {
+          setBackfillJob({
+            job_id: data.job_id,
+            total: data.total,
+            processed: data.processed,
+            failed: data.failed,
+            status: 'done',
+          })
+          // Refresh portfolio so the detail panel re-fetches and shows new paraphrases
+          await loadPortfolioList()
+          globalThis.setTimeout(() => {
+            if (!cancelled) setBackfillJob(null)
+          }, 4000)
+          return
+        }
+        setBackfillJob({
+          job_id: data.job_id,
+          total: data.total,
+          processed: data.processed,
+          failed: data.failed,
+          status: 'running',
+        })
+      } catch (err) {
+        if (cancelled) return
+        setBackfillJob((prev) =>
+          prev
+            ? { ...prev, status: 'error', message: err instanceof Error ? err.message : 'Process failed' }
+            : prev
+        )
+      }
+    }
+
+    void tick()
+    return () => {
+      cancelled = true
+    }
+  }, [backfillJob, loadPortfolioList])
 
   useEffect(() => {
     if (!listingsProperty) return
@@ -115,6 +190,59 @@ export default function PortfolioTable() {
       setSelectedIds(new Set())
     } else {
       setSelectedIds(new Set(filtered.map((p) => p.id)))
+    }
+  }
+
+  const handleStartBackfill = async () => {
+    if (selectedIds.size === 0) return
+    setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'pending' })
+    try {
+      const res = await fetch('/api/portfolio/backfill/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_ids: Array.from(selectedIds) }),
+      })
+      const data = (await res.json()) as {
+        job_id: string | null
+        total: number
+        processed: number
+        failed: number
+        status: 'pending' | 'running' | 'done' | 'error'
+        message?: string
+        error?: string
+      }
+      if (data.error) {
+        setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'error', message: data.error })
+        return
+      }
+      if (data.status === 'done' || data.total === 0) {
+        setBackfillJob({
+          job_id: null,
+          total: data.total,
+          processed: data.processed,
+          failed: data.failed,
+          status: 'done',
+          message: data.message ?? 'No unenriched complaints found.',
+        })
+        globalThis.setTimeout(() => setBackfillJob(null), 3000)
+        return
+      }
+      setBackfillJob({
+        job_id: data.job_id,
+        total: data.total,
+        processed: data.processed,
+        failed: data.failed,
+        status: 'running',
+      })
+    } catch (err) {
+      setBackfillJob({
+        job_id: null,
+        total: 0,
+        processed: 0,
+        failed: 0,
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Backfill failed to start',
+      })
     }
   }
 
@@ -331,12 +459,41 @@ export default function PortfolioTable() {
         </div>
         {isAdmin && selectedIds.size > 0 ? (
           <div className="dashboard-sel-bar">
-            <div className="dashboard-sel-text">{selectedIds.size} selected</div>
+            <div className="dashboard-sel-text">
+              {backfillJob && backfillJob.status === 'running' ? (
+                <span>
+                  Enriching {backfillJob.processed} / {backfillJob.total}…
+                </span>
+              ) : backfillJob && backfillJob.status === 'done' ? (
+                <span style={{ color: '#166534' }}>
+                  {backfillJob.message
+                    ? backfillJob.message
+                    : `Enriched ${backfillJob.processed} complaints (${backfillJob.failed} skipped)`}
+                </span>
+              ) : backfillJob && backfillJob.status === 'error' ? (
+                <span style={{ color: 'var(--red, #c8102e)' }}>
+                  Backfill error: {backfillJob.message ?? 'unknown'}
+                </span>
+              ) : (
+                <span>{selectedIds.size} selected</span>
+              )}
+            </div>
             <div className="dashboard-sel-btns">
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-backfill"
+                onClick={() => void handleStartBackfill()}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                {backfillJob && backfillJob.status === 'running'
+                  ? 'Enriching…'
+                  : 'Enrich 311 history'}
+              </button>
               <button
                 type="button"
                 className="dashboard-sel-btn dashboard-sel-btn-audit"
                 onClick={() => setShowAuditModal(true)}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
               >
                 Create audit
               </button>
@@ -344,6 +501,7 @@ export default function PortfolioTable() {
                 type="button"
                 className="dashboard-sel-btn dashboard-sel-btn-remove"
                 onClick={() => void handleRemoveSelected()}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
               >
                 Remove properties
               </button>
@@ -351,6 +509,7 @@ export default function PortfolioTable() {
                 type="button"
                 className="dashboard-sel-btn dashboard-sel-btn-unselect"
                 onClick={() => setSelectedIds(new Set())}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
               >
                 Unselect
               </button>
