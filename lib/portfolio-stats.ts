@@ -141,7 +141,7 @@ export async function fetchPortfolioActivity(
         addresses.map((addr) =>
           supabase
             .from('complaints_311')
-            .select('sr_number, sr_type, sr_short_code, status, created_date, address_normalized, standard_description, trade_category, urgency_tier')
+            .select('sr_number, sr_type, sr_short_code, status, created_date, closed_date, address_normalized, standard_description, trade_category, urgency_tier, sla_target_days, actual_mean_days, workflow_step')
             .eq('address_normalized', addr)
             .gte('created_date', twelveMonthsAgo)
             .order('created_date', { ascending: false })

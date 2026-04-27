@@ -12,11 +12,11 @@ export async function POST(request: Request) {
 
   const { data: subscriber } = await supabase
     .from('subscribers')
-    .select('is_admin')
+    .select('role')
     .eq('clerk_id', userId)
     .maybeSingle()
 
-  if (!subscriber?.is_admin) {
+  if (subscriber?.role !== 'admin') {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 

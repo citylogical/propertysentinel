@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import NearbyListingsModal from '@/components/NearbyListingsModal'
+import UpgradeModal from '@/components/UpgradeModal'
 import PortfolioDetail from '@/app/dashboard/PortfolioDetail'
 import type { PortfolioProperty } from '@/app/dashboard/types'
 
@@ -128,6 +129,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
   const selectedProperty = properties.find((row) => row.id === selectedId) ?? null
   const [listingsProperty, setListingsProperty] = useState<AuditProperty | null>(null)
   const [listingsCoords, setListingsCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   useEffect(() => {
     if (!listingsProperty) return
@@ -173,8 +175,9 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
 
   const getFlag = (p: AuditProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
-    if (p.open_violations >= 3) return { label: `${p.open_violations} open viol`, color: 'red' }
-    if (p.open_violations > 0) return { label: `${p.open_violations} open viol`, color: 'red' }
+    const recent = (p as AuditProperty & { recent_complaints_30d?: number | null }).recent_complaints_30d ?? 0
+    if (recent >= 3) return { label: `${recent} recent`, color: 'red' }
+    if (recent > 0) return { label: `${recent} recent`, color: 'amber' }
     if (p.is_pbl) return { label: 'PBL', color: 'amber' }
     if (p.shvr_count > 0) return { label: `${p.shvr_count} SHVR`, color: 'amber' }
     return null
@@ -211,11 +214,6 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
           </div>
           <div className="dashboard-istat-sep" />
           <div className="dashboard-istat">
-            <div className="dashboard-istat-num">{totalOpen}</div>
-            <div className="dashboard-istat-label">Open</div>
-          </div>
-          <div className="dashboard-istat-sep" />
-          <div className="dashboard-istat">
             <div className="dashboard-istat-num">{totalPermits}</div>
             <div className="dashboard-istat-label">Permits</div>
           </div>
@@ -227,38 +225,36 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
         </div>
       </div>
 
-      <div
-        style={{
-          background: '#0f2744',
-          padding: '12px 20px',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
-          <strong style={{ color: '#fff', fontWeight: 600 }}>This audit was prepared by Property Sentinel</strong> —
-          real-time property intelligence for Chicago
-        </span>
-        <Link
-          href="/"
-          style={{
-            background: '#e8a84a',
-            color: '#0f2744',
-            padding: '6px 14px',
-            fontSize: 11,
-            fontWeight: 600,
-            textDecoration: 'none',
-            fontFamily: 'inherit',
-            borderRadius: 3,
-            flexShrink: 0,
-          }}
-        >
-          Learn more →
-        </Link>
+      <div className="dashboard-banner-row" style={{ marginBottom: 16 }}>
+        <div className="dashboard-banner dashboard-banner-monitor">
+          <span>
+            <strong>Set up real-time monitoring</strong> — get alerts the moment something hits your portfolio
+          </span>
+          <button
+            type="button"
+            className="dashboard-banner-monitor-btn"
+            onClick={() => setUpgradeOpen(true)}
+          >
+            Set up →
+          </button>
+        </div>
+        <div className="dashboard-banner dashboard-banner-right">
+          <div className="dashboard-banner-right-left">
+            <div className="dashboard-banner-count">{properties.length}</div>
+            <div className="dashboard-banner-count-text">
+              <strong>properties tracked</strong>
+              <br />
+              Add the rest of your portfolio in a single click
+            </div>
+          </div>
+          <button
+            type="button"
+            className="dashboard-banner-add-btn"
+            onClick={() => setUpgradeOpen(true)}
+          >
+            + Add property
+          </button>
+        </div>
       </div>
 
       {selectedProperty ? (
@@ -268,6 +264,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
           detailEndpoint={`/api/audit/detail?slug=${encodeURIComponent(audit.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
           showHistoricalActivityBar={false}
           showParaphrasedReports={true}
+          onUpgradePrompt={() => setUpgradeOpen(true)}
         />
       ) : null}
 
@@ -281,9 +278,6 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
               </th>
               <th className="r" style={{ width: 95 }}>
                 Violations
-              </th>
-              <th className="r" style={{ width: 70 }}>
-                Open
               </th>
               <th className="r" style={{ width: 80 }}>
                 Permits
@@ -320,9 +314,6 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
                     {(p.total_violations_12mo ?? 0) > 0 ? p.total_violations_12mo : <span className="zero">0</span>}
                   </td>
                   <td className="r">
-                    {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
-                  </td>
-                  <td className="r">
                     {p.total_permits_12mo > 0 ? p.total_permits_12mo : <span className="zero">0</span>}
                   </td>
                   <td className="r">
@@ -333,7 +324,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
                         style={{ color: '#b87514', fontWeight: 500 }}
                         onClick={(e) => {
                           e.stopPropagation()
-                          setListingsProperty(p)
+                          setUpgradeOpen(true)
                         }}
                       >
                         {p.nearby_listings}
@@ -387,6 +378,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
           lng={listingsCoords.lng}
         />
       ) : null}
+      <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
     </div>
   )
 }

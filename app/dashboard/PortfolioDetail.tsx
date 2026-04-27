@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import NearbyListingsModal from '@/components/NearbyListingsModal'
+import UpgradeModal from '@/components/UpgradeModal'
 import type { PortfolioProperty } from './types'
 
 type Props = {
@@ -13,6 +14,8 @@ type Props = {
   showHistoricalActivityBar?: boolean
   /** When true, renders the third "RECENT 311 REPORTS" column with up to 3 paraphrased descriptions. Audit only. */
   showParaphrasedReports?: boolean
+  /** When provided, the "Listings nearby" button calls this instead of opening the listings map. Audit-only gate. */
+  onUpgradePrompt?: () => void
 }
 
 type DetailPayload = {
@@ -26,12 +29,50 @@ type DetailPayload = {
   nearby_listings?: number
 }
 
+type ComplaintSource = Record<string, unknown>
+type ViolationSource = Record<string, unknown>
+type PermitSource = Record<string, unknown>
+
 type ActivityItem = {
+  id: string
   type: '311' | 'Violation' | 'Permit'
   label: string
   date: string
   status: string
   detail?: string
+  complaint?: ComplaintSource
+  violations?: ViolationSource[]
+  permit?: PermitSource
+}
+
+type StatusKind = 'open' | 'closed' | 'expired' | 'active'
+
+function StatusPill({ kind }: { kind: StatusKind }) {
+  const variants: Record<StatusKind, { bg: string; color: string; label: string }> = {
+    open: { bg: '#fce8e8', color: '#a82020', label: 'Open' },
+    closed: { bg: '#ede9e0', color: '#888', label: 'Closed' },
+    expired: { bg: '#ede9e0', color: '#888', label: 'Expired' },
+    active: { bg: '#d4edd0', color: '#166534', label: 'Active' },
+  }
+  const v = variants[kind]
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        padding: '2px 8px',
+        borderRadius: 3,
+        whiteSpace: 'nowrap',
+        background: v.bg,
+        color: v.color,
+      }}
+    >
+      {v.label}
+    </span>
+  )
 }
 
 export default function PortfolioDetail({
@@ -40,15 +81,21 @@ export default function PortfolioDetail({
   detailEndpoint,
   showHistoricalActivityBar = true,
   showParaphrasedReports = false,
+  onUpgradePrompt,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(true)
   const [showListings, setShowListings] = useState(false)
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [selectedActivityKey, setSelectedActivityKey] = useState<string | null>(null)
 
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [p.id])
+
+  useEffect(() => {
+    setSelectedActivityKey(null)
   }, [p.id])
 
   useEffect(() => {
@@ -98,7 +145,7 @@ export default function PortfolioDetail({
   const activity: ActivityItem[] = detailLoading
     ? []
     : [
-        ...(detailData?.recent_complaints ?? []).map((c) => {
+        ...(detailData?.recent_complaints ?? []).map((c, idx) => {
           const row = c as {
             sr_type?: string | null
             created_date?: string | null
@@ -106,10 +153,12 @@ export default function PortfolioDetail({
             status?: string | null
           }
           return {
+            id: row.sr_number ? String(row.sr_number) : `complaint-${idx}`,
             type: '311' as const,
             label: row.sr_type ?? 'Complaint',
             date: row.created_date ?? '',
             status: row.status ?? '',
+            complaint: c as ComplaintSource,
           }
         }),
         ...(() => {
@@ -125,12 +174,14 @@ export default function PortfolioDetail({
           const byInspection = new Map<
             string,
             {
+              id: string
               category: string
               bureau: string
               date: string
               isOpen: boolean
               inspNum: string
               count: number
+              sources: ViolationSource[]
             }
           >()
           for (const row of violRows) {
@@ -138,17 +189,20 @@ export default function PortfolioDetail({
             if (byInspection.has(key)) {
               const existing = byInspection.get(key)!
               existing.count++
+              existing.sources.push(row as ViolationSource)
               const vs = (row.violation_status ?? row.inspection_status ?? '').toUpperCase()
               if (vs === 'OPEN' || vs === 'FAILED') existing.isOpen = true
             } else {
               const vs = (row.violation_status ?? row.inspection_status ?? '').toUpperCase()
               byInspection.set(key, {
+                id: key,
                 category: row.inspection_category || 'Violation',
                 bureau: row.department_bureau || '',
                 date: row.violation_date ?? '',
                 isOpen: vs === 'OPEN' || vs === 'FAILED',
                 inspNum: row.inspection_number || '',
                 count: 1,
+                sources: [row as ViolationSource],
               })
             }
           }
@@ -157,35 +211,50 @@ export default function PortfolioDetail({
             const countStr = g.count > 1 ? ` · ${g.count} violations` : ''
             const inspStr = g.inspNum ? `#${g.inspNum}` : ''
             return {
+              id: g.id,
               type: 'Violation' as const,
               label: `${label}${countStr}`,
               date: g.date,
               status: g.isOpen ? 'open' : '',
               detail: inspStr,
+              violations: g.sources,
             }
           })
         })(),
-        ...(detailData?.recent_permits ?? []).map((pr) => {
+        ...(detailData?.recent_permits ?? []).map((pr, idx) => {
           const row = pr as {
             permit_type?: string | null
             issue_date?: string | null
             reported_cost?: number | string | null
+            permit_number?: string | null
           }
           const cost =
             row.reported_cost != null && Number(row.reported_cost) > 0
               ? ` — $${Number(row.reported_cost).toLocaleString()}`
               : ''
           return {
+            id: row.permit_number ? String(row.permit_number) : `permit-${idx}`,
             type: 'Permit' as const,
             label: `${row.permit_type ?? 'Permit'}${cost}`,
             date: row.issue_date ?? '',
             status: '',
+            permit: pr as PermitSource,
           }
         }),
       ]
         .filter((a) => a.date)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 9)
+
+  const activityKey = (a: ActivityItem) => `${a.type}:${a.id}`
+  const effectiveSelectedKey =
+    selectedActivityKey && activity.some((a) => activityKey(a) === selectedActivityKey)
+      ? selectedActivityKey
+      : activity[0]
+        ? activityKey(activity[0])
+        : null
+  const selectedItem =
+    activity.find((a) => activityKey(a) === effectiveSelectedKey) ?? null
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr)
@@ -201,9 +270,13 @@ export default function PortfolioDetail({
 
   const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
 
+  const showDetailPanel = showParaphrasedReports && !detailLoading && activity.length > 0
+
   return (
     <div className="dashboard-detail" ref={ref}>
-      <div className="dashboard-detail-inner">
+      <div
+        className={`dashboard-detail-inner${showDetailPanel ? ' dashboard-detail-inner--with-reports' : ''}`}
+      >
         <div className="dashboard-detail-left">
           <div className="dashboard-dl-addr">
             {p.display_name || p.canonical_address}
@@ -272,9 +345,12 @@ export default function PortfolioDetail({
                 <button
                   type="button"
                   className="dashboard-dl-val dashboard-val-warn dashboard-val-link"
-                  disabled={!propertyCoords}
-                  title={!propertyCoords ? 'Loading map position…' : undefined}
-                  onClick={() => setShowListings(true)}
+                  disabled={!onUpgradePrompt && !propertyCoords}
+                  title={!onUpgradePrompt && !propertyCoords ? 'Loading map position…' : undefined}
+                  onClick={() => {
+                    if (onUpgradePrompt) onUpgradePrompt()
+                    else setShowListings(true)
+                  }}
                 >
                   {nearbyListings} within 150m
                 </button>
@@ -301,17 +377,98 @@ export default function PortfolioDetail({
                   No activity in the last 12 months.
                 </div>
               ) : (
-                activity.map((a, i) => (
-                  <div className="dashboard-tl-row" key={`${a.type}-${i}`}>
-                    <div className="dashboard-tl-date">{formatDate(a.date)}</div>
-                    <div className="dashboard-tl-type">{a.type}</div>
-                    <div className="dashboard-tl-desc">
-                      {a.label}
-                      {a.status && String(a.status).toLowerCase() === 'open' ? ' — open' : ''}
-                      {a.detail ? <span className="dashboard-tl-detail">{a.detail}</span> : null}
+                activity.map((a, i) => {
+                  const typeDisplay =
+                    a.type === 'Violation' ? 'VIOL' : a.type === 'Permit' ? 'PERMIT' : '311'
+                  const typeColor =
+                    a.type === 'Violation' ? '#c8102e' : a.type === 'Permit' ? '#166534' : '#1e3a5f'
+                  const statusKind: StatusKind =
+                    a.type === 'Permit'
+                      ? 'active'
+                      : String(a.status ?? '').toLowerCase() === 'open'
+                        ? 'open'
+                        : 'closed'
+                  const rowKey = activityKey(a)
+                  const isSelected = effectiveSelectedKey === rowKey
+                  return (
+                    <div
+                      key={`${a.type}-${i}`}
+                      data-activity-row="true"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedActivityKey(rowKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedActivityKey(rowKey)
+                          return
+                        }
+                        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          const delta = e.key === 'ArrowDown' ? 1 : -1
+                          const nextIndex = Math.max(0, Math.min(activity.length - 1, i + delta))
+                          if (nextIndex === i) return
+                          setSelectedActivityKey(activityKey(activity[nextIndex]))
+                          const parent = e.currentTarget.parentElement
+                          const rows = parent?.querySelectorAll<HTMLDivElement>('[data-activity-row="true"]')
+                          rows?.[nextIndex]?.focus()
+                        }
+                      }}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '92px 44px 1fr auto',
+                        gap: 8,
+                        alignItems: 'center',
+                        padding: '9px 8px 9px 5px',
+                        borderBottom: '1px solid #f0ede5',
+                        borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent',
+                        background: isSelected ? '#faf8f3' : 'transparent',
+                        fontSize: 13,
+                        minWidth: 0,
+                        cursor: 'pointer',
+                        outline: 'none',
+                        transition: 'background 120ms ease, border-left-color 120ms ease',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                        }}
+                      >
+                        {formatDate(a.date)}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 10,
+                          fontWeight: 500,
+                          letterSpacing: '0.08em',
+                          color: typeColor,
+                        }}
+                      >
+                        {typeDisplay}
+                      </span>
+                      <span style={{ color: '#1a1a1a', minWidth: 0 }}>
+                        {a.label}
+                        {a.detail ? (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                              fontSize: 10,
+                              color: '#999',
+                            }}
+                          >
+                            {a.detail}
+                          </span>
+                        ) : null}
+                      </span>
+                      <StatusPill kind={statusKind} />
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -321,31 +478,391 @@ export default function PortfolioDetail({
             </a>
           ) : null}
         </div>
-        {showParaphrasedReports ? (() => {
-          const paraphrased = (detailData?.recent_complaints ?? [])
-            .map((c) => c as {
+        {showDetailPanel && selectedItem ? (() => {
+          const monoLabel: CSSProperties = {
+            fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+            fontSize: 11,
+            color: '#5a7898',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }
+
+          const formatShortDate = (iso: string | null | undefined): string => {
+            if (!iso) return ''
+            const d = new Date(iso)
+            if (Number.isNaN(d.getTime())) return ''
+            return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
+          }
+
+          const ClosedPill = ({ closedDate }: { closedDate: string | null | undefined }) => {
+            const short = formatShortDate(closedDate)
+            return (
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                  fontSize: 10,
+                  fontWeight: 500,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: 3,
+                  whiteSpace: 'nowrap',
+                  background: '#ede9e0',
+                  color: '#888',
+                }}
+              >
+                {short ? `Closed ${short}` : 'Closed'}
+              </span>
+            )
+          }
+
+          const headerTitle =
+            selectedItem.type === '311'
+              ? 'Complaint details'
+              : selectedItem.type === 'Violation'
+                ? 'Violation details'
+                : 'Permit details'
+
+          const panelPalette =
+            selectedItem.type === 'Violation'
+              ? { headerBg: '#fbeeee', headerText: '#7a1a26' }
+              : selectedItem.type === 'Permit'
+                ? { headerBg: '#eef5ee', headerText: '#166534' }
+                : { headerBg: '#eef4fb', headerText: '#1e3a5f' }
+
+          const renderComplaint = () => {
+            type CRow = {
               sr_number?: string | null
               sr_type?: string | null
+              status?: string | null
               created_date?: string | null
+              closed_date?: string | null
               standard_description?: string | null
-              urgency_tier?: string | null
-            })
-            .filter((c) => c.standard_description && c.standard_description.trim().length > 0)
-            .slice(0, 3)
+              sla_target_days?: number | null
+              actual_mean_days?: number | null
+              workflow_step?: string | null
+            }
+            const c = (selectedItem.complaint ?? {}) as CRow
+            const isOpen = String(c.status ?? '').toLowerCase() === 'open'
+            const desc = (c.standard_description ?? '').trim()
 
-          if (paraphrased.length === 0) return null
+            return (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={monoLabel}>{formatDate(c.created_date ?? '')}</span>
+                  {isOpen ? <StatusPill kind="open" /> : <ClosedPill closedDate={c.closed_date} />}
+                </div>
+                {c.sr_type ? (
+                  <div style={{ ...monoLabel, marginBottom: 4, letterSpacing: '0.04em' }}>{c.sr_type}</div>
+                ) : null}
+                {c.sr_number ? (
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      color: '#888',
+                      marginBottom: 10,
+                    }}
+                  >
+                    #{c.sr_number}
+                  </div>
+                ) : null}
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: desc ? '#1a1a1a' : '#888',
+                    lineHeight: 1.4,
+                    marginBottom: 12,
+                    fontStyle: desc ? 'normal' : 'italic',
+                  }}
+                >
+                  {desc || 'No description available'}
+                </div>
+                {isOpen && (c.sla_target_days != null || c.actual_mean_days != null || c.workflow_step) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {c.sla_target_days != null ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#5a7898' }}>Target</span>
+                        <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{c.sla_target_days} days</span>
+                      </div>
+                    ) : null}
+                    {c.actual_mean_days != null ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#5a7898' }}>Avg</span>
+                        <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{c.actual_mean_days} days</span>
+                      </div>
+                    ) : null}
+                    {c.workflow_step ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
+                        <span style={{ color: '#5a7898', flexShrink: 0 }}>Step</span>
+                        <span style={{ color: '#1a1a1a', fontWeight: 500, textAlign: 'right' }}>{c.workflow_step}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )
+          }
+
+          const renderViolation = () => {
+            type VRow = {
+              violation_code?: string | null
+              violation_description?: string | null
+              violation_inspector_comments?: string | null
+              violation_ordinance?: string | null
+              violation_status?: string | null
+              inspection_status?: string | null
+              violation_date?: string | null
+              violation_last_modified_date?: string | null
+              inspection_category?: string | null
+              department_bureau?: string | null
+              inspection_number?: string | null
+              is_stop_work_order?: boolean | null
+            }
+            const vols = (selectedItem.violations ?? []) as VRow[]
+            if (vols.length === 0) {
+              return (
+                <div style={{ fontSize: 13, color: '#888', fontStyle: 'italic' }}>No description available</div>
+              )
+            }
+            const first = vols[0]
+            const hasOpen = vols.some((v) => {
+              const s = (v.violation_status ?? v.inspection_status ?? '').toUpperCase()
+              return s === 'OPEN' || s === 'FAILED'
+            })
+            const allComplied = vols.every((v) => {
+              const s = (v.violation_status ?? '').toUpperCase()
+              return s === 'COMPLIED' || s === 'PASSED' || s === 'CLOSED'
+            })
+            const closedDate = allComplied ? (first.violation_last_modified_date ?? null) : null
+            const hasStopWork = vols.some((v) => v.is_stop_work_order === true)
+            const category = first.inspection_category || 'Violation'
+            const bureau = first.department_bureau || ''
+            const inspNum = first.inspection_number || ''
+            const ordinance = first.violation_ordinance || ''
+
+            return (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={monoLabel}>{formatDate(first.violation_date ?? '')}</span>
+                  {hasOpen ? <StatusPill kind="open" /> : <ClosedPill closedDate={closedDate} />}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', marginBottom: 4 }}>
+                  {category}
+                  {bureau ? ` · ${bureau}` : ''}
+                </div>
+                {hasStopWork ? (
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 10,
+                      fontWeight: 500,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      padding: '2px 8px',
+                      borderRadius: 3,
+                      background: '#fce8e8',
+                      color: '#a82020',
+                      display: 'inline-block',
+                      marginBottom: 8,
+                    }}
+                  >
+                    ⚠ Stop work order
+                  </div>
+                ) : null}
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                    fontSize: 11,
+                    color: '#888',
+                    marginBottom: 8,
+                  }}
+                >
+                  {inspNum ? `Inspection #${inspNum}` : '—'} · {vols.length} violation{vols.length !== 1 ? 's' : ''}
+                </div>
+                {ordinance ? (
+                  <div style={{ fontSize: 11, color: '#5a7898', lineHeight: 1.4, marginBottom: 12 }}>{ordinance}</div>
+                ) : null}
+                <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid #d6e4f3', paddingTop: 8 }}>
+                  {vols.map((v, vi) => {
+                    const text = v.violation_inspector_comments || v.violation_description || '—'
+                    return (
+                      <div
+                        key={`v-${vi}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          gap: 10,
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          color: '#1a1a1a',
+                          padding: '6px 0',
+                          borderBottom: vi < vols.length - 1 ? '0.5px solid #d6e4f3' : 'none',
+                        }}
+                      >
+                        {v.violation_code ? (
+                          <span
+                            style={{
+                              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                              fontSize: 9,
+                              color: '#888',
+                              flexShrink: 0,
+                              minWidth: 48,
+                            }}
+                          >
+                            {v.violation_code}
+                          </span>
+                        ) : null}
+                        <span>{text}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )
+          }
+
+          const renderPermit = () => {
+            type PRow = {
+              permit_number?: string | null
+              permit_type?: string | null
+              permit_status?: string | null
+              work_description?: string | null
+              issue_date?: string | null
+              reported_cost?: number | string | null
+              total_fee?: number | string | null
+              contact_1_name?: string | null
+              contact_1_type?: string | null
+            }
+            const pr = (selectedItem.permit ?? {}) as PRow
+            const workDesc = (pr.work_description ?? '').trim()
+
+            const computeExpiry = (iso: string | null | undefined) => {
+              if (!iso) return null
+              const d = new Date(iso)
+              if (Number.isNaN(d.getTime())) return null
+              const exp = new Date(d.getTime() + 540 * 24 * 60 * 60 * 1000)
+              return { label: formatShortDate(exp.toISOString()), isExpired: new Date() > exp }
+            }
+            const expiry = computeExpiry(pr.issue_date)
+
+            return (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={monoLabel}>{formatDate(pr.issue_date ?? '')}</span>
+                  <StatusPill kind={expiry?.isExpired ? 'expired' : 'active'} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', marginBottom: 4 }}>{pr.permit_type ?? '—'}</div>
+                {pr.permit_number ? (
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      color: '#888',
+                      marginBottom: 10,
+                    }}
+                  >
+                    #{pr.permit_number}
+                  </div>
+                ) : null}
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: workDesc ? '#1a1a1a' : '#888',
+                    lineHeight: 1.4,
+                    marginBottom: 12,
+                    fontStyle: workDesc ? 'normal' : 'italic',
+                  }}
+                >
+                  {workDesc || 'No description available'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {expiry ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ color: '#5a7898' }}>{expiry.isExpired ? 'Expired' : 'Expires'}</span>
+                      <span style={{ color: expiry.isExpired ? '#a82020' : '#1a1a1a', fontWeight: 500 }}>{expiry.label}</span>
+                    </div>
+                  ) : null}
+                  {pr.reported_cost != null && Number(pr.reported_cost) > 0 ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ color: '#5a7898' }}>Cost</span>
+                      <span style={{ color: '#1a1a1a', fontWeight: 500 }}>${Number(pr.reported_cost).toLocaleString()}</span>
+                    </div>
+                  ) : null}
+                  {pr.total_fee != null && Number(pr.total_fee) > 0 ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ color: '#5a7898' }}>Fee</span>
+                      <span style={{ color: '#1a1a1a', fontWeight: 500 }}>${Number(pr.total_fee).toLocaleString()}</span>
+                    </div>
+                  ) : null}
+                  {pr.contact_1_name ? (
+                    <div
+                      style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8, marginTop: 4 }}
+                    >
+                      <span
+                        style={{
+                          color: '#5a7898',
+                          flexShrink: 0,
+                          textTransform: 'uppercase',
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 10,
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {pr.contact_1_type ?? 'Contact'}
+                      </span>
+                      <span style={{ color: '#1a1a1a', fontWeight: 500, textAlign: 'right' }}>{pr.contact_1_name}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )
+          }
 
           return (
-            <div className="dashboard-detail-reports">
-              <div className="dashboard-dr-label">Recent 311 reports</div>
-              <div className="dashboard-reports-list">
-                {paraphrased.map((c, i) => (
-                  <div className="dashboard-report-row" key={`report-${c.sr_number ?? i}`}>
-                    <div className="dashboard-report-date">{formatDate(c.created_date ?? '')}</div>
-                    <div className="dashboard-report-desc">{c.standard_description}</div>
-                  </div>
-                ))}
+            <div className="dashboard-detail-reports" style={{ background: '#faf8f3' }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                  fontSize: 11,
+                  letterSpacing: '0.08em',
+                  color: panelPalette.headerText,
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  background: panelPalette.headerBg,
+                  padding: '8px 12px',
+                  borderRadius: 4,
+                  marginBottom: 16,
+                }}
+              >
+                {headerTitle}
               </div>
+              {selectedItem.type === '311'
+                ? renderComplaint()
+                : selectedItem.type === 'Violation'
+                  ? renderViolation()
+                  : renderPermit()}
             </div>
           )
         })() : null}

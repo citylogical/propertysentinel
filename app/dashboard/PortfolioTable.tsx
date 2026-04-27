@@ -271,8 +271,9 @@ export default function PortfolioTable() {
 
   const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
-    if (p.open_violations >= 3) return { label: `${p.open_violations} open viol`, color: 'red' }
-    if (p.open_violations > 0) return { label: `${p.open_violations} open viol`, color: 'red' }
+    const recent = (p as PortfolioProperty & { recent_complaints_30d?: number | null }).recent_complaints_30d ?? 0
+    if (recent >= 3) return { label: `${recent} recent`, color: 'red' }
+    if (recent > 0) return { label: `${recent} recent`, color: 'amber' }
     if (p.is_pbl) return { label: 'PBL', color: 'amber' }
     if (p.shvr_count > 0) return { label: `${p.shvr_count} SHVR`, color: 'amber' }
     return null
@@ -395,13 +396,6 @@ export default function PortfolioTable() {
               {properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0)}
             </div>
             <div className="dashboard-istat-label">Violations</div>
-          </div>
-          <div className="dashboard-istat-sep" />
-          <div className="dashboard-istat">
-            <div className="dashboard-istat-num">
-              {properties.filter((p) => p.open_violations > 0).reduce((s, p) => s + p.open_violations, 0)}
-            </div>
-            <div className="dashboard-istat-label">Open</div>
           </div>
           <div className="dashboard-istat-sep" />
           <div className="dashboard-istat">
@@ -538,9 +532,6 @@ export default function PortfolioTable() {
                 <th className="r" style={{ width: 95 }}>
                   Violations
                 </th>
-                <th className="r" style={{ width: 70 }}>
-                  Open
-                </th>
                 <th className="r" style={{ width: 80 }}>
                   Permits
                 </th>
@@ -583,9 +574,6 @@ export default function PortfolioTable() {
                     </td>
                     <td className="r">
                       {(p.total_violations_12mo ?? 0) > 0 ? p.total_violations_12mo ?? 0 : <span className="zero">0</span>}
-                    </td>
-                    <td className="r">
-                      {p.open_violations > 0 ? p.open_violations : <span className="zero">0</span>}
                     </td>
                     <td className="r">
                       {p.total_permits > 0 ? p.total_permits : <span className="zero">0</span>}
