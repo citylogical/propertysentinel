@@ -174,7 +174,20 @@ export default function PortfolioTable() {
     }
   }, [listingsProperty])
 
-  const filtered = properties
+  const filtered = [...properties].sort((a, b) => {
+    const ac = a.total_complaints_12mo ?? a.open_complaints ?? 0
+    const bc = b.total_complaints_12mo ?? b.open_complaints ?? 0
+    if (bc !== ac) return bc - ac
+    const av = a.total_violations_12mo ?? 0
+    const bv = b.total_violations_12mo ?? 0
+    if (bv !== av) return bv - av
+    const ap = a.total_permits ?? 0
+    const bp = b.total_permits ?? 0
+    if (bp !== ap) return bp - ap
+    const al = a.nearby_listings ?? 0
+    const bl = b.nearby_listings ?? 0
+    return bl - al
+  })
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
