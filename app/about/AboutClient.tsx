@@ -304,6 +304,7 @@ export default function AboutClient() {
                 <div className="pc-features">
                   <div>Portfolio Dashboard</div>
                   <div>Up to 20 saved properties</div>
+                  <div>Address range/Super parcel creation</div>
                 </div>
               </div>
               <div className="pc-card pc-card-feat">

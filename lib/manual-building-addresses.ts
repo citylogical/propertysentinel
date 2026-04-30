@@ -180,6 +180,43 @@ export type ManualBuildingEntry = {
       ],
       note: '1112-1134 N La Salle St / 153-163 W Elm St — condo building; mailing name: 1120 N LASALLE LLC',
     },
+    // ─── 1301–1309 N State Pkwy / 2–18 E Goethe St (Ambassador Chicago) ──────
+    // Ambassador Hotel Chicago, Gold Coast. Corner building on N State Pkwy and E Goethe St.
+    // CCAO stores all 3 confirmed PINs under "N STATE ST" (1301, 1303, 1305).
+    // Marketed/postal address is "N STATE PKWY". Side entrances on E GOETHE ST.
+    // 311 complaints split across PKWY and ST forms — verified via SQL:
+    //   1301 N STATE PKWY: 29 complaints | 1301 N STATE ST: 14 complaints
+    //   plus minor counts at 1303/1305/1307/1309 PKWY and 6/10 E GOETHE ST.
+    // Mailing name: FHM AMBASSADOR EAST (3 PINs).
+    {
+      canonicalAddress: '1301 N STATE ST',
+      allAddresses: [
+        // Postal / marketed address (Pkwy) — 1301 through 1309
+        '1301 N STATE PKWY', '1303 N STATE PKWY', '1305 N STATE PKWY',
+        '1307 N STATE PKWY', '1309 N STATE PKWY',
+        // CCAO address (St) — what's actually in our properties table
+        '1301 N STATE ST', '1303 N STATE ST', '1305 N STATE ST',
+        '1307 N STATE ST', '1309 N STATE ST',
+        // Goethe side entrance — even numbers (south side of Goethe)
+        '2 E GOETHE ST', '4 E GOETHE ST', '6 E GOETHE ST',
+        '8 E GOETHE ST', '10 E GOETHE ST', '12 E GOETHE ST',
+        '14 E GOETHE ST', '16 E GOETHE ST', '18 E GOETHE ST',
+      ],
+      displayAddresses: [
+        // Pkwy form preferred for banner — matches how the hotel markets itself
+        '1301 N STATE PKWY', '1303 N STATE PKWY', '1305 N STATE PKWY',
+        '1307 N STATE PKWY', '1309 N STATE PKWY',
+        '2 E GOETHE ST', '4 E GOETHE ST', '6 E GOETHE ST',
+        '8 E GOETHE ST', '10 E GOETHE ST', '12 E GOETHE ST',
+        '14 E GOETHE ST', '16 E GOETHE ST', '18 E GOETHE ST',
+      ],
+      pins: [
+        '17031060060000', // 1305 N STATE ST
+        '17031060070000', // 1303 N STATE ST
+        '17031060080000', // 1301 N STATE ST
+      ],
+      note: '1301-1309 N State Pkwy / 2-18 E Goethe St — Ambassador Hotel Chicago; corner hotel; CCAO uses State St, postal/marketed uses State Pkwy; mailing name: FHM AMBASSADOR EAST',
+    },
   ]
   
   // Build O(1) lookup map at module load time

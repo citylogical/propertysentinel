@@ -201,6 +201,10 @@ const STREET_TYPE_ABBREV: [RegExp, string][] = [
   [/\bPLACE\b/g, 'PL'],
   [/\bLANE\b/g, 'LN'],
   [/\bROAD\b/g, 'RD'],
+  [/\bPARKWAY\b/g, 'PKWY'],
+  [/\bTERRACE\b/g, 'TER'],
+  [/\bCIRCLE\b/g, 'CIR'],
+  [/\bHIGHWAY\b/g, 'HWY'],
 ]
 
 export function normalizeAddress(raw: string): string {
