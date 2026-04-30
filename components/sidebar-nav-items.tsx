@@ -14,7 +14,7 @@ export type SidebarNavItem = {
   href: string
   icon: ReactNode
   active?: boolean
-  badge?: 'beta' | 'admin'
+  badge?: 'beta' | 'admin' | 'admin-only'
   requiresAuth?: boolean
 }
 
@@ -35,14 +35,13 @@ export function getSidebarNavItems(isAdmin: boolean): SidebarNavItem[] {
       badge: 'admin',
       icon: <NavIconExplore />,
     })
+    items.push({
+      label: 'Leads',
+      href: '/leads',
+      badge: 'admin-only',
+      icon: <NavIconLeads />,
+    })
   }
-
-  items.push({
-    label: 'Leads',
-    href: '/leads',
-    badge: 'beta',
-    icon: <NavIconLeads />,
-  })
 
   items.push(
     {

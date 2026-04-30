@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import type { ReactNode } from 'react'
 
 /* ────────────────────────────────────────────────────────────────────
    FEATURE DATA (static — these don't need a database)
@@ -120,9 +121,7 @@ export default function AboutClient() {
   const [activeTab, setActiveTab] = useState<Tab>('features')
   const [featureModal, setFeatureModal] = useState<number | null>(null)
 
-  // Pricing state
-  const [isAnnual, setIsAnnual] = useState(false)
-  const [propertyCount, setPropertyCount] = useState(3)
+  // (Pricing state moved into PricingCalculator component)
 
   const switchTab = useCallback((tab: Tab) => {
     setActiveTab(tab)
@@ -154,22 +153,6 @@ export default function AboutClient() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-
-  const sliderMin = 3
-  const sliderMax = 20
-  const sliderRange = sliderMax - sliderMin
-
-  // Pricing math
-  const extra = Math.max(0, propertyCount - sliderMin)
-  const moBase = 25
-  const moExtra = extra * 10
-  const moTotal = moBase + moExtra
-  const yrBase = 240
-  const yrExtraEach = 96
-  const yrExtraTotal = extra * yrExtraEach
-  const yrTotal = yrBase + yrExtraTotal
-  const yrMonthly = Math.round(yrTotal / 12)
-  const yrSaved = (moTotal * 12) - yrTotal
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'features', label: 'Features' },
@@ -262,198 +245,15 @@ export default function AboutClient() {
       {/* ── Pricing ── */}
       {activeTab === 'pricing' && (
         <div key="pricing" className="about-panel about-pricing-panel">
-          <div className="page-intro-callout">
-            <p className="pricing-intro">
-              Every Chicago address is free to search — unlimited lookups,
-              complete complaint, violation, permit, and assessment history.{' '}
-              <strong>No account required.</strong> If you&apos;re a researcher
-              or journalist,{' '}
-              <a
-                href="#contact"
-                onClick={(e) => {
-                  e.preventDefault()
-                  switchTab('contact')
-                }}
-              >
-                reach out
-              </a>{' '}
-              for a premium account.
-            </p>
-          </div>
-
-          <div className="pricing-two-col">
-            <div className="pricing-column pricing-column-monitoring">
-              <div className="pricing-section-header">
-                <h2 className="pricing-section-label">Property Monitoring</h2>
-                <p className="pricing-section-sub">
-                  Real-time SMS and email alerts for every complaint,
-                  violation, and permit at your properties.
-                </p>
-              </div>
-
-              <div className="pc-toggle">
-                <span className={`pc-tl ${!isAnnual ? 'on' : ''}`}>
-                  Monthly
-                </span>
-                <button
-                  type="button"
-                  className={`pc-track ${isAnnual ? 'on' : ''}`}
-                  onClick={() => setIsAnnual(!isAnnual)}
-                >
-                  <span className="pc-knob" />
-                </button>
-                <span className={`pc-tl ${isAnnual ? 'on' : ''}`}>
-                  Annual
-                </span>
-                {isAnnual && <span className="pc-save-pill">Save 20%</span>}
-              </div>
-
-              <div className="pc-cards">
-                <div className="pc-card">
-                  <div className="pc-tier pc-tier-dim">Account</div>
-                  <div className="pc-price-num">Free</div>
-                  <div className="pc-sub">with signup</div>
-                  <div className="pc-features">
-                    <div>1 saved property</div>
-                    <div>STR + PBL intelligence</div>
-                    <div>Weekly email digest</div>
-                  </div>
-                </div>
-                <div className="pc-card pc-card-feat">
-                  <div className="pc-tier pc-tier-navy">Premium</div>
-                  <div className="pc-price-row">
-                    <span className="pc-price-num">
-                      ${isAnnual ? '20' : '25'}
-                    </span>
-                    <span className="pc-price-per">/mo</span>
-                    {isAnnual && <span className="pc-price-strike">$25</span>}
-                  </div>
-                  <div className="pc-sub">
-                    {isAnnual
-                      ? 'Billed annually at $240/yr'
-                      : '3 properties included'}
-                  </div>
-                  <div className="pc-features">
-                    <div>3 properties included</div>
-                    <div>Hourly SMS + email alerts</div>
-                    <div>
-                      +{isAnnual ? '$8' : '$10'}/mo per additional
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pc-slider-section">
-                <div className="pc-slider-header">
-                  <span className="pc-slider-label">
-                    How many properties do you manage?
-                  </span>
-                  <span className="pc-slider-count">{propertyCount}</span>
-                </div>
-                <input
-                  type="range"
-                  min={sliderMin}
-                  max={sliderMax}
-                  step={1}
-                  value={propertyCount}
-                  onChange={(e) =>
-                    setPropertyCount(parseInt(e.target.value, 10))
-                  }
-                  className="pc-slider-input"
-                  style={{
-                    background: `linear-gradient(to right, #0f2744 ${((propertyCount - sliderMin) / sliderRange) * 100}%, #ddd9d0 ${((propertyCount - sliderMin) / sliderRange) * 100}%)`,
-                  }}
-                />
-                <div className="pricing-slider-ticks">
-                  <span className="pricing-slider-tick" style={{ left: '0%' }}>
-                    3
-                  </span>
-                  <span
-                    className="pricing-slider-tick"
-                    style={{ left: '11.76%' }}
-                  >
-                    5
-                  </span>
-                  <span
-                    className="pricing-slider-tick"
-                    style={{ left: '41.18%' }}
-                  >
-                    10
-                  </span>
-                  <span
-                    className="pricing-slider-tick"
-                    style={{ left: '70.59%' }}
-                  >
-                    15
-                  </span>
-                  <span
-                    className="pricing-slider-tick"
-                    style={{ left: '100%' }}
-                  >
-                    20
-                  </span>
-                </div>
-
-                <div className="pc-breakdown">
-                  <div className="pc-breakdown-row">
-                    <span>Premium base (3 properties)</span>
-                    <span>
-                      <span className="pc-breakdown-val">
-                        {isAnnual ? '$240/yr' : '$25/mo'}
-                      </span>
-                      {isAnnual && (
-                        <span className="pc-breakdown-strike">$300</span>
-                      )}
-                    </span>
-                  </div>
-                  {extra > 0 && (
-                    <div className="pc-breakdown-row">
-                      <span>
-                        +{extra} additional ×{' '}
-                        {isAnnual ? '$96/yr' : '$10/mo'}
-                      </span>
-                      <span>
-                        <span className="pc-breakdown-val">
-                          {isAnnual ? `$${yrExtraTotal}` : `$${moExtra}`}
-                        </span>
-                        {isAnnual && (
-                          <span className="pc-breakdown-strike">
-                            ${extra * 120}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                  <div className="pc-breakdown-divider" />
-                  <div className="pc-breakdown-total-row">
-                    <span className="pc-breakdown-total-label">Total</span>
-                    <div className="pc-breakdown-total-right">
-                      <span className="pc-breakdown-total">
-                        {isAnnual ? `$${yrTotal}` : `$${moTotal}`}
-                      </span>
-                      <span className="pc-breakdown-total-per">
-                        {isAnnual ? '/yr' : '/mo'}
-                      </span>
-                      {isAnnual && (
-                        <div className="pc-breakdown-equiv">
-                          ${yrMonthly}/mo effective
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {isAnnual && (
-                    <div className="pc-breakdown-saved">
-                      You save ${yrSaved}/yr with annual billing (20% off)
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <p className="pricing-enterprise">
-                20+ properties —{' '}
+          <div className="pricing-monitoring-section">
+            <div className="page-intro-callout">
+              <p className="pricing-intro">
+                Every Chicago address is free to search — unlimited lookups,
+                complete complaint, violation, permit, and assessment history.{' '}
+                <strong>No account required.</strong> If you&apos;re a researcher
+                or journalist,{' '}
                 <a
                   href="#contact"
-                  className="pc-footer-link"
                   onClick={(e) => {
                     e.preventDefault()
                     switchTab('contact')
@@ -461,71 +261,81 @@ export default function AboutClient() {
                 >
                   reach out
                 </a>{' '}
-                for enterprise pricing
+                for a premium account.
               </p>
             </div>
 
-            <div className="pricing-column-divider" aria-hidden="true" />
+            <div className="pricing-section-header pricing-section-header-centered">
+              <h2 className="pricing-section-label">Property Monitoring</h2>
+              <p className="pricing-section-sub">
+                Real-time SMS and email alerts for every complaint, violation,
+                and permit at your buildings. Pricing scales with building size,
+                with discounts as buildings get larger.
+              </p>
+            </div>
 
-            <div className="pricing-column pricing-column-unlocks">
-              <div className="pricing-section-header">
-                <h2 className="pricing-section-label">Owner Unlocks</h2>
-                <p className="pricing-section-sub">
-                  Reveal owner names, mailing addresses, and phone numbers for
-                  any property. Bad data is automatically credited back.
-                </p>
-              </div>
-
-              <div className="pricing-payg-card">
-                <div className="pricing-payg-left">
-                  <div className="pricing-sublabel">Pay as you go</div>
-                  <div className="pricing-payg-price">
-                    <span className="pricing-payg-amount">$10</span>
-                    <span className="pricing-payg-unit">per unlock</span>
-                  </div>
-                  <p className="pricing-payg-meta">5 free unlocks at signup</p>
+            <div className="pc2-formula-band">
+              <div className="pc2-formula-title">Pricing formula</div>
+              <div className="pc2-formula-grid">
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">1–6 units</div>
+                  <div className="pc2-fcell-amount">$10<small>/mo</small></div>
                 </div>
-                <div className="pricing-payg-right">
-                  Card on file, charged per reveal.
-                  <br />
-                  Wrong number? Auto-credited.
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">Units 7–100</div>
+                  <div className="pc2-fcell-amount">$1.00<small>/ea</small></div>
                 </div>
-              </div>
-
-              <div className="pricing-sublabel pricing-credit-packs-header">
-                Credit packs
-                <span className="pricing-credit-packs-sub">
-                  {' · '}Save up to 25% — never expire
-                </span>
-              </div>
-
-              <div className="pricing-credit-packs">
-                <div className="pricing-credit-pack">
-                  <div className="pricing-credit-pack-tier">Starter</div>
-                  <div className="pricing-credit-pack-price">$85</div>
-                  <div className="pricing-credit-pack-units">10 unlocks</div>
-                  <div className="pricing-credit-pack-each">
-                    $8.50 each · 15% off
-                  </div>
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">Units 101–200</div>
+                  <div className="pc2-fcell-amount">$0.75<small>/ea</small></div>
                 </div>
-                <div className="pricing-credit-pack">
-                  <div className="pricing-credit-pack-tier">Pro</div>
-                  <div className="pricing-credit-pack-price">$200</div>
-                  <div className="pricing-credit-pack-units">25 unlocks</div>
-                  <div className="pricing-credit-pack-each">
-                    $8.00 each · 20% off
-                  </div>
-                </div>
-                <div className="pricing-credit-pack">
-                  <div className="pricing-credit-pack-tier">Volume</div>
-                  <div className="pricing-credit-pack-price">$375</div>
-                  <div className="pricing-credit-pack-units">50 unlocks</div>
-                  <div className="pricing-credit-pack-each">
-                    $7.50 each · 25% off
-                  </div>
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">Units 201+</div>
+                  <div className="pc2-fcell-amount">$0.50<small>/ea</small></div>
                 </div>
               </div>
             </div>
+
+            <div className="pc-cards">
+              <div className="pc-card">
+                <div className="pc-tier pc-tier-dim">Free account</div>
+                <div className="pc-price-num">Free</div>
+                <div className="pc-sub">with signup</div>
+                <div className="pc-features">
+                  <div>Portfolio Dashboard</div>
+                  <div>Up to 20 saved properties</div>
+                </div>
+              </div>
+              <div className="pc-card pc-card-feat">
+                <div className="pc-tier pc-tier-navy">Premium</div>
+                <div className="pc-price-num">$10<small>+/mo</small></div>
+                <div className="pc-sub">scales with building size</div>
+                <div className="pc-features">
+                  <div>Hourly SMS + email alerts</div>
+                  <div>311 complaint descriptions</div>
+                  <div>Per-unit complaint context</div>
+                  <div>City inspection timeline tracking</div>
+                  <div>Short-term rental listings</div>
+                </div>
+              </div>
+            </div>
+
+            <PricingCalculator />
+
+            <p className="pricing-enterprise">
+              Portfolios above 50 buildings or 5,000 units —{' '}
+              <a
+                href="#contact"
+                className="pc-footer-link"
+                onClick={(e) => {
+                  e.preventDefault()
+                  switchTab('contact')
+                }}
+              >
+                reach out
+              </a>{' '}
+              for enterprise pricing
+            </p>
           </div>
         </div>
       )}
@@ -569,5 +379,234 @@ export default function AboutClient() {
         </div>
       )}
     </>
+  )
+}
+
+function PricingCalculator() {
+  const [units, setUnits] = useState(50)
+  const [buildings, setBuildings] = useState(1)
+
+  const calculatePrice = useCallback((u: number): number => {
+    if (u <= 6) return 10
+    let cost = 10
+    if (u <= 100) {
+      cost += (u - 6) * 1.0
+    } else if (u <= 200) {
+      cost += 94 * 1.0 + (u - 100) * 0.75
+    } else {
+      cost += 94 * 1.0 + 100 * 0.75 + (u - 200) * 0.5
+    }
+    return cost
+  }, [])
+
+  const perBuilding = calculatePrice(units)
+  const total = perBuilding * buildings
+
+  const renderBreakdown = () => {
+    const rows: ReactNode[] = []
+
+    if (units <= 6) {
+      rows.push(
+        <div key="base" className="pc2-breakdown-row">
+          <span>{units} unit{units === 1 ? '' : 's'} · base rate</span>
+          <span>$10.00</span>
+        </div>
+      )
+    } else if (units <= 100) {
+      rows.push(
+        <div key="base" className="pc2-breakdown-row">
+          <span>Base (1–6 units)</span>
+          <span>$10.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t1" className="pc2-breakdown-row">
+          <span>{units - 6} units × $1.00</span>
+          <span>${((units - 6) * 1.0).toFixed(2)}</span>
+        </div>
+      )
+    } else if (units <= 200) {
+      rows.push(
+        <div key="base" className="pc2-breakdown-row">
+          <span>Base (1–6 units)</span>
+          <span>$10.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t1" className="pc2-breakdown-row">
+          <span>94 units × $1.00</span>
+          <span>$94.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t2" className="pc2-breakdown-row">
+          <span>{units - 100} units × $0.75</span>
+          <span>${((units - 100) * 0.75).toFixed(2)}</span>
+        </div>
+      )
+    } else {
+      rows.push(
+        <div key="base" className="pc2-breakdown-row">
+          <span>Base (1–6 units)</span>
+          <span>$10.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t1" className="pc2-breakdown-row">
+          <span>94 units × $1.00</span>
+          <span>$94.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t2" className="pc2-breakdown-row">
+          <span>100 units × $0.75</span>
+          <span>$75.00</span>
+        </div>
+      )
+      rows.push(
+        <div key="t3" className="pc2-breakdown-row">
+          <span>{units - 200} units × $0.50</span>
+          <span>${((units - 200) * 0.5).toFixed(2)}</span>
+        </div>
+      )
+    }
+
+    if (buildings > 1) {
+      rows.push(<div key="div1" className="pc2-breakdown-divider" />)
+      rows.push(
+        <div key="per" className="pc2-breakdown-row">
+          <span>Per building</span>
+          <span>${perBuilding.toFixed(2)}</span>
+        </div>
+      )
+      rows.push(
+        <div key="mult" className="pc2-breakdown-row">
+          <span>× {buildings} buildings</span>
+          <span></span>
+        </div>
+      )
+      rows.push(<div key="div2" className="pc2-breakdown-divider" />)
+      rows.push(
+        <div key="total" className="pc2-breakdown-total">
+          <span>Portfolio total</span>
+          <span>
+            ${total.toFixed(2)}
+            <small>/mo</small>
+          </span>
+        </div>
+      )
+    } else {
+      rows.push(<div key="div" className="pc2-breakdown-divider" />)
+      rows.push(
+        <div key="total" className="pc2-breakdown-total">
+          <span>Per building</span>
+          <span>
+            ${perBuilding.toFixed(2)}
+            <small>/mo</small>
+          </span>
+        </div>
+      )
+    }
+
+    return rows
+  }
+
+  const unitsPct = ((units - 1) / (500 - 1)) * 100
+  const bldgsPct = ((buildings - 1) / (50 - 1)) * 100
+
+  return (
+    <div className="pc2-calc">
+      <div className="pc2-calc-header">
+        <span className="pc2-calc-title">
+          {buildings > 1 ? 'What would my portfolio cost?' : 'What would my building cost?'}
+        </span>
+        <span className="pc2-calc-result">
+          ${total.toFixed(2)}
+          <small>/mo</small>
+        </span>
+      </div>
+
+      <div className="pc2-slider-block">
+        <div className="pc2-slider-row">
+          <span className="pc2-slider-label">
+            {buildings > 1 ? 'Average units per building' : 'Units in building'}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={units}
+            onChange={(e) => {
+              const raw = parseInt(e.target.value, 10)
+              if (isNaN(raw)) {
+                setUnits(1)
+              } else {
+                setUnits(Math.max(1, Math.min(500, raw)))
+              }
+            }}
+            className="pc2-slider-num-input"
+          />
+        </div>
+        <input
+          type="range"
+          min={1}
+          max={500}
+          step={1}
+          value={units}
+          onChange={(e) => setUnits(parseInt(e.target.value, 10))}
+          className="pc2-slider-input"
+          style={{
+            background: `linear-gradient(to right, #0f2744 ${unitsPct}%, #ddd9d0 ${unitsPct}%)`,
+          }}
+        />
+        <div className="pc2-slider-marks">
+          <span style={{ left: '0%' }}>1</span>
+          <span style={{ left: '19.84%' }}>100</span>
+          <span style={{ left: '39.88%' }}>200</span>
+          <span style={{ left: '100%' }}>500</span>
+        </div>
+      </div>
+
+      <div className="pc2-slider-block">
+        <div className="pc2-slider-row">
+          <span className="pc2-slider-label">Number of buildings</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={buildings}
+            onChange={(e) => {
+              const raw = parseInt(e.target.value, 10)
+              if (isNaN(raw)) {
+                setBuildings(1)
+              } else {
+                setBuildings(Math.max(1, Math.min(50, raw)))
+              }
+            }}
+            className="pc2-slider-num-input"
+          />
+        </div>
+        <input
+          type="range"
+          min={1}
+          max={50}
+          step={1}
+          value={buildings}
+          onChange={(e) => setBuildings(parseInt(e.target.value, 10))}
+          className="pc2-slider-input"
+          style={{
+            background: `linear-gradient(to right, #0f2744 ${bldgsPct}%, #ddd9d0 ${bldgsPct}%)`,
+          }}
+        />
+        <div className="pc2-slider-marks">
+          <span style={{ left: '0%' }}>1</span>
+          <span style={{ left: '18.37%' }}>10</span>
+          <span style={{ left: '48.98%' }}>25</span>
+          <span style={{ left: '100%' }}>50</span>
+        </div>
+      </div>
+
+      <div className="pc2-breakdown">{renderBreakdown()}</div>
+    </div>
   )
 }
