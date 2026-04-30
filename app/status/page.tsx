@@ -43,6 +43,7 @@ type StatusPagePayload = {
   } | null
   most_recent_run_status: 'success' | 'no_new_records' | 'failure' | null
   complaint_count_90d: number
+  complaint_count_total: number
   avg_lag_seconds: number | null
   uptime_pct: number
   daily_history: Array<{
@@ -292,7 +293,7 @@ export default async function StatusPage() {
         )}
 
         {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
           {[
             {
               label: 'Uptime (90 days)',
@@ -307,9 +308,15 @@ export default async function StatusPage() {
               color: '#1a1a1a',
             },
             {
+              label: 'Total Indexed',
+              value: data.complaint_count_total.toLocaleString(),
+              sub: 'all-time complaints',
+              color: '#1a1a1a',
+            },
+            {
               label: 'Records (90d)',
               value: data.complaint_count_90d.toLocaleString(),
-              sub: 'complaints synced',
+              sub: 'last 90 days',
               color: '#1a1a1a',
             },
             {
@@ -323,7 +330,7 @@ export default async function StatusPage() {
               <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#8a94a0', marginBottom: 8 }}>
                 {card.label}
               </div>
-              <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 22, fontWeight: 500, color: card.color, lineHeight: 1 }}>
+              <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 20, fontWeight: 500, color: card.color, lineHeight: 1 }}>
                 {card.value}
               </div>
               <div style={{ fontSize: 10, color: '#8a94a0', marginTop: 4 }}>{card.sub}</div>
