@@ -234,17 +234,82 @@ function getFirstActionJson(json: unknown): { returnValue: unknown; error?: unkn
   return { returnValue: a?.returnValue }
 }
 
-function getWorkflowStep(rv: unknown): string | null {
+type WOLIStep = {
+  order: number | null
+  step: string | null
+  status: string | null
+  outcome: string | null
+  end_date: string | null
+}
+
+type WOLIResult = {
+  workflow_step: string | null
+  work_order_steps: WOLIStep[]
+  final_outcome: string | null
+}
+
+function getWOLIData(rv: unknown): WOLIResult {
+  const empty: WOLIResult = { workflow_step: null, work_order_steps: [], final_outcome: null }
   const o = rv as Record<string, unknown> | null | undefined
   const sreq = o?.serviceRequest as Record<string, unknown> | undefined
   const wobjs = (sreq?.workOrderObjs ?? o?.workOrderObjs) as unknown[] | undefined
   const w0 = wobjs?.[0] as Record<string, unknown> | undefined
-  const wolis = w0?.wolis as unknown[] | undefined
-  const woli0 = wolis?.[0] as Record<string, unknown> | undefined
-  const wr = woli0?.woliRecord as Record<string, unknown> | undefined
-  const act = wr?.C311_Activity_Type__r as { Name?: string } | undefined
-  const name = act?.Name
-  return typeof name === 'string' && name.trim() ? name.trim() : null
+  const wolisRaw = (w0?.wolis as unknown[] | undefined) ?? []
+
+  if (wolisRaw.length === 0) return empty
+
+  // Sort by C311_Order_By__c ascending
+  const wolisSorted = [...wolisRaw].sort((a, b) => {
+    const aRec = (a as Record<string, unknown>)?.woliRecord as Record<string, unknown> | undefined
+    const bRec = (b as Record<string, unknown>)?.woliRecord as Record<string, unknown> | undefined
+    const aOrder = Number(aRec?.C311_Order_By__c ?? 0)
+    const bOrder = Number(bRec?.C311_Order_By__c ?? 0)
+    return aOrder - bOrder
+  })
+
+  let workflow_step: string | null = null
+  let final_outcome: string | null = null
+  const work_order_steps: WOLIStep[] = []
+
+  for (const woli of wolisSorted) {
+    const w = woli as Record<string, unknown>
+    const rec = (w.woliRecord as Record<string, unknown>) ?? {}
+    const activity = rec.C311_Activity_Type__r as { Name?: string } | undefined
+    const stepName = typeof activity?.Name === 'string' ? activity.Name.trim() : null
+    const status = typeof rec.Status === 'string' ? (rec.Status as string) : null
+    const outcome = typeof w.outcome === 'string' ? (w.outcome as string) : null
+    const end_date = typeof rec.EndDate === 'string' ? (rec.EndDate as string) : null
+    const orderRaw = rec.C311_Order_By__c
+    const order = orderRaw == null ? null : Number(orderRaw)
+
+    work_order_steps.push({
+      order: order != null && !Number.isNaN(order) ? order : null,
+      step: stepName,
+      status,
+      outcome,
+      end_date,
+    })
+
+    // Current step = first non-closed/non-canceled step
+    if (workflow_step === null && status !== 'Closed' && status !== 'Canceled') {
+      workflow_step = stepName
+    }
+
+    // Final outcome = outcome of last closed step that has outcome text
+    if (status === 'Closed' && outcome && outcome.trim()) {
+      final_outcome = outcome.trim()
+    }
+  }
+
+  // If everything closed, current step = last step
+  if (workflow_step === null && wolisSorted.length > 0) {
+    const last = wolisSorted[wolisSorted.length - 1] as Record<string, unknown>
+    const lastRec = (last.woliRecord as Record<string, unknown>) ?? {}
+    const lastAct = lastRec.C311_Activity_Type__r as { Name?: string } | undefined
+    workflow_step = typeof lastAct?.Name === 'string' ? lastAct.Name.trim() : null
+  }
+
+  return { workflow_step, work_order_steps, final_outcome }
 }
 
 function getFlexList(json: unknown): unknown[] {
@@ -432,12 +497,15 @@ export async function POST(request: Request) {
   const work_type_id: string | null = typeof wo0?.WorkTypeId === 'string' ? wo0.WorkTypeId : null
   const slaN = wo0?.WorkType?.C311_SLA__c
   const meanN = wo0?.WorkType?.C311_Calculated_Mean__c
+  const woliData = getWOLIData(rv2 as unknown)
   const woData: {
     sla_target_days: number | null
     actual_mean_days: number | null
     estimated_completion: string | null
     work_order_status: string | null
     workflow_step: string | null
+    work_order_steps: WOLIStep[]
+    final_outcome: string | null
   } = {
     sla_target_days: slaN == null || Number.isNaN(Number(slaN)) ? null : Math.round(Number(slaN)),
     actual_mean_days: meanN == null || Number.isNaN(Number(meanN)) ? null : Math.round(Number(meanN)),
@@ -445,7 +513,9 @@ export async function POST(request: Request) {
       ? String(wo0.C311_Estimated_Completion_Date__c).trim() || null
       : null,
     work_order_status: typeof wo0?.Status === 'string' ? wo0.Status : null,
-    workflow_step: getWorkflowStep(rv2 as unknown),
+    workflow_step: woliData.workflow_step,
+    work_order_steps: woliData.work_order_steps,
+    final_outcome: woliData.final_outcome,
   }
 
   let flexAnswers: Record<string, string> = {}
@@ -503,6 +573,8 @@ export async function POST(request: Request) {
     if (woData.estimated_completion) update.estimated_completion = woData.estimated_completion
     if (woData.work_order_status) update.work_order_status = woData.work_order_status
     if (woData.workflow_step) update.workflow_step = woData.workflow_step
+    if (woData.work_order_steps.length > 0) update.work_order_steps = woData.work_order_steps
+    if (woData.final_outcome) update.final_outcome = woData.final_outcome
   }
 
   for (const [field, value] of Object.entries(flexAnswers)) {
