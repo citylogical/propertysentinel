@@ -5,6 +5,7 @@ import NearbyListingsModal from '@/components/NearbyListingsModal'
 import AuditList from './AuditList'
 import CreateAuditModal from './CreateAuditModal'
 import PortfolioDetail from './PortfolioDetail'
+import DashboardEmptyState from './DashboardEmptyState'
 import type { PortfolioProperty } from './types'
 
 type Props = {
@@ -18,8 +19,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAuditModal, setShowAuditModal] = useState(false)
-  const [syncedAt, setSyncedAt] = useState<string>('')
-  const [orgName, setOrgName] = useState('')
   const [listingsProperty, setListingsProperty] = useState<PortfolioProperty | null>(null)
   const [listingsCoords, setListingsCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [backfillJob, setBackfillJob] = useState<{
@@ -37,7 +36,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
       throw new Error(String(listData.error))
     }
     setProperties((listData.properties as PortfolioProperty[]) ?? [])
-    setSyncedAt('just now')
   }, [])
 
   useEffect(() => {
@@ -45,17 +43,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     setLoading(true)
     setError(null)
 
-    Promise.all([
-      loadPortfolioList(),
-      fetch('/api/profile/update').then((r) => r.json()),
-    ])
-      .then(([, profileData]: [void, Record<string, unknown>]) => {
-        if (cancelled) return
-        const org = (profileData.profile as { organization?: string | null } | undefined)?.organization
-        if (org && String(org).trim()) {
-          setOrgName(String(org).trim())
-        }
-      })
+    loadPortfolioList()
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load')
@@ -276,8 +264,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
 
   const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
 
-  const headerTitle = orgName ? `${orgName} Dashboard` : 'Dashboard'
-
   const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
     const recent = (p as PortfolioProperty & { recent_complaints_30d?: number | null }).recent_complaints_30d ?? 0
@@ -313,115 +299,34 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
 
   if (loading) {
     return (
-      <>
-        <div className="dashboard-identity-row">
-          <div className="dashboard-identity-left">
-            <div className="dashboard-logo">PS</div>
-            <div className="dashboard-identity-text">
-              <h1 className="dashboard-identity-name">Dashboard</h1>
-            </div>
-          </div>
-        </div>
-        <div
-          style={{
-            padding: '80px 28px',
-            textAlign: 'center',
-            fontFamily: 'var(--mono)',
-            fontSize: 12,
-            color: 'var(--text-dim)',
-          }}
-        >
-          Loading dashboard...
-        </div>
-      </>
+      <div
+        style={{
+          padding: '80px 28px',
+          textAlign: 'center',
+          fontFamily: 'var(--mono)',
+          fontSize: 12,
+          color: 'var(--text-dim)',
+        }}
+      >
+        Loading dashboard...
+      </div>
     )
   }
 
   if (error) {
     return (
-      <>
-        <div className="dashboard-identity-row">
-          <div className="dashboard-identity-left">
-            <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
-            <div className="dashboard-identity-text">
-              <h1 className="dashboard-identity-name">{headerTitle}</h1>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: '80px 28px', textAlign: 'center', fontSize: 13, color: 'var(--red)' }}>
-          Error loading dashboard: {error}
-        </div>
-      </>
+      <div style={{ padding: '80px 28px', textAlign: 'center', fontSize: 13, color: 'var(--red)' }}>
+        Error loading dashboard: {error}
+      </div>
     )
   }
 
   if (properties.length === 0) {
-    return (
-      <>
-        <div className="dashboard-identity-row">
-          <div className="dashboard-identity-left">
-            <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
-            <div className="dashboard-identity-text">
-              <h1 className="dashboard-identity-name">{headerTitle}</h1>
-              <div className="dashboard-identity-sub">
-                {properties.length} properties · {syncedAt ? `Updated ${syncedAt}` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: '80px 28px', textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Add your first property</div>
-          <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5, maxWidth: 360, margin: '0 auto' }}>
-            Search for any Chicago address and click the save icon to add it to your dashboard.
-          </div>
-        </div>
-      </>
-    )
+    return <DashboardEmptyState kind="no_properties" context="portfolio" />
   }
 
   return (
     <>
-      <div className="dashboard-identity-row">
-        <div className="dashboard-identity-left">
-          <div className="dashboard-logo">{orgName ? orgName.slice(0, 2).toUpperCase() : 'PS'}</div>
-          <div className="dashboard-identity-text">
-            <h1 className="dashboard-identity-name">{headerTitle}</h1>
-            <div className="dashboard-identity-sub">
-              {properties.length} properties · Last 12 months ·{' '}
-              {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </div>
-          </div>
-        </div>
-        <div className="dashboard-inline-stats">
-          <div className="dashboard-istat">
-            <div className="dashboard-istat-num">
-              {properties.reduce((s, p) => s + (p.total_complaints_12mo ?? p.open_complaints ?? 0), 0)}
-            </div>
-            <div className="dashboard-istat-label">Complaints</div>
-          </div>
-          <div className="dashboard-istat-sep" />
-          <div className="dashboard-istat">
-            <div className="dashboard-istat-num">
-              {properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0)}
-            </div>
-            <div className="dashboard-istat-label">Violations</div>
-          </div>
-          <div className="dashboard-istat-sep" />
-          <div className="dashboard-istat">
-            <div className="dashboard-istat-num">
-              {properties.reduce((s, p) => s + (p.total_permits ?? 0), 0)}
-            </div>
-            <div className="dashboard-istat-label">Permits</div>
-          </div>
-          <div className="dashboard-istat-sep" />
-          <div className="dashboard-istat">
-            <div className="dashboard-istat-num">
-              {properties.filter((p) => p.shvr_count > 0 || p.is_pbl).length}
-            </div>
-            <div className="dashboard-istat-label">STR flags</div>
-          </div>
-        </div>
-      </div>
       <div style={{ padding: '20px 28px' }}>
         <div className="dashboard-banner-row">
           <div className="dashboard-banner dashboard-banner-monitor">
