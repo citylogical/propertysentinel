@@ -3,6 +3,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import AppSidebar from "@/components/AppSidebar";
 import MobileNav from "@/components/MobileNav";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://propertysentinel.io"),
@@ -43,6 +45,8 @@ export default function RootLayout({
             <MobileNav apiKey={placesKey} />
             {children}
           </div>
+          <Analytics />
+          <SpeedInsights />
         </body>
       </html>
     </ClerkProvider>
