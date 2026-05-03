@@ -2,6 +2,7 @@
 import type { Metadata } from 'next'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
+import { auth } from '@clerk/nextjs/server'
 
 export const metadata: Metadata = {
   title: 'Chicago 311 Data Status — Property Sentinel',
@@ -32,8 +33,18 @@ type DaySummary = {
   status: 'success' | 'partial' | 'failure' | 'no_data'
 }
 
+type AuraState = {
+  expected_fwuid: string
+  observed_fwuid: string | null
+  is_current: boolean
+  drift_first_seen_at: string | null
+  last_checked_at: string
+  coose_warning_seen: boolean
+}
+
 type StatusPagePayload = {
   computed_at: string
+  aura_state?: AuraState | null
   latest_sync: {
     ran_at: string
     records_fetched: number
@@ -171,6 +182,27 @@ function truncateError(msg: string | null): string | null {
   return clean.length > 120 ? clean.slice(0, 120) + '…' : clean
 }
 
+function formatDriftDuration(driftStartIso: string): string {
+  const startMs = new Date(driftStartIso).getTime()
+  const elapsedMs = Date.now() - startMs
+  const minutes = Math.floor(elapsedMs / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    const remMin = minutes % 60
+    return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`
+  }
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`
+}
+
+function fwuidShort(fwuid: string | null | undefined): string {
+  if (!fwuid) return '—'
+  return fwuid.slice(0, 16) + '…'
+}
+
 function daySummaryFromDailyHistory(row: StatusPagePayload['daily_history'][number]): DaySummary {
   const total = row.run_count
   const failures = row.failure_count
@@ -182,8 +214,32 @@ function daySummaryFromDailyHistory(row: StatusPagePayload['daily_history'][numb
   return { date: row.run_date, total, failures, status }
 }
 
+async function checkIsAdmin(): Promise<boolean> {
+  try {
+    const { userId } = await auth()
+    if (!userId) return false
+
+    const sb = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data: subscriber } = await sb
+      .from('subscribers')
+      .select('role')
+      .eq('clerk_id', userId)
+      .maybeSingle()
+
+    return subscriber?.role === 'admin'
+  } catch {
+    return false
+  }
+}
+
 export default async function StatusPage() {
-  const data = await getStatusData()
+  const [data, isAdmin] = await Promise.all([
+    getStatusData(),
+    checkIsAdmin(),
+  ])
 
   const uptimePct = Number(data.uptime_pct).toFixed(1)
   const failedRunsCount = data.daily_history.reduce((s, d) => s + d.failure_count, 0)
@@ -428,6 +484,86 @@ export default async function StatusPage() {
             </div>
           ))}
         </div>
+
+        {/* CHI311 Aura enrichment status — admin-only */}
+        {isAdmin && data.aura_state && (() => {
+          const aura = data.aura_state
+          const isDrift = !aura.is_current
+          const driftDuration = isDrift && aura.drift_first_seen_at
+            ? formatDriftDuration(aura.drift_first_seen_at)
+            : null
+
+          return (
+            <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
+                  CHI311 Enrichment Endpoint
+                </span>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '4px 12px', borderRadius: 3,
+                  fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
+                  letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+                  background: isDrift ? 'rgba(192,57,43,0.08)' : 'rgba(45,106,79,0.1)',
+                  border: `1px solid ${isDrift ? 'rgba(192,57,43,0.2)' : 'rgba(45,106,79,0.3)'}`,
+                  color: isDrift ? '#c0392b' : '#2d6a4f',
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', background: 'currentColor',
+                    animation: isDrift ? 'statusPulse 1.2s infinite' : 'statusPulse 2s infinite',
+                  }} />
+                  {isDrift ? 'Not Current' : 'Current'}
+                </div>
+              </div>
+
+              <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                <div>
+                  <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#8a94a0', marginBottom: 6 }}>
+                    Expected fwuid
+                  </div>
+                  <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#1a1a1a', wordBreak: 'break-all' as const }} title={aura.expected_fwuid}>
+                    {fwuidShort(aura.expected_fwuid)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#8a94a0', marginBottom: 6 }}>
+                    Observed fwuid (server)
+                  </div>
+                  <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: isDrift ? '#c0392b' : '#1a1a1a', wordBreak: 'break-all' as const }} title={aura.observed_fwuid ?? ''}>
+                    {fwuidShort(aura.observed_fwuid)}
+                  </div>
+                </div>
+              </div>
+
+              {isDrift && driftDuration && (
+                <div style={{
+                  padding: '10px 20px', background: 'rgba(192,57,43,0.04)',
+                  borderTop: '1px solid rgba(192,57,43,0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+                  flexWrap: 'wrap' as const,
+                }}>
+                  <span style={{ fontSize: 12, color: '#c0392b', fontWeight: 500 }}>
+                    fwuid drift detected — Salesforce returning a different framework version for {driftDuration}
+                  </span>
+                  <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#c0392b', letterSpacing: '0.04em' }}>
+                    Update EXPECTED_FWUID
+                  </span>
+                </div>
+              )}
+
+              <div style={{ padding: '8px 20px', background: '#fafaf8', borderTop: '1px solid #ddd9d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, color: '#8a94a0', letterSpacing: '0.04em' }}>
+                  Last checked: {formatCT(aura.last_checked_at)}
+                </span>
+                {aura.coose_warning_seen && (
+                  <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, color: '#b7791f', letterSpacing: '0.04em' }}>
+                    ⚠ COOSE warning observed
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Recent run log — last 24 hours */}
         <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 32 }}>

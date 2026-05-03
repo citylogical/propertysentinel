@@ -6,7 +6,7 @@ import { paraphraseComplaint } from '@/lib/paraphrase-complaint'
 /** Aurora config; update `fwuid` and `loaded` when the city deploys Salesforce changes. */
 const AURA_CONTEXT = JSON.stringify({
   mode: 'PROD',
-  fwuid: 'TXFWNVprQUZzQnEtNXVXYTFLQ2ppdzJEa1N5enhOU3R5QWl2VzNveFZTbGcxMy4tMjE0NzQ4MzY0OC4xMzEwNzIwMA',
+  fwuid: 'ZkJhOVpLN2NZQkJrd2NWd3pMcnFOdzJEa1N5enhOU3R5QWl2VzNveFZTbGcxMy4tMjE0NzQ4MzY0OC4xMzEwNzIwMA',
   app: 'siteforce:communityApp',
   loaded: {
     'APPLICATION@markup://siteforce:communityApp': '1542_MvzRU4EK4FAU3HkS3YNvyA',
@@ -29,6 +29,37 @@ const SKIP_IDS = new Set([
   'a1Yt0000000Lg4YEAS',
   'a1Yt0000000Lg5pEAC',
   'a1Yt0000000Lj2HEAS',
+  'a1Yt0000000LiJeEAK',
+  'a1Y8z0000000ZLUEA2',
+])
+
+/** SR short codes eligible for Aura flex enrichment (mirrors Worker ENRICH_CODES). */
+const ENRICH_CODES = new Set([
+  'BBA',
+  'BBC',
+  'BBD',
+  'BBK',
+  'BPI',
+  'HDF',
+  'SCB',
+  'HFB',
+  'RBL',
+  'CAFE',
+  'CORNVEND',
+  'SHVR',
+  'CSF',
+  'CST',
+  'BAG',
+  'BAM',
+  'FPC',
+  'ODM',
+  'MWC',
+  'AAF',
+  'NAC',
+  'WBJ',
+  'WBK',
+  'FAC',
+  'WCA',
 ])
 
 const QUESTION_MAP: Record<string, Record<string, string>> = {
@@ -119,6 +150,33 @@ const QUESTION_MAP: Record<string, Record<string, string>> = {
   },
   '08qt0000000CaaLAAS': {
     business_name: 'a1Ycs000002sErFEAU',
+  },
+  '08qt0000000CabOAAS': {
+    concern_category: 'a1Yt0000000LiYfEAK',
+    problem_category: 'a1Yt0000000Li1dEAC',
+    description: 'a1Yt0000000LjFoEAK',
+  },
+  '08q8z0000000LkrAAE': {
+    description: 'a1Y8z0000000ZLKEA2',
+    concern_category: 'a1Y8z0000000ZL5EAM',
+    problem_category: 'a1Y8z0000000ZLPEA2',
+    owner_notified: 'a1Y8z0000000ZLFEA2',
+  },
+  '08qt0000000CaYtAAK': {
+    concern_category: 'a1Yt0000000LiIyEAK',
+    problem_category: 'a1Yt0000000LiCMEA0',
+  },
+  '08qt0000000CaaFAAS': {
+    description: 'a1Yt0000000Lit1EAC',
+    concern_category: 'a1Yt0000000Lit2EAC',
+    problem_category: 'a1Yt0000000LiANEA0',
+  },
+  '08qt0000000CaXPAA0': {
+    concern_category: 'a1Yt0000003OLaCEAW',
+    problem_category: 'a1Yt0000003OLaMEAW',
+  },
+  '08qt0000000CaZ9AAK': {
+    description: 'a1Yt0000000LfS9EAK',
   },
 }
 
