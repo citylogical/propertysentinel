@@ -7,14 +7,17 @@ import CreateAuditModal from './CreateAuditModal'
 import PortfolioDetail from './PortfolioDetail'
 import type { PortfolioProperty } from './types'
 
-export default function PortfolioTable() {
+type Props = {
+  isAdmin?: boolean
+}
+
+export default function PortfolioTable({ isAdmin = false }: Props) {
   const [properties, setProperties] = useState<PortfolioProperty[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAuditModal, setShowAuditModal] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [syncedAt, setSyncedAt] = useState<string>('')
   const [orgName, setOrgName] = useState('')
   const [listingsProperty, setListingsProperty] = useState<PortfolioProperty | null>(null)
@@ -66,13 +69,6 @@ export default function PortfolioTable() {
       cancelled = true
     }
   }, [loadPortfolioList])
-
-  useEffect(() => {
-    fetch('/api/profile/role')
-      .then((res) => res.json())
-      .then((data: { is_admin?: boolean }) => setIsAdmin(data.is_admin === true))
-      .catch(() => {})
-  }, [])
 
   useEffect(() => {
     if (!backfillJob || backfillJob.status !== 'running' || !backfillJob.job_id) return
@@ -523,7 +519,14 @@ export default function PortfolioTable() {
             </div>
           </div>
         ) : null}
-        {selectedProperty ? <PortfolioDetail property={selectedProperty} onClose={() => setSelectedId(null)} /> : null}
+        {selectedProperty ? (
+          <PortfolioDetail
+            property={selectedProperty}
+            onClose={() => setSelectedId(null)}
+            showItemDetails={true}
+            isAdmin={isAdmin}
+          />
+        ) : null}
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">
             <thead>

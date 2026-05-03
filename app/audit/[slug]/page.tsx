@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { auth } from '@clerk/nextjs/server'
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -104,5 +105,28 @@ export default async function AuditPage({ params }: PageProps) {
     .eq('audit_id', audit.id)
     .order('canonical_address')
 
-  return <AuditView audit={audit as Record<string, unknown>} properties={properties ?? []} />
+  // Optional admin check — `auth()` returns `userId: null` for logged-out viewers,
+  // so unauthenticated requests safely fall through to `isAdmin = false`.
+  let isAdmin = false
+  try {
+    const { userId } = await auth()
+    if (userId) {
+      const { data: subscriber } = await supabase
+        .from('subscribers')
+        .select('role')
+        .eq('clerk_id', userId)
+        .maybeSingle()
+      if (subscriber?.role === 'admin') isAdmin = true
+    }
+  } catch {
+    // ignore — fall through to non-admin
+  }
+
+  return (
+    <AuditView
+      audit={audit as Record<string, unknown>}
+      properties={properties ?? []}
+      isAdmin={isAdmin}
+    />
+  )
 }

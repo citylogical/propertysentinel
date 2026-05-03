@@ -44,6 +44,7 @@ export type Audit = {
 type Props = {
   audit: Record<string, unknown>
   properties: Record<string, unknown>[]
+  isAdmin?: boolean
 }
 
 function asAudit(a: Record<string, unknown>): Audit {
@@ -121,7 +122,7 @@ function asAuditProperty(p: Record<string, unknown>): AuditProperty {
   }
 }
 
-export default function AuditView({ audit: auditRaw, properties: propertiesRaw }: Props) {
+export default function AuditView({ audit: auditRaw, properties: propertiesRaw, isAdmin = false }: Props) {
   const audit = asAudit(auditRaw)
   const properties = propertiesRaw.map(asAuditProperty).sort((a, b) => {
     const ac = a.total_complaints_12mo ?? a.open_complaints ?? 0
@@ -290,8 +291,9 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw }
           onClose={() => setSelectedId(null)}
           detailEndpoint={`/api/audit/detail?slug=${encodeURIComponent(audit.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
           showHistoricalActivityBar={false}
-          showParaphrasedReports={true}
+          showItemDetails={true}
           onUpgradePrompt={() => setUpgradeOpen(true)}
+          isAdmin={isAdmin}
         />
       ) : null}
 

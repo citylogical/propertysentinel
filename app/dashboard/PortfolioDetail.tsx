@@ -12,10 +12,12 @@ type Props = {
   detailEndpoint?: string
   /** When false, hides the foot link under recent activity (e.g. public audit). Defaults to true. */
   showHistoricalActivityBar?: boolean
-  /** When true, renders the third "RECENT 311 REPORTS" column with up to 3 paraphrased descriptions. Audit only. */
-  showParaphrasedReports?: boolean
+  /** When true, renders the third item-detail column (workflow timeline, outcome, structured intake tags). */
+  showItemDetails?: boolean
   /** When provided, the "Listings nearby" button calls this instead of opening the listings map. Audit-only gate. */
   onUpgradePrompt?: () => void
+  /** When true, surfaces tenant-PII fields (raw description, unit, complainant type, danger flag, owner notified/occupied). Defaults to false (public-safe). */
+  isAdmin?: boolean
 }
 
 type DetailPayload = {
@@ -80,8 +82,9 @@ export default function PortfolioDetail({
   onClose: _onClose,
   detailEndpoint,
   showHistoricalActivityBar = true,
-  showParaphrasedReports = false,
+  showItemDetails = false,
   onUpgradePrompt,
+  isAdmin = false,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
@@ -270,7 +273,7 @@ export default function PortfolioDetail({
 
   const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
 
-  const showDetailPanel = showParaphrasedReports && !detailLoading && activity.length > 0
+  const showDetailPanel = showItemDetails && !detailLoading && activity.length > 0
 
   return (
     <div className="dashboard-detail" ref={ref}>
@@ -573,16 +576,18 @@ export default function PortfolioDetail({
             const hasSteps = steps.length > 0
             const finalOutcome = (c.final_outcome ?? '').trim()
 
-            // Build "tags" row of structured intake fields (Yes/No flags + categories)
+            // Build "tags" row of structured intake fields (Yes/No flags + categories).
+            // Tenant-identifying fields (Filed by, Unit, Danger, Owner notified, Owner occupied)
+            // are only shown to admins. Concern/Problem stay public — they are categorical.
             type Tag = { label: string; value: string; color?: string }
             const tags: Tag[] = []
-            if (c.complainant_type) tags.push({ label: 'Filed by', value: c.complainant_type })
-            if (c.unit_number) tags.push({ label: 'Unit', value: c.unit_number })
-            if (c.danger_reported && c.danger_reported.toLowerCase() === 'yes') {
+            if (isAdmin && c.complainant_type) tags.push({ label: 'Filed by', value: c.complainant_type })
+            if (isAdmin && c.unit_number) tags.push({ label: 'Unit', value: c.unit_number })
+            if (isAdmin && c.danger_reported && c.danger_reported.toLowerCase() === 'yes') {
               tags.push({ label: 'Danger', value: 'Yes', color: '#a82020' })
             }
-            if (c.owner_notified) tags.push({ label: 'Owner notified', value: c.owner_notified })
-            if (c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
+            if (isAdmin && c.owner_notified) tags.push({ label: 'Owner notified', value: c.owner_notified })
+            if (isAdmin && c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
             if (c.concern_category) tags.push({ label: 'Concern', value: c.concern_category })
             if (c.problem_category) tags.push({ label: 'Problem', value: c.problem_category })
 
@@ -658,7 +663,7 @@ export default function PortfolioDetail({
                 >
                   {desc || 'No description available'}
                 </div>
-                {rawDesc && rawDesc !== desc ? (
+                {isAdmin && rawDesc && rawDesc !== desc ? (
                   <div
                     style={{
                       fontSize: 11,
