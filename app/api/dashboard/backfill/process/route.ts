@@ -100,22 +100,41 @@ export async function POST(request: Request) {
 
       await supabase.from('complaints_311').update(dbUpdate as Record<string, unknown>).eq('id', item.id)
 
-      // Paraphrase only when we got a real description
-      const description = aura.fields.complaint_description as string | undefined
-      if (description) {
+      // Re-read row to get effective fields. The Aura call may not have returned
+      // a description on this attempt (e.g. retry, fwuid drift recovery, partial
+      // response) but the row may already have one from a prior enrichment.
+      // We paraphrase off the row state, not just the in-memory aura.fields.
+      const { data: rowAfter } = await supabase
+        .from('complaints_311')
+        .select(
+          'complaint_description, complainant_type, unit_number, danger_reported, ' +
+          'owner_notified, owner_occupied, concern_category, restaurant_name, ' +
+          'business_name, problem_category, paraphrased_at',
+        )
+        .eq('id', item.id)
+        .maybeSingle()
+
+      const eff = (rowAfter ?? {}) as Record<string, unknown>
+      const asStr = (v: unknown): string | undefined =>
+        typeof v === 'string' && v.trim() !== '' ? v : undefined
+
+      const description = asStr(eff.complaint_description)
+      const alreadyParaphrased = !!eff.paraphrased_at
+
+      if (description && !alreadyParaphrased) {
         const paraphrase = await paraphraseComplaint({
           sr_short_code: item.sr_short_code,
           sr_type: item.sr_type,
           description,
-          complainant_type: aura.fields.complainant_type as string | undefined,
-          unit_number: aura.fields.unit_number as string | undefined,
-          danger_reported: aura.fields.danger_reported as string | undefined,
-          owner_notified: aura.fields.owner_notified as string | undefined,
-          owner_occupied: aura.fields.owner_occupied as string | undefined,
-          concern_category: aura.fields.concern_category as string | undefined,
-          restaurant_name: aura.fields.restaurant_name as string | undefined,
-          business_name: aura.fields.business_name as string | undefined,
-          problem_category: aura.fields.problem_category as string | undefined,
+          complainant_type: asStr(eff.complainant_type),
+          unit_number: asStr(eff.unit_number),
+          danger_reported: asStr(eff.danger_reported),
+          owner_notified: asStr(eff.owner_notified),
+          owner_occupied: asStr(eff.owner_occupied),
+          concern_category: asStr(eff.concern_category),
+          restaurant_name: asStr(eff.restaurant_name),
+          business_name: asStr(eff.business_name),
+          problem_category: asStr(eff.problem_category),
         })
 
         if (paraphrase) {

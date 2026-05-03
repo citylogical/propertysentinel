@@ -67,13 +67,18 @@ export async function POST(request: Request) {
 
   // Find unenriched, enrichable complaints in the last 12 months for these addresses
   const twelveMonthsAgo = new Date(Date.now() - 365 * 86400000).toISOString()
+  // Queue rows that need EITHER first-pass enrichment OR retroactive paraphrasing.
+  // The .or() clause matches rows where:
+  //   - enriched_at IS NULL (never enriched), OR
+  //   - paraphrased_at IS NULL AND complaint_description IS NOT NULL
+  //     (enriched in a session before paraphrase was wired in — self-healing).
   const { data: complaints, error: complaintsErr } = await supabase
     .from('complaints_311')
     .select('id, sr_number, sr_short_code, sr_type')
     .in('address_normalized', Array.from(allAddresses))
     .in('sr_short_code', ENRICHABLE_SR_CODES as unknown as string[])
     .gte('created_date', twelveMonthsAgo)
-    .is('enriched_at', null)
+    .or('enriched_at.is.null,and(paraphrased_at.is.null,complaint_description.not.is.null)')
     .order('created_date', { ascending: false })
     .limit(2000)
 
