@@ -49,6 +49,12 @@ const ENRICHABLE_SR_SHORT_CODES = new Set([
   'FPC',
   'ODM',
   'MWC',
+  'AAF',
+  'NAC',
+  'WBJ',
+  'WBK',
+  'FAC',
+  'WCA',
 ])
 
 function isEnrichableComplaint(srShort: string | null): boolean {
