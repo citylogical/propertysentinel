@@ -278,20 +278,28 @@ export default function AboutClient() {
               <div className="pc2-formula-title">Pricing formula</div>
               <div className="pc2-formula-grid">
                 <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">1–6 units</div>
-                  <div className="pc2-fcell-amount">$10<small>/mo</small></div>
+                  <div className="pc2-fcell-label">1–2 units</div>
+                  <div className="pc2-fcell-amount">$15<small>/mo</small></div>
                 </div>
                 <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">Units 7–100</div>
-                  <div className="pc2-fcell-amount">$1.00<small>/ea</small></div>
+                  <div className="pc2-fcell-label">3–6 units</div>
+                  <div className="pc2-fcell-amount">$25<small>/mo</small></div>
                 </div>
                 <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">Units 101–200</div>
-                  <div className="pc2-fcell-amount">$0.75<small>/ea</small></div>
+                  <div className="pc2-fcell-label">7–20 units</div>
+                  <div className="pc2-fcell-amount">$40<small>/mo</small></div>
                 </div>
                 <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">Units 201+</div>
-                  <div className="pc2-fcell-amount">$0.50<small>/ea</small></div>
+                  <div className="pc2-fcell-label">21–50 units</div>
+                  <div className="pc2-fcell-amount">$65<small>/mo</small></div>
+                </div>
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">51–100 units</div>
+                  <div className="pc2-fcell-amount">$95<small>/mo</small></div>
+                </div>
+                <div className="pc2-fcell">
+                  <div className="pc2-fcell-label">100+ units</div>
+                  <div className="pc2-fcell-amount">Custom</div>
                 </div>
               </div>
             </div>
@@ -303,14 +311,14 @@ export default function AboutClient() {
                 <div className="pc-sub">with signup</div>
                 <div className="pc-features">
                   <div>Portfolio Dashboard</div>
-                  <div>Up to 20 saved properties</div>
+                  <div>Up to 5 saved properties</div>
                   <div>Address range/Super parcel creation</div>
                 </div>
               </div>
               <div className="pc-card pc-card-feat">
                 <div className="pc-tier pc-tier-navy">Premium</div>
-                <div className="pc-price-num">$10<small>+/mo</small></div>
-                <div className="pc-sub">scales with building size</div>
+                <div className="pc-price-num">$15<small>+/mo</small></div>
+                <div className="pc-sub">per building, scales with size</div>
                 <div className="pc-features">
                   <div>Hourly SMS + email alerts</div>
                   <div>311 complaint descriptions</div>
@@ -387,97 +395,36 @@ function PricingCalculator() {
   const [units, setUnits] = useState(50)
   const [buildings, setBuildings] = useState(1)
 
-  const calculatePrice = useCallback((u: number): number => {
-    if (u <= 6) return 10
-    let cost = 10
-    if (u <= 100) {
-      cost += (u - 6) * 1.0
-    } else if (u <= 200) {
-      cost += 94 * 1.0 + (u - 100) * 0.75
-    } else {
-      cost += 94 * 1.0 + 100 * 0.75 + (u - 200) * 0.5
-    }
-    return cost
+  const getTier = useCallback((u: number): { label: string; price: number } => {
+    if (u <= 2) return { label: '1–2 units', price: 15 }
+    if (u <= 6) return { label: '3–6 units', price: 25 }
+    if (u <= 20) return { label: '7–20 units', price: 40 }
+    if (u <= 50) return { label: '21–50 units', price: 65 }
+    return { label: '51–100 units', price: 95 }
   }, [])
 
-  const perBuilding = calculatePrice(units)
+  const tier = getTier(units)
+  const perBuilding = tier.price
   const total = perBuilding * buildings
 
   const renderBreakdown = () => {
     const rows: ReactNode[] = []
 
-    if (units <= 6) {
+    if (buildings === 1) {
       rows.push(
-        <div key="base" className="pc2-breakdown-row">
-          <span>{units} unit{units === 1 ? '' : 's'} · base rate</span>
-          <span>$10.00</span>
-        </div>
-      )
-    } else if (units <= 100) {
-      rows.push(
-        <div key="base" className="pc2-breakdown-row">
-          <span>Base (1–6 units)</span>
-          <span>$10.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t1" className="pc2-breakdown-row">
-          <span>{units - 6} units × $1.00</span>
-          <span>${((units - 6) * 1.0).toFixed(2)}</span>
-        </div>
-      )
-    } else if (units <= 200) {
-      rows.push(
-        <div key="base" className="pc2-breakdown-row">
-          <span>Base (1–6 units)</span>
-          <span>$10.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t1" className="pc2-breakdown-row">
-          <span>94 units × $1.00</span>
-          <span>$94.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t2" className="pc2-breakdown-row">
-          <span>{units - 100} units × $0.75</span>
-          <span>${((units - 100) * 0.75).toFixed(2)}</span>
+        <div key="single" className="pc2-breakdown-row">
+          <span>{tier.label} · per building</span>
+          <span>
+            ${perBuilding}
+            <small>/mo</small>
+          </span>
         </div>
       )
     } else {
       rows.push(
-        <div key="base" className="pc2-breakdown-row">
-          <span>Base (1–6 units)</span>
-          <span>$10.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t1" className="pc2-breakdown-row">
-          <span>94 units × $1.00</span>
-          <span>$94.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t2" className="pc2-breakdown-row">
-          <span>100 units × $0.75</span>
-          <span>$75.00</span>
-        </div>
-      )
-      rows.push(
-        <div key="t3" className="pc2-breakdown-row">
-          <span>{units - 200} units × $0.50</span>
-          <span>${((units - 200) * 0.5).toFixed(2)}</span>
-        </div>
-      )
-    }
-
-    if (buildings > 1) {
-      rows.push(<div key="div1" className="pc2-breakdown-divider" />)
-      rows.push(
-        <div key="per" className="pc2-breakdown-row">
-          <span>Per building</span>
-          <span>${perBuilding.toFixed(2)}</span>
+        <div key="tier" className="pc2-breakdown-row">
+          <span>{tier.label} · per building</span>
+          <span>${perBuilding}</span>
         </div>
       )
       rows.push(
@@ -486,23 +433,12 @@ function PricingCalculator() {
           <span></span>
         </div>
       )
-      rows.push(<div key="div2" className="pc2-breakdown-divider" />)
+      rows.push(<div key="div" className="pc2-breakdown-divider" />)
       rows.push(
         <div key="total" className="pc2-breakdown-total">
           <span>Portfolio total</span>
           <span>
-            ${total.toFixed(2)}
-            <small>/mo</small>
-          </span>
-        </div>
-      )
-    } else {
-      rows.push(<div key="div" className="pc2-breakdown-divider" />)
-      rows.push(
-        <div key="total" className="pc2-breakdown-total">
-          <span>Per building</span>
-          <span>
-            ${perBuilding.toFixed(2)}
+            ${total}
             <small>/mo</small>
           </span>
         </div>
@@ -512,7 +448,7 @@ function PricingCalculator() {
     return rows
   }
 
-  const unitsPct = ((units - 1) / (500 - 1)) * 100
+  const unitsPct = ((units - 1) / (100 - 1)) * 100
   const bldgsPct = ((buildings - 1) / (50 - 1)) * 100
 
   return (
@@ -522,7 +458,7 @@ function PricingCalculator() {
           {buildings > 1 ? 'What would my portfolio cost?' : 'What would my building cost?'}
         </span>
         <span className="pc2-calc-result">
-          ${total.toFixed(2)}
+          ${total}
           <small>/mo</small>
         </span>
       </div>
@@ -535,14 +471,14 @@ function PricingCalculator() {
           <input
             type="number"
             min={1}
-            max={500}
+            max={100}
             value={units}
             onChange={(e) => {
               const raw = parseInt(e.target.value, 10)
               if (isNaN(raw)) {
                 setUnits(1)
               } else {
-                setUnits(Math.max(1, Math.min(500, raw)))
+                setUnits(Math.max(1, Math.min(100, raw)))
               }
             }}
             className="pc2-slider-num-input"
@@ -551,7 +487,7 @@ function PricingCalculator() {
         <input
           type="range"
           min={1}
-          max={500}
+          max={100}
           step={1}
           value={units}
           onChange={(e) => setUnits(parseInt(e.target.value, 10))}
@@ -562,9 +498,10 @@ function PricingCalculator() {
         />
         <div className="pc2-slider-marks">
           <span style={{ left: '0%' }}>1</span>
-          <span style={{ left: '19.84%' }}>100</span>
-          <span style={{ left: '39.88%' }}>200</span>
-          <span style={{ left: '100%' }}>500</span>
+          <span style={{ left: '5.05%' }}>6</span>
+          <span style={{ left: '19.19%' }}>20</span>
+          <span style={{ left: '49.49%' }}>50</span>
+          <span style={{ left: '100%' }}>100</span>
         </div>
       </div>
 
