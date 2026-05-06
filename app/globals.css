@@ -93,7 +93,7 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
 }
 
 .app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo {
-  padding: 18px 0 14px;
+  padding: 20px 0 4px;
   justify-content: center;
 }
 
@@ -144,9 +144,9 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
 }
 
 .app-sidebar:not(:hover):not(.app-sidebar--pinned) .app-sidebar-logo-icon svg {
-  width: 18px;
+  width: 28px;
   height: auto;
-  max-height: 32px;
+  max-height: 44px;
 }
 
 .brand-wordmark-line {

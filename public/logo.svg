@@ -1,11 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="247 249 529 529" role="img" aria-label="Property Sentinel">
-  <style>
-    .mark { fill: #0f1d2e; }
-    @media (prefers-color-scheme: dark) {
-      .mark { fill: #ffffff; }
-    }
-  </style>
-  <g class="mark" transform="translate(0,1024) scale(0.1,-0.1)" stroke="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="247 249 529 529" fill="currentColor" role="img" aria-label="Property Sentinel">
+  <title>Property Sentinel</title>
+  <g transform="translate(0,1024) scale(0.1,-0.1)" stroke="none">
     <path d="M5090 7395 l0 -155 -30 0 -30 0 0 -229 0 -230 -53 -24 c-29 -13 -69 -39 -90 -56 -48 -43 -97 -142 -104 -214 l-6 -57 337 0 336 0 0 33 c0 51 -26 128 -61 181 -33 49 -113 110 -161 122 l-28 6 0 234 0 234 -30 0 -30 0 0 155 0 155 -25 0 -25 0 0 -155z"/>
     <path d="M4740 4510 l0 -1850 155 0 155 0 0 1505 0 1505 60 0 60 0 2 -1502 3 -1503 158 -3 157 -3 0 1851 0 1850 -375 0 -375 0 0 -1850z"/>
     <path d="M4305 4318 c-3 -706 -5 -1366 -3 -1468 l3 -185 158 -3 157 -3 0 1471 0 1470 -154 0 -154 0 -7 -1282z"/>

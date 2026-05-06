@@ -4,7 +4,7 @@ import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import MobileNavDrawer from '@/app/components/MobileNavDrawer'
-import BuildingLogoIcon from '@/components/BuildingLogoIcon'
+import { Logo } from '@/components/Logo'
 
 type Props = {
   apiKey: string | undefined
@@ -45,7 +45,7 @@ export default function MobileNav({ apiKey }: Props) {
       <header className="mobile-nav-bar" role="banner">
         <Link href="/" className="mobile-nav-brand">
           <span className="mobile-nav-brand-icon">
-            <BuildingLogoIcon />
+            <Logo size={28} className="text-white" />
           </span>
           <span className="mobile-nav-brand-text">
             <span className="brand-wordmark-line">Property</span>

@@ -19,8 +19,8 @@ import { resolveStreetAndZipForNavigation } from '@/lib/google-places-address'
 import { getRecentSearches } from '@/lib/recent-searches'
 import { fetchPlaceDetailsForNavigation } from '@/lib/google-maps-loader'
 import { useAddressAutocomplete, type AddressSuggestion } from '@/lib/use-address-autocomplete'
-import BuildingLogoIcon from '@/components/BuildingLogoIcon'
 import { getSidebarNavItems } from '@/components/sidebar-nav-items'
+import { Logo } from '@/components/Logo'
 
 export default function AppSidebar() {
   const pathname = usePathname()
@@ -202,7 +202,7 @@ export default function AppSidebar() {
       <div className="app-sidebar-logo">
         <Link href="/" className="app-sidebar-logo-link" aria-label="Property Sentinel home">
           <span className="app-sidebar-logo-icon" aria-hidden="true">
-            <BuildingLogoIcon width={22} height={38} />
+            <Logo size={40} className="text-white" />
           </span>
           <span className="app-sidebar-logo-text">
             <span className="brand-wordmark-line">Property</span>

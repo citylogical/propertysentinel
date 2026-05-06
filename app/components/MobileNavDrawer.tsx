@@ -19,8 +19,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import BuildingLogoIcon from '@/components/BuildingLogoIcon'
 import { getSidebarNavItems } from '@/components/sidebar-nav-items'
+import { Logo } from '@/components/Logo'
 import { addressToSlug } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import { getRecentSearches, type RecentSearch } from '@/lib/recent-searches'
@@ -180,7 +180,7 @@ export default function MobileNavDrawer({ open, onClose, apiKey }: MobileNavDraw
       <div className="mobile-drawer-panel">
         <div className="mobile-drawer-header">
           <Link href="/" className="mobile-drawer-brand" onClick={onClose}>
-            <BuildingLogoIcon />
+            <Logo size={28} className="text-white" />
             <span className="mobile-drawer-brand-text">
               <span className="brand-wordmark-line">Property</span>
               <span className="brand-wordmark-line">Sentinel</span>
