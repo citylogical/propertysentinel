@@ -659,8 +659,29 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
       return { property: data as PropertyRow, nearestParcel: null, error: null }
     }
 
-    // Tier 2.3 — prefix match (condos with unit suffixes)
+    // Tier 2.4 — manual building range lookup (runs before prefix match)
+    // Manual entries are explicit user-curated mappings and must win over
+    // fuzzy prefix matches that could pull condo unit records from unrelated buildings.
+    // Returns full property data (not just nearestParcel) so the detail panel renders completely.
+    // Add entries to lib/manual-building-addresses.ts for new STR customers and large buildings.
+    const manualEntry = findManualBuilding(normalizedAddress)
+    if (manualEntry) {
+      console.log('fetchProperty Tier 2.4 manual match:', manualEntry.canonicalAddress)
+      const manualResult = await supabase
+        .from('properties')
+        .select(SELECT_COLS)
+        .eq('address', manualEntry.canonicalAddress)
+        .order('pin', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (manualResult.data) {
+        return { property: manualResult.data as PropertyRow, nearestParcel: null, error: null }
+      }
+    }
+
+    // Tier 2.5 — prefix match (condos with unit suffixes)
     // Handles: search "943 W 95TH ST" → matches "943 W 95TH ST G", "943 W 95TH ST 1W", etc.
+    // Runs AFTER manual building lookup so explicit mappings win over fuzzy prefix matches.
     if (!data && !error) {
       const prefixPattern = `${normalizedAddress} %`
       const prefixFallback = await supabase
@@ -679,25 +700,6 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
     if (data) {
       console.log('fetchProperty result (prefix match):', JSON.stringify(data))
       return { property: data as PropertyRow, nearestParcel: null, error: null }
-    }
-
-    // Tier 2.5 — manual building range lookup
-    // Handles known buildings where the Assessor stores under a different address than the city uses.
-    // Returns full property data (not just nearestParcel) so the detail panel renders completely.
-    // Add entries to lib/manual-building-addresses.ts for new STR customers and large buildings.
-    const manualEntry = findManualBuilding(normalizedAddress)
-    if (manualEntry) {
-      console.log('fetchProperty Tier 2.5 manual match:', manualEntry.canonicalAddress)
-      const manualResult = await supabase
-        .from('properties')
-        .select(SELECT_COLS)
-        .eq('address', manualEntry.canonicalAddress)
-        .order('pin', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (manualResult.data) {
-        return { property: manualResult.data as PropertyRow, nearestParcel: null, error: null }
-      }
     }
 
     // Tier 3 — direction-agnostic nearest-number search

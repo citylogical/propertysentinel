@@ -8,7 +8,11 @@ export function slugToDisplayAddress(slug: string): string {
   const decoded = decodeURIComponent(slug.trim())
   const parts = decoded.split('-').filter(Boolean)
   if (parts.length === 0) return decoded
-  const chicagoIdx = parts.map((p) => p.toLowerCase()).indexOf('chicago')
+  // Use lastIndexOf so streets named "Chicago" (e.g. 3328 W Chicago Ave) don't
+  // get truncated. The city "Chicago" is always the last occurrence — it sits
+  // right before the ZIP at the end of the slug.
+  const lowercased = parts.map((p) => p.toLowerCase())
+  const chicagoIdx = lowercased.lastIndexOf('chicago')
   const streetParts =
     chicagoIdx >= 0 ? parts.slice(0, chicagoIdx) : parts.filter((p) => !/^\d{5}$/.test(p))
   return streetParts.join(' ').trim() || decoded
