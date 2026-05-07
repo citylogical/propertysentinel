@@ -109,6 +109,8 @@ export async function POST(request: Request) {
     implied_value: p.implied_value,
     open_complaints: p.open_complaints ?? 0,
     total_complaints_12mo: p.total_complaints_12mo ?? 0,
+    open_building_complaints: p.open_building_complaints ?? null,
+    total_building_complaints_12mo: p.total_building_complaints_12mo ?? null,
     open_violations: p.open_violations ?? 0,
     total_violations_12mo: p.total_violations_12mo ?? 0,
     total_permits_12mo: p.total_permits_12mo ?? 0,
