@@ -1,8 +1,11 @@
 import type { ComplaintRow, PermitRow, ViolationRow } from '@/lib/supabase-search'
+import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export type PortfolioSaveStatsPayload = {
   open_complaints: number
   total_complaints_12mo: number
+  open_building_complaints: number
+  total_building_complaints_12mo: number
   open_violations: number
   total_violations_12mo: number
   total_permits_12mo: number
@@ -44,9 +47,16 @@ export function computePortfolioSaveStats(input: {
 }): PortfolioSaveStatsPayload {
   const { complaints, violations, permits, impliedValue, propertyClass, yearBuilt, communityArea } = input
 
+  const complaints12mo = complaints.filter((c) => withinLast12Months(c.created_date))
+  const visible12mo = complaints12mo.filter((c) =>
+    DEFAULT_VISIBLE_CODES.has((c.sr_short_code ?? '').toUpperCase())
+  )
+
   return {
-    open_complaints: complaints.filter((c) => isComplaintOpen(c.status)).length,
-    total_complaints_12mo: complaints.filter((c) => withinLast12Months(c.created_date)).length,
+    open_complaints: complaints12mo.filter((c) => isComplaintOpen(c.status)).length,
+    total_complaints_12mo: complaints12mo.length,
+    open_building_complaints: visible12mo.filter((c) => isComplaintOpen(c.status)).length,
+    total_building_complaints_12mo: visible12mo.length,
     open_violations: violations.filter(isViolationOpenOrFailed).length,
     total_violations_12mo: violations.filter((v) => withinLast12Months(v.violation_date)).length,
     total_permits_12mo: permits.filter((p) => withinLast12Months(p.issue_date)).length,

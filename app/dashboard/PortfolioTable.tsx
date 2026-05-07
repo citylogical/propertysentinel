@@ -159,9 +159,13 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   }, [listingsProperty])
 
   const filtered = [...properties].sort((a, b) => {
-    const ac = a.total_complaints_12mo ?? a.open_complaints ?? 0
-    const bc = b.total_complaints_12mo ?? b.open_complaints ?? 0
-    if (bc !== ac) return bc - ac
+    // Sort priority: open building complaints (actionable), then total building, then violations
+    const ao = a.open_building_complaints ?? 0
+    const bo = b.open_building_complaints ?? 0
+    if (bo !== ao) return bo - ao
+    const ab = a.total_building_complaints_12mo ?? a.total_complaints_12mo ?? a.open_complaints ?? 0
+    const bb = b.total_building_complaints_12mo ?? b.total_complaints_12mo ?? b.open_complaints ?? 0
+    if (bb !== ab) return bb - ab
     const av = a.total_violations_12mo ?? 0
     const bv = b.total_violations_12mo ?? 0
     if (bv !== av) return bv - av
@@ -435,9 +439,9 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">
             <thead>
-              <tr>
+              <tr className="dashboard-thead-group">
                 {isAdmin ? (
-                  <th className="dashboard-th-ck">
+                  <th className="dashboard-th-ck" rowSpan={2}>
                     <input
                       type="checkbox"
                       checked={selectedIds.size === filtered.length && filtered.length > 0}
@@ -446,21 +450,38 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                     />
                   </th>
                 ) : null}
-                <th>Address</th>
-                <th className="r" style={{ width: 95 }}>
+                <th rowSpan={2}>Address</th>
+                <th
+                  className="r dashboard-th-group"
+                  colSpan={3}
+                  style={{ borderBottom: '1px solid #e5e1d6' }}
+                >
                   Complaints
                 </th>
-                <th className="r" style={{ width: 95 }}>
+                <th className="r" rowSpan={2} style={{ width: 95 }}>
                   Violations
                 </th>
-                <th className="r" style={{ width: 80 }}>
+                <th className="r" rowSpan={2} style={{ width: 80 }}>
                   Permits
                 </th>
-                <th className="r" style={{ width: 100 }}>
+                <th className="r" rowSpan={2} style={{ width: 100 }}>
                   STR Listings
                 </th>
-                <th style={{ width: 130 }}>Flags</th>
-                <th className="dashboard-th-actions" aria-label="Remove" />
+                <th rowSpan={2} style={{ width: 130 }}>
+                  Flags
+                </th>
+                <th className="dashboard-th-actions" rowSpan={2} aria-label="Remove" />
+              </tr>
+              <tr>
+                <th className="r dashboard-th-sub" style={{ width: 80 }}>
+                  Open
+                </th>
+                <th className="r dashboard-th-sub" style={{ width: 95 }}>
+                  Building 12mo
+                </th>
+                <th className="r dashboard-th-sub" style={{ width: 90 }}>
+                  All 12mo
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -487,8 +508,30 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                       <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                     </td>
                     <td className="r">
-                      {(p.total_complaints_12mo ?? p.open_complaints ?? 0) > 0 ? (
-                        p.total_complaints_12mo ?? p.open_complaints ?? 0
+                      {p.open_building_complaints == null ? (
+                        <span className="zero" title="Refresh property to populate">
+                          —
+                        </span>
+                      ) : p.open_building_complaints > 0 ? (
+                        <span style={{ color: '#b8302a', fontWeight: 600 }}>{p.open_building_complaints}</span>
+                      ) : (
+                        <span className="zero">0</span>
+                      )}
+                    </td>
+                    <td className="r">
+                      {p.total_building_complaints_12mo == null ? (
+                        <span className="zero" title="Refresh property to populate">
+                          —
+                        </span>
+                      ) : p.total_building_complaints_12mo > 0 ? (
+                        p.total_building_complaints_12mo
+                      ) : (
+                        <span className="zero">0</span>
+                      )}
+                    </td>
+                    <td className="r">
+                      {(p.total_complaints_12mo ?? 0) > 0 ? (
+                        p.total_complaints_12mo
                       ) : (
                         <span className="zero">0</span>
                       )}

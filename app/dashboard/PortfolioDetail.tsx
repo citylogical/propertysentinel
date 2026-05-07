@@ -486,6 +486,13 @@ export default function PortfolioDetail({
                 <ComplaintDetail
                   complaint={(selectedItem.complaint ?? {}) as ComplaintDetailRecord}
                   isAdmin={isAdmin}
+                  address={
+                    (() => {
+                      const cmp = (selectedItem.complaint ?? {}) as { address?: string | null; address_normalized?: string | null }
+                      const a = (cmp.address ?? cmp.address_normalized ?? '').trim()
+                      return a || null
+                    })()
+                  }
                 />
               ) : selectedItem.type === 'Violation' ? (
                 <ViolationDetail

@@ -28,6 +28,8 @@ export async function GET() {
       created_at,
       open_complaints,
       total_complaints_12mo,
+      open_building_complaints,
+      total_building_complaints_12mo,
       open_violations,
       total_violations_12mo,
       total_permits_12mo,
@@ -68,6 +70,10 @@ export async function GET() {
     open_violations: Number(p.open_violations ?? 0),
     open_complaints: Number(p.open_complaints ?? 0),
     total_complaints_12mo: Number(p.total_complaints_12mo ?? 0),
+    open_building_complaints:
+      p.open_building_complaints == null ? null : Number(p.open_building_complaints),
+    total_building_complaints_12mo:
+      p.total_building_complaints_12mo == null ? null : Number(p.total_building_complaints_12mo),
     total_violations_12mo: Number(p.total_violations_12mo ?? 0),
     total_permits: Number(p.total_permits_12mo ?? 0),
     shvr_count: Number(p.shvr_count ?? 0),

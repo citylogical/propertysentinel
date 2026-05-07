@@ -78,6 +78,8 @@ export function getAllAddresses(
 export interface PortfolioActivityStats {
   open_complaints: number
   total_complaints_12mo: number
+  open_building_complaints: number
+  total_building_complaints_12mo: number
   open_violations: number
   total_violations_12mo: number
   total_permits_12mo: number
@@ -287,7 +289,15 @@ export async function fetchPortfolioActivity(
   const isPbl = pblResults.some((found) => found)
   const strRegistrations = strRegResults.reduce((sum, count) => sum + count, 0)
 
-  const openComplaints = allComplaints.filter(
+  // allComplaints is already filtered to DEFAULT_VISIBLE_CODES (building/business/etc)
+  const openBuildingComplaints = allComplaints.filter(
+    (c) => String((c as { status?: string }).status ?? '').toLowerCase() === 'open'
+  ).length
+  const totalBuildingComplaints12mo = allComplaints.length
+
+  // Total count: all complaints regardless of code
+  const allComplaintsUnfiltered = allComplaintsRaw
+  const openComplaints = allComplaintsUnfiltered.filter(
     (c) => String((c as { status?: string }).status ?? '').toLowerCase() === 'open'
   ).length
   const shvrCount = allComplaints.filter((c) => {
@@ -307,7 +317,9 @@ export async function fetchPortfolioActivity(
     recent_permits,
     stats: {
       open_complaints: openComplaints,
-      total_complaints_12mo: allComplaints.length,
+      total_complaints_12mo: allComplaintsUnfiltered.length,
+      open_building_complaints: openBuildingComplaints,
+      total_building_complaints_12mo: totalBuildingComplaints12mo,
       open_violations: totalOpenViolations,
       total_violations_12mo: allViolations12.length,
       total_permits_12mo: allPermits.length,

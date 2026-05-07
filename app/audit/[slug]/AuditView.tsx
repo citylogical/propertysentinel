@@ -21,6 +21,8 @@ export type AuditProperty = {
   implied_value: number | null
   open_complaints: number
   total_complaints_12mo: number
+  open_building_complaints: number | null
+  total_building_complaints_12mo: number | null
   open_violations: number
   total_violations_12mo: number
   total_permits_12mo: number
@@ -75,6 +77,8 @@ function auditPropertyToPortfolioProperty(p: AuditProperty): PortfolioProperty {
     open_violations: p.open_violations,
     open_complaints: p.open_complaints,
     total_complaints_12mo: p.total_complaints_12mo,
+    open_building_complaints: p.open_building_complaints ?? null,
+    total_building_complaints_12mo: p.total_building_complaints_12mo ?? null,
     total_violations_12mo: p.total_violations_12mo,
     total_permits: p.total_permits_12mo,
     shvr_count: p.shvr_count,
@@ -110,6 +114,10 @@ function asAuditProperty(p: Record<string, unknown>): AuditProperty {
     implied_value: (p.implied_value as number | null) ?? null,
     open_complaints: Number(p.open_complaints ?? 0),
     total_complaints_12mo: Number(p.total_complaints_12mo ?? 0),
+    open_building_complaints:
+      p.open_building_complaints == null ? null : Number(p.open_building_complaints),
+    total_building_complaints_12mo:
+      p.total_building_complaints_12mo == null ? null : Number(p.total_building_complaints_12mo),
     open_violations: Number(p.open_violations ?? 0),
     total_violations_12mo: Number(p.total_violations_12mo ?? 0),
     total_permits_12mo: Number(p.total_permits_12mo ?? 0),

@@ -446,6 +446,41 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
 
           </div>
         </div>
+      ) : isCanceled ? (
+        <div
+          style={{
+            borderTop: '1px solid #e5e1d6',
+            paddingTop: 10,
+            marginTop: 4,
+            display: 'flex',
+            gap: 10,
+          }}
+        >
+          <div style={{ width: 14, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+            <div
+              style={{
+                width: 9,
+                height: 9,
+                borderRadius: '50%',
+                background: '#fff',
+                border: '2px solid #c4c0b4',
+                flexShrink: 0,
+              }}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: '#999',
+                fontStyle: 'italic',
+                lineHeight: 1.5,
+              }}
+            >
+              No workflow recorded — service request was canceled before an inspector was assigned.
+            </div>
+          </div>
+        </div>
       ) : c.workflow_step ? (
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
           <span style={{ color: '#5a7898', flexShrink: 0 }}>Step</span>
