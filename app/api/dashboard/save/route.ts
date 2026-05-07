@@ -164,7 +164,8 @@ export async function POST(request: Request) {
         supabase,
         canonical_address,
         address_range,
-        additional_streets.length > 0 ? additional_streets : null
+        additional_streets.length > 0 ? additional_streets : null,
+        pins.length > 0 ? pins : null
       )
 
       await supabase

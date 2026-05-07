@@ -124,7 +124,8 @@ export async function fetchPortfolioActivity(
   supabase: SupabaseClient,
   canonicalAddress: string,
   addressRange: string | null | undefined,
-  additionalStreets: string[] | null | undefined
+  additionalStreets: string[] | null | undefined,
+  pins?: string[] | null | undefined
 ): Promise<PortfolioActivityDetail> {
   const addresses = getAllAddresses(canonicalAddress, addressRange, additionalStreets)
   const twelveMonthsAgo = new Date(Date.now() - 365 * 86400000).toISOString()
@@ -234,35 +235,59 @@ export async function fetchPortfolioActivity(
         return false
       })(),
       (async () => {
-        for (const addr of addresses) {
-          const { data: propRow } = await supabase
-            .from('properties')
-            .select('pin')
-            .eq('address_normalized', addr)
-            .limit(1)
-            .maybeSingle()
-          if (propRow?.pin) {
-            const { data: parcel } = await supabase
-              .from('parcel_universe')
-              .select('lat, lng')
-              .eq('pin', String(propRow.pin).trim())
-              .order('tax_year', { ascending: false })
+        // Use saved pins from portfolio_properties when available — skips the
+        // broken address→properties.pin lookup that fails for condo buildings
+        // where properties is keyed per-unit (e.g. "2413 W HADDON AVE 1") but
+        // canonical_address is building-level (e.g. "2413 W HADDON AVE").
+        const candidatePins: string[] = []
+        if (pins && pins.length > 0) {
+          for (const p of pins) {
+            const trimmed = p?.trim()
+            if (trimmed) candidatePins.push(trimmed)
+          }
+        }
+        // Fallback path for backward compatibility — when caller didn't pass pins
+        if (candidatePins.length === 0) {
+          for (const addr of addresses) {
+            const { data: propRow } = await supabase
+              .from('properties')
+              .select('pin')
+              .eq('address_normalized', addr)
               .limit(1)
               .maybeSingle()
-            const lat = parcel?.lat != null ? Number(parcel.lat) : NaN
-            const lng = parcel?.lng != null ? Number(parcel.lng) : NaN
-            if (Number.isFinite(lat) && Number.isFinite(lng)) {
-              const latDelta = 0.00135
-              const lngDelta = 0.00185
-              const { count } = await supabase
-                .from('airbnb_listings')
-                .select('id', { count: 'exact', head: true })
-                .gte('latitude', lat - latDelta)
-                .lte('latitude', lat + latDelta)
-                .gte('longitude', lng - lngDelta)
-                .lte('longitude', lng + lngDelta)
-              return count ?? 0
+            if (propRow?.pin) {
+              candidatePins.push(String(propRow.pin).trim())
+              break
             }
+          }
+        }
+        if (candidatePins.length === 0) return 0
+
+        // Find first PIN with valid coords. Filter NULL coords explicitly because
+        // some parcel_universe rows (airport catch-all etc) lack lat/lng.
+        for (const pin of candidatePins) {
+          const { data: parcel } = await supabase
+            .from('parcel_universe')
+            .select('lat, lng')
+            .eq('pin', pin)
+            .not('lat', 'is', null)
+            .not('lng', 'is', null)
+            .order('tax_year', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          const lat = parcel?.lat != null ? Number(parcel.lat) : NaN
+          const lng = parcel?.lng != null ? Number(parcel.lng) : NaN
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            const latDelta = 0.00135
+            const lngDelta = 0.00185
+            const { count } = await supabase
+              .from('airbnb_listings')
+              .select('id', { count: 'exact', head: true })
+              .gte('latitude', lat - latDelta)
+              .lte('latitude', lat + latDelta)
+              .gte('longitude', lng - lngDelta)
+              .lte('longitude', lng + lngDelta)
+            return count ?? 0
           }
         }
         return 0

@@ -8,6 +8,7 @@ import ViolationDetail, { type ViolationDetailRecord } from './details/Violation
 import PermitDetail, { type PermitDetailRecord } from './details/PermitDetail'
 import { StatusPill, formatDate, type StatusKind } from './details/_shared'
 import type { PortfolioProperty } from './types'
+import { getClassDescription } from '@/lib/class-codes'
 
 type Props = {
   property: PortfolioProperty
@@ -240,6 +241,7 @@ export default function PortfolioDetail({
   const nearbyListings = detailData?.nearby_listings ?? p.nearby_listings ?? 0
 
   const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
+  const classDescription = getClassDescription(p.property_class)
 
   const showDetailPanel = showItemDetails && !detailLoading && activity.length > 0
 
@@ -263,7 +265,16 @@ export default function PortfolioDetail({
           <div className="dashboard-dl-group">
             <div className="dashboard-dl-group-label">Building</div>
             <div className="dashboard-dl-row">
-              <span className="dashboard-dl-key">Class</span>
+              <span
+                className="dashboard-dl-key"
+                title={classDescription ?? undefined}
+                style={{
+                  cursor: classDescription ? 'help' : undefined,
+                  borderBottom: classDescription ? '1px dotted #c4c0b4' : undefined,
+                }}
+              >
+                Class
+              </span>
               <span className="dashboard-dl-val">{p.property_class || 'N/A'}</span>
             </div>
             <div className="dashboard-dl-row">
@@ -275,7 +286,32 @@ export default function PortfolioDetail({
               </span>
             </div>
             <div className="dashboard-dl-row">
-              <span className="dashboard-dl-key">Implied value</span>
+              <span
+                className="dashboard-dl-key"
+                title="Estimated property valuation derived from the most recent Cook County Assessor certified value (tax year 2025)."
+                style={{
+                  cursor: 'help',
+                  borderBottom: '1px dotted #c4c0b4',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                Implied valuation
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ flexShrink: 0, opacity: 0.55 }}
+                  aria-hidden="true"
+                >
+                  <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" />
+                  <circle cx="8" cy="4.8" r="0.85" fill="currentColor" />
+                  <path d="M8 7.4v4.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </span>
               <span className="dashboard-dl-val">{money(p.implied_value)}</span>
             </div>
             <div className="dashboard-dl-row">

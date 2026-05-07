@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     canonical_address?: string | null
     address_range?: string | null
     additional_streets?: string[] | null
+    pins?: string[] | null
   }
 
   const canonical = typeof row.canonical_address === 'string' ? row.canonical_address.trim() : ''
@@ -52,7 +53,8 @@ export async function GET(request: Request) {
     supabase,
     canonical,
     row.address_range ?? null,
-    row.additional_streets ?? null
+    row.additional_streets ?? null,
+    row.pins ?? null
   )
 
   const v0 = result.recent_violations[0] as { violation_date?: string | null } | undefined

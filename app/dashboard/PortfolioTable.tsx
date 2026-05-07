@@ -477,10 +477,10 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                   Open
                 </th>
                 <th className="r dashboard-th-sub" style={{ width: 95 }}>
-                  Building 12mo
+                  Building
                 </th>
                 <th className="r dashboard-th-sub" style={{ width: 90 }}>
-                  All 12mo
+                  All
                 </th>
               </tr>
             </thead>
