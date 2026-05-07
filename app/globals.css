@@ -3404,7 +3404,7 @@ button.save-toggle-switch {
 }
 
 .dashboard-detail-inner--with-reports {
-  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  grid-template-columns: 280px minmax(0, 1fr) 560px;
 }
 
 .dashboard-detail-left {
