@@ -133,9 +133,12 @@ function asAuditProperty(p: Record<string, unknown>): AuditProperty {
 export default function AuditView({ audit: auditRaw, properties: propertiesRaw, isAdmin = false }: Props) {
   const audit = asAudit(auditRaw)
   const properties = propertiesRaw.map(asAuditProperty).sort((a, b) => {
-    const ac = a.total_complaints_12mo ?? a.open_complaints ?? 0
-    const bc = b.total_complaints_12mo ?? b.open_complaints ?? 0
-    if (bc !== ac) return bc - ac
+    const ao = a.open_building_complaints ?? 0
+    const bo = b.open_building_complaints ?? 0
+    if (bo !== ao) return bo - ao
+    const ab = a.total_building_complaints_12mo ?? a.total_complaints_12mo ?? a.open_complaints ?? 0
+    const bb = b.total_building_complaints_12mo ?? b.total_complaints_12mo ?? b.open_complaints ?? 0
+    if (bb !== ab) return bb - ab
     const av = a.total_violations_12mo ?? 0
     const bv = b.total_violations_12mo ?? 0
     if (bv !== av) return bv - av
@@ -187,6 +190,10 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
   }, [listingsProperty])
 
   const totalComplaints = properties.reduce((s, p) => s + (p.total_complaints_12mo ?? p.open_complaints ?? 0), 0)
+  const totalOpenComplaints = properties.reduce(
+    (s, p) => s + (p.open_building_complaints ?? p.open_complaints ?? 0),
+    0
+  )
   const totalViolations = properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0)
   const totalOpen = properties.reduce((s, p) => s + (p.open_violations ?? 0), 0)
   const totalPermits = properties.reduce((s, p) => s + (p.total_permits_12mo ?? 0), 0)
@@ -222,23 +229,19 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
                   })
                 : ''}
             </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: '#7a7468',
-                fontStyle: 'italic',
-                marginTop: 6,
-                maxWidth: 720,
-                lineHeight: 1.5,
-              }}
-            >
-              This audit was compiled from publicly available information of
-              properties in your portfolio. To see all properties and get
-              same-day updates, please reach out.
-            </div>
           </div>
         </div>
         <div className="dashboard-inline-stats">
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">{properties.length}</div>
+            <div className="dashboard-istat-label">Properties</div>
+          </div>
+          <div className="dashboard-istat-sep" />
+          <div className="dashboard-istat">
+            <div className="dashboard-istat-num">{totalOpenComplaints}</div>
+            <div className="dashboard-istat-label">Open complaints</div>
+          </div>
+          <div className="dashboard-istat-sep" />
           <div className="dashboard-istat">
             <div className="dashboard-istat-num">{totalComplaints}</div>
             <div className="dashboard-istat-label">Complaints</div>
@@ -308,21 +311,38 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
       <div className="dashboard-table-wrap">
         <table className="dashboard-table">
           <thead>
-            <tr>
-              <th>Address</th>
-              <th className="r" style={{ width: 95 }}>
+            <tr className="dashboard-thead-group">
+              <th rowSpan={2}>Address</th>
+              <th
+                className="r dashboard-th-group"
+                colSpan={3}
+                style={{ borderBottom: '1px solid #e5e1d6' }}
+              >
                 Complaints
               </th>
-              <th className="r" style={{ width: 95 }}>
+              <th className="r" rowSpan={2} style={{ width: 95 }}>
                 Violations
               </th>
-              <th className="r" style={{ width: 80 }}>
+              <th className="r" rowSpan={2} style={{ width: 80 }}>
                 Permits
               </th>
-              <th className="r" style={{ width: 100 }}>
+              <th className="r" rowSpan={2} style={{ width: 100 }}>
                 STR Listings
               </th>
-              <th style={{ width: 130 }}>Flags</th>
+              <th rowSpan={2} style={{ width: 130 }}>
+                Flags
+              </th>
+            </tr>
+            <tr>
+              <th className="r dashboard-th-sub" style={{ width: 80 }}>
+                Open
+              </th>
+              <th className="r dashboard-th-sub" style={{ width: 95 }}>
+                Building
+              </th>
+              <th className="r dashboard-th-sub" style={{ width: 90 }}>
+                All
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -341,8 +361,30 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
                     <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                   </td>
                   <td className="r">
-                    {(p.total_complaints_12mo ?? p.open_complaints ?? 0) > 0 ? (
-                      p.total_complaints_12mo ?? p.open_complaints ?? 0
+                    {p.open_building_complaints == null ? (
+                      <span className="zero" title="Refresh property to populate">
+                        —
+                      </span>
+                    ) : p.open_building_complaints > 0 ? (
+                      <span style={{ color: '#b8302a', fontWeight: 600 }}>{p.open_building_complaints}</span>
+                    ) : (
+                      <span className="zero">0</span>
+                    )}
+                  </td>
+                  <td className="r">
+                    {p.total_building_complaints_12mo == null ? (
+                      <span className="zero" title="Refresh property to populate">
+                        —
+                      </span>
+                    ) : p.total_building_complaints_12mo > 0 ? (
+                      p.total_building_complaints_12mo
+                    ) : (
+                      <span className="zero">0</span>
+                    )}
+                  </td>
+                  <td className="r">
+                    {(p.total_complaints_12mo ?? 0) > 0 ? (
+                      p.total_complaints_12mo
                     ) : (
                       <span className="zero">0</span>
                     )}
@@ -361,7 +403,11 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
                         style={{ color: '#b87514', fontWeight: 500 }}
                         onClick={(e) => {
                           e.stopPropagation()
-                          setUpgradeOpen(true)
+                          if (isAdmin) {
+                            setListingsProperty(p)
+                          } else {
+                            setUpgradeOpen(true)
+                          }
                         }}
                       >
                         {p.nearby_listings}
@@ -385,23 +431,31 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
         </table>
       </div>
 
-      {audit.contact_email ? (
-        <div
-          style={{
-            marginTop: 20,
-            padding: '12px 16px',
-            background: '#f7f6f2',
-            border: '1px solid #e5e1d6',
-            fontSize: 13,
-            color: '#666',
-          }}
-        >
-          Questions about this audit? Contact{' '}
-          <a href={`mailto:${audit.contact_email}`} style={{ color: '#0f2744', fontWeight: 500 }}>
-            {audit.contact_email}
-          </a>
+      <div
+        style={{
+          marginTop: 20,
+          padding: '14px 18px',
+          background: '#f7f6f2',
+          border: '1px solid #e5e1d6',
+          fontSize: 13,
+          color: '#666',
+          lineHeight: 1.6,
+        }}
+      >
+        <div style={{ marginBottom: audit.contact_email ? 8 : 0, fontStyle: 'italic' }}>
+          This audit was compiled from publicly available information of
+          properties in your portfolio. To see all properties and get same-day
+          updates, please reach out.
         </div>
-      ) : null}
+        {audit.contact_email ? (
+          <div>
+            Questions about this audit? Contact{' '}
+            <a href={`mailto:${audit.contact_email}`} style={{ color: '#0f2744', fontWeight: 500 }}>
+              {audit.contact_email}
+            </a>
+          </div>
+        ) : null}
+      </div>
 
       {listingsProperty && listingsCoords ? (
         <NearbyListingsModal
