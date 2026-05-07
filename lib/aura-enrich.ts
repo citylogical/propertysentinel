@@ -170,6 +170,20 @@ export interface AuraEnrichmentResult {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * Gaussian-distributed jitter delay between Aura requests.
+ * Mean 2.25s, std dev 0.4s, clamped to [1500ms, 3500ms].
+ * Constant intervals fingerprint as bot traffic; this looks more human.
+ * Box-Muller transform since JS has no native gauss().
+ */
+function jitterDelay(): Promise<void> {
+  const u1 = Math.random() || 1e-9
+  const u2 = Math.random()
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  const ms = Math.max(1500, Math.min(3500, 2250 + z * 400))
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 function buildAuraFormBody(message: object, pageURI: string): string {
   const p = new URLSearchParams()
   p.set('message', JSON.stringify(message))
@@ -377,7 +391,7 @@ export async function fetchAuraEnrichment(sr_number: string): Promise<AuraEnrich
     const caseId = findCaseIdInTree(ret1, sr_number)
     if (!caseId) return empty
 
-    await delay(1500)
+    await jitterDelay()
 
     // Step 2: getServiceRequest → SLA + work_order_id
     const pageUri2 = `/s/service-request-detail?language=en_US&caseid=${encodeURIComponent(caseId)}`
@@ -447,7 +461,7 @@ export async function fetchAuraEnrichment(sr_number: string): Promise<AuraEnrich
 
             // Step 3: Flex answers (descriptions etc.)
             if (work_order_id) {
-              await delay(1500)
+              await jitterDelay()
               const msg3 = {
                 actions: [
                   {

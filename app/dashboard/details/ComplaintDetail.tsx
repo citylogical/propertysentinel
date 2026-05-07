@@ -38,6 +38,8 @@ export type ComplaintDetailRecord = {
 type Props = {
   complaint: ComplaintDetailRecord
   isAdmin: boolean
+  /** Address the SR was filed at — surfaces in card header so a screenshot is self-contained. */
+  address?: string | null
 }
 
 // Outcome classifier — buckets WOLI step outcomes into semantic categories for coloring.
@@ -64,7 +66,7 @@ const bucketColor: Record<OutcomeBucket, string> = {
   unknown: '#1e3a5f',      // navy
 }
 
-export default function ComplaintDetail({ complaint: c, isAdmin }: Props) {
+export default function ComplaintDetail({ complaint: c, isAdmin, address }: Props) {
   const caseStatus = String(c.status ?? '').toLowerCase()
   const isOpen = caseStatus === 'open'
   const isCanceled = caseStatus === 'canceled' || caseStatus === 'cancelled'
@@ -97,8 +99,6 @@ export default function ComplaintDetail({ complaint: c, isAdmin }: Props) {
   }
   if (isAdmin && c.owner_notified) tags.push({ label: 'Owner notified', value: c.owner_notified })
   if (isAdmin && c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
-  if (c.concern_category) tags.push({ label: 'Concern', value: c.concern_category })
-  if (c.problem_category) tags.push({ label: 'Problem', value: c.problem_category })
 
   return (
     <>
@@ -153,6 +153,20 @@ export default function ComplaintDetail({ complaint: c, isAdmin }: Props) {
           <ClosedPill closedDate={c.closed_date} />
         )}
       </div>
+      {address ? (
+        <div
+          style={{
+            fontSize: 11,
+            color: '#5a5044',
+            marginBottom: 6,
+            marginTop: 2,
+            fontWeight: 500,
+            letterSpacing: '0.01em',
+          }}
+        >
+          {address}
+        </div>
+      ) : null}
       {c.sr_type ? (
         <div style={{ ...monoLabel, marginBottom: 4, letterSpacing: '0.04em' }}>{c.sr_type}</div>
       ) : null}
@@ -217,34 +231,6 @@ export default function ComplaintDetail({ complaint: c, isAdmin }: Props) {
               <span style={{ fontWeight: tag.color ? 600 : 500 }}>{tag.value}</span>
             </span>
           ))}
-        </div>
-      ) : null}
-
-      {!isOpen && finalOutcome ? (
-        <div
-          style={{
-            fontSize: 12,
-            padding: '8px 10px',
-            background: isCanceled ? '#f5e8e0' : '#eef4fb',
-            border: `1px solid ${isCanceled ? '#e0c4a8' : '#d6e4f3'}`,
-            borderRadius: 4,
-            marginBottom: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-              fontSize: 9,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              color: '#5a7898',
-              marginRight: 6,
-            }}
-          >
-            Outcome
-          </span>
-          <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{finalOutcome}</span>
         </div>
       ) : null}
 
