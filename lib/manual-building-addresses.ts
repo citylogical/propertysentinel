@@ -217,6 +217,23 @@ export type ManualBuildingEntry = {
       ],
       note: '1301-1309 N State Pkwy / 2-18 E Goethe St — Ambassador Hotel Chicago; corner hotel; CCAO uses State St, postal/marketed uses State Pkwy; mailing name: FHM AMBASSADOR EAST',
     },
+    // ─── 3328 W Chicago Ave / 802 N Christiana Ave ────────────────────────────
+    // Corner building, Humboldt Park. Frontage on both W Chicago Ave and N Christiana Ave.
+    // Confirmed GC Realty managed property (active rental listing).
+    // 311 complaints split across both street addresses — manual range ensures
+    // both entrances surface in the property page.
+    {
+      canonicalAddress: '3328 W CHICAGO AVE',
+      allAddresses: [
+        '3328 W CHICAGO AVE',
+        '802 N CHRISTIANA AVE',
+      ],
+      displayAddresses: [
+        '3328 W CHICAGO AVE',
+        '802 N CHRISTIANA AVE',
+      ],
+      note: '3328 W Chicago Ave / 802 N Christiana Ave — corner building; managed by GC Realty',
+    },
   ]
   
   // Build O(1) lookup map at module load time
