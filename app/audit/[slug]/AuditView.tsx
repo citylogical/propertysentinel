@@ -414,6 +414,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
                         style={{ color: '#b87514', fontWeight: 500 }}
                         onClick={(e) => {
                           e.stopPropagation()
+                          alert(`isAdmin is: ${isAdmin}`)
                           if (isAdmin) {
                             setListingsProperty(p)
                           } else {
