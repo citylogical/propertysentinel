@@ -160,8 +160,16 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
     if (!listingsProperty) return
 
     let cancelled = false
+    console.log('[audit listings useEffect] property:', {
+      id: listingsProperty.id,
+      pins: listingsProperty.pins,
+      pinsType: typeof listingsProperty.pins,
+      isArray: Array.isArray(listingsProperty.pins),
+    })
     const pin = listingsProperty.pins?.[0]
+    console.log('[audit listings useEffect] extracted pin:', pin)
     if (!pin) {
+      console.log('[audit listings useEffect] no pin, bailing')
       const id = globalThis.setTimeout(() => {
         if (!cancelled) setListingsCoords(null)
       }, 0)
@@ -175,13 +183,16 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
       .then((r) => r.json())
       .then((d: { lat?: number | null; lng?: number | null }) => {
         if (cancelled) return
+        console.log('[audit listings useEffect] coords response:', d)
         if (d.lat != null && d.lng != null && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
           setListingsCoords({ lat: d.lat, lng: d.lng })
         } else {
+          console.log('[audit listings useEffect] coords invalid, leaving as null')
           setListingsCoords(null)
         }
       })
-      .catch(() => {
+      .catch((e) => {
+        console.error('[audit listings useEffect] fetch failed:', e)
         if (!cancelled) setListingsCoords(null)
       })
     return () => {
