@@ -110,25 +110,18 @@ export default async function AuditPage({ params }: PageProps) {
   let isAdmin = false
   try {
     const { userId } = await auth()
-    console.log('[audit page] auth userId:', userId, 'slug:', slug)
     if (userId) {
-      const { data: subscriber, error: subErr } = await supabase
+      const { data: subscriber } = await supabase
         .from('subscribers')
-        .select('role, is_admin, clerk_id, email')
+        .select('role, is_admin')
         .eq('clerk_id', userId)
         .maybeSingle()
-      console.log('[audit page] subscriber lookup:', {
-        subscriber,
-        error: subErr?.message,
-      })
-      // Match the audit/create route's admin check: either role === 'admin' OR is_admin === true
       if (subscriber?.role === 'admin' || subscriber?.is_admin === true) {
         isAdmin = true
       }
     }
-    console.log('[audit page] final isAdmin:', isAdmin)
-  } catch (e) {
-    console.error('[audit page] admin check threw:', e)
+  } catch {
+    // ignore — fall through to non-admin
   }
 
   return (

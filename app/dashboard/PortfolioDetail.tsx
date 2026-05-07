@@ -423,7 +423,7 @@ export default function PortfolioDetail({
                       }}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '92px 44px 1fr auto',
+                        gridTemplateColumns: '92px 44px minmax(0, 1fr) 64px',
                         gap: 8,
                         alignItems: 'center',
                         padding: '9px 8px 9px 5px',
@@ -457,7 +457,15 @@ export default function PortfolioDetail({
                       >
                         {typeDisplay}
                       </span>
-                      <span style={{ color: '#1a1a1a', minWidth: 0 }}>
+                      <span
+                        style={{
+                          color: '#1a1a1a',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {a.label}
                         {a.detail ? (
                           <span

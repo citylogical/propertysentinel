@@ -160,16 +160,8 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
     if (!listingsProperty) return
 
     let cancelled = false
-    console.log('[audit listings useEffect] property:', {
-      id: listingsProperty.id,
-      pins: listingsProperty.pins,
-      pinsType: typeof listingsProperty.pins,
-      isArray: Array.isArray(listingsProperty.pins),
-    })
     const pin = listingsProperty.pins?.[0]
-    console.log('[audit listings useEffect] extracted pin:', pin)
     if (!pin) {
-      console.log('[audit listings useEffect] no pin, bailing')
       const id = globalThis.setTimeout(() => {
         if (!cancelled) setListingsCoords(null)
       }, 0)
@@ -183,16 +175,13 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
       .then((r) => r.json())
       .then((d: { lat?: number | null; lng?: number | null }) => {
         if (cancelled) return
-        console.log('[audit listings useEffect] coords response:', d)
         if (d.lat != null && d.lng != null && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
           setListingsCoords({ lat: d.lat, lng: d.lng })
         } else {
-          console.log('[audit listings useEffect] coords invalid, leaving as null')
           setListingsCoords(null)
         }
       })
-      .catch((e) => {
-        console.error('[audit listings useEffect] fetch failed:', e)
+      .catch(() => {
         if (!cancelled) setListingsCoords(null)
       })
     return () => {
@@ -224,7 +213,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
   }
 
   return (
-    <div style={{ padding: '20px 28px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '20px 28px' }}>
       <div className="dashboard-identity-row">
         <div className="dashboard-identity-left">
           <div className="dashboard-logo">{initials}</div>
@@ -314,7 +303,7 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
           detailEndpoint={`/api/audit/detail?slug=${encodeURIComponent(audit.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
           showHistoricalActivityBar={false}
           showItemDetails={true}
-          onUpgradePrompt={() => setUpgradeOpen(true)}
+          onUpgradePrompt={isAdmin ? undefined : () => setUpgradeOpen(true)}
           isAdmin={isAdmin}
         />
       ) : null}
@@ -414,7 +403,6 @@ export default function AuditView({ audit: auditRaw, properties: propertiesRaw, 
                         style={{ color: '#b87514', fontWeight: 500 }}
                         onClick={(e) => {
                           e.stopPropagation()
-                          alert(`isAdmin is: ${isAdmin}`)
                           if (isAdmin) {
                             setListingsProperty(p)
                           } else {
