@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     .in('address_normalized', Array.from(allAddresses))
     .in('sr_short_code', ENRICHABLE_SR_CODES as unknown as string[])
     .gte('created_date', twelveMonthsAgo)
-    .or('enriched_at.is.null,and(paraphrased_at.is.null,complaint_description.not.is.null)')
+    .or('enriched_at.is.null,and(paraphrased_at.is.null,complaint_description.not.is.null),and(work_order_steps.is.null,sr_short_code.in.(BBA,BBC,BBD,BBK,BPI,HDF,SCB,HFB,RBL,CAFE,CORNVEND,SHVR,CSF,CST,BAG,BAM,FPC,ODM,MWC,AAF,NAC,WBJ,WBK,FAC,WCA))')
     .order('created_date', { ascending: false })
     .limit(2000)
 

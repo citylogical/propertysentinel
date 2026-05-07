@@ -10,7 +10,7 @@
 
 const AURA_CONTEXT = JSON.stringify({
   mode: 'PROD',
-  fwuid: 'TXFWNVprQUZzQnEtNXVXYTFLQ2ppdzJEa1N5enhOU3R5QWl2VzNveFZTbGcxMy4tMjE0NzQ4MzY0OC4xMzEwNzIwMA',
+  fwuid: 'ZkJhOVpLN2NZQkJrd2NWd3pMcnFOdzJEa1N5enhOU3R5QWl2VzNveFZTbGcxMy4tMjE0NzQ4MzY0OC4xMzEwNzIwMA',
   app: 'siteforce:communityApp',
   loaded: {
     'APPLICATION@markup://siteforce:communityApp': '1542_MvzRU4EK4FAU3HkS3YNvyA',
@@ -34,6 +34,8 @@ const SKIP_IDS = new Set([
   'a1Yt0000000Lg4YEAS',
   'a1Yt0000000Lg5pEAC',
   'a1Yt0000000Lj2HEAS',
+  'a1Yt0000000LiJeEAK',
+  'a1Y8z0000000ZLUEA2',
 ])
 
 const QUESTION_MAP: Record<string, Record<string, string>> = {
@@ -45,19 +47,25 @@ const QUESTION_MAP: Record<string, Record<string, string>> = {
     owner_notified: 'a1Yt0000000Lg72EAC',
     owner_occupied: 'a1Yt0000000Lg73EAC',
   },
-  '08qt0000000CabrAAC': { description: 'a1Yt0000000LjBVEA0' },
+  '08qt0000000CabrAAC': {
+    description: 'a1Yt0000000LjBVEA0',
+  },
   '08qt0000000CacJAAS': {
     description: 'a1Yt0000000Lg7IEAS',
     concern_category: 'a1Yt0000000Lg7iEAC',
     unit_number: 'a1Yt0000000Lg7JEAS',
   },
-  '08qt0000000CacgAAC': { description: 'a1Yt0000000Lg4aEAC' },
+  '08qt0000000CacgAAC': {
+    description: 'a1Yt0000000Lg4aEAC',
+  },
   '08qt0000000CacoAAC': {
     description: 'a1Yt0000000Lg9sEAC',
     complainant_type: 'a1Yt0000000LgA6EAK',
     owner_notified: 'a1Yt0000000Lg9xEAC',
   },
-  '08qt0000000CaYeAAK': { description: 'a1Yt0000000Lj2IEAS' },
+  '08qt0000000CaYeAAK': {
+    description: 'a1Yt0000000Lj2IEAS',
+  },
   '08qt0000000CacaAAC': {
     description: 'a1Yt0000000LirDEAS',
     concern_category: 'a1Yt0000000LfjBEAS',
@@ -116,13 +124,43 @@ const QUESTION_MAP: Record<string, Record<string, string>> = {
     concern_category: 'a1Yt0000000LiNKEA0',
     description: 'a1Yt0000000Lix4EAC',
   },
-  '08qt0000000CaaLAAS': { business_name: 'a1Ycs000002sErFEAU' },
+  '08qt0000000CaaLAAS': {
+    business_name: 'a1Ycs000002sErFEAU',
+  },
+  '08qt0000000CabOAAS': {
+    concern_category: 'a1Yt0000000LiYfEAK',
+    problem_category: 'a1Yt0000000Li1dEAC',
+    description: 'a1Yt0000000LjFoEAK',
+  },
+  '08q8z0000000LkrAAE': {
+    description: 'a1Y8z0000000ZLKEA2',
+    concern_category: 'a1Y8z0000000ZL5EAM',
+    problem_category: 'a1Y8z0000000ZLPEA2',
+    owner_notified: 'a1Y8z0000000ZLFEA2',
+  },
+  '08qt0000000CaYtAAK': {
+    concern_category: 'a1Yt0000000LiIyEAK',
+    problem_category: 'a1Yt0000000LiCMEA0',
+  },
+  '08qt0000000CaaFAAS': {
+    description: 'a1Yt0000000Lit1EAC',
+    concern_category: 'a1Yt0000000Lit2EAC',
+    problem_category: 'a1Yt0000000LiANEA0',
+  },
+  '08qt0000000CaXPAA0': {
+    concern_category: 'a1Yt0000003OLaCEAW',
+    problem_category: 'a1Yt0000003OLaMEAW',
+  },
+  '08qt0000000CaZ9AAK': {
+    description: 'a1Yt0000000LfS9EAK',
+  },
 }
 
 export const ENRICHABLE_SR_CODES = [
   'BBA', 'BBC', 'BBD', 'BBK', 'BPI', 'HDF', 'SCB',
   'HFB', 'RBL', 'CAFE', 'CORNVEND', 'SHVR',
   'CSF', 'CST', 'BAG', 'BAM', 'FPC', 'ODM', 'MWC',
+  'AAF', 'NAC', 'WBJ', 'WBK', 'FAC', 'WCA',
 ] as const
 
 export interface AuraEnrichmentResult {
@@ -184,17 +222,82 @@ function getFirstActionJson(json: unknown): { returnValue: unknown; error?: unkn
   return { returnValue: a?.returnValue }
 }
 
-function getWorkflowStep(rv: unknown): string | null {
+type WOLIStep = {
+  order: number | null
+  step: string | null
+  status: string | null
+  outcome: string | null
+  end_date: string | null
+}
+
+type WOLIResult = {
+  workflow_step: string | null
+  work_order_steps: WOLIStep[]
+  final_outcome: string | null
+}
+
+function getWOLIData(rv: unknown): WOLIResult {
+  const empty: WOLIResult = { workflow_step: null, work_order_steps: [], final_outcome: null }
   const o = rv as Record<string, unknown> | null | undefined
   const sreq = o?.serviceRequest as Record<string, unknown> | undefined
   const wobjs = (sreq?.workOrderObjs ?? o?.workOrderObjs) as unknown[] | undefined
   const w0 = wobjs?.[0] as Record<string, unknown> | undefined
-  const wolis = w0?.wolis as unknown[] | undefined
-  const woli0 = wolis?.[0] as Record<string, unknown> | undefined
-  const wr = woli0?.woliRecord as Record<string, unknown> | undefined
-  const act = wr?.C311_Activity_Type__r as { Name?: string } | undefined
-  const name = act?.Name
-  return typeof name === 'string' && name.trim() ? name.trim() : null
+  const wolisRaw = (w0?.wolis as unknown[] | undefined) ?? []
+
+  if (wolisRaw.length === 0) return empty
+
+  // Sort by C311_Order_By__c ascending
+  const wolisSorted = [...wolisRaw].sort((a, b) => {
+    const aRec = (a as Record<string, unknown>)?.woliRecord as Record<string, unknown> | undefined
+    const bRec = (b as Record<string, unknown>)?.woliRecord as Record<string, unknown> | undefined
+    const aOrder = Number(aRec?.C311_Order_By__c ?? 0)
+    const bOrder = Number(bRec?.C311_Order_By__c ?? 0)
+    return aOrder - bOrder
+  })
+
+  let workflow_step: string | null = null
+  let final_outcome: string | null = null
+  const work_order_steps: WOLIStep[] = []
+
+  for (const woli of wolisSorted) {
+    const w = woli as Record<string, unknown>
+    const rec = (w.woliRecord as Record<string, unknown>) ?? {}
+    const activity = rec.C311_Activity_Type__r as { Name?: string } | undefined
+    const stepName = typeof activity?.Name === 'string' ? activity.Name.trim() : null
+    const status = typeof rec.Status === 'string' ? (rec.Status as string) : null
+    const outcome = typeof w.outcome === 'string' ? (w.outcome as string) : null
+    const end_date = typeof rec.EndDate === 'string' ? (rec.EndDate as string) : null
+    const orderRaw = rec.C311_Order_By__c
+    const order = orderRaw == null ? null : Number(orderRaw)
+
+    work_order_steps.push({
+      order: order != null && !Number.isNaN(order) ? order : null,
+      step: stepName,
+      status,
+      outcome,
+      end_date,
+    })
+
+    // Current step = first non-closed/non-canceled step
+    if (workflow_step === null && status !== 'Closed' && status !== 'Canceled') {
+      workflow_step = stepName
+    }
+
+    // Final outcome = outcome of last closed step that has outcome text
+    if (status === 'Closed' && outcome && outcome.trim()) {
+      final_outcome = outcome.trim()
+    }
+  }
+
+  // If everything closed, current step = last step
+  if (workflow_step === null && wolisSorted.length > 0) {
+    const last = wolisSorted[wolisSorted.length - 1] as Record<string, unknown>
+    const lastRec = (last.woliRecord as Record<string, unknown>) ?? {}
+    const lastAct = lastRec.C311_Activity_Type__r as { Name?: string } | undefined
+    workflow_step = typeof lastAct?.Name === 'string' ? lastAct.Name.trim() : null
+  }
+
+  return { workflow_step, work_order_steps, final_outcome }
 }
 
 function getFlexList(json: unknown): unknown[] {
@@ -334,8 +437,10 @@ export async function fetchAuraEnrichment(sr_number: string): Promise<AuraEnrich
               fields.estimated_completion = String(wo0.C311_Estimated_Completion_Date__c).trim() || null
             }
             if (wo0.Status) fields.work_order_status = wo0.Status
-            const ws = getWorkflowStep(rv2)
-            if (ws) fields.workflow_step = ws
+            const woli = getWOLIData(rv2)
+            if (woli.workflow_step) fields.workflow_step = woli.workflow_step
+            if (woli.work_order_steps.length > 0) fields.work_order_steps = woli.work_order_steps
+            if (woli.final_outcome) fields.final_outcome = woli.final_outcome
 
             const work_order_id = typeof wo0.Id === 'string' ? wo0.Id : null
             const work_type_id = typeof wo0.WorkTypeId === 'string' ? wo0.WorkTypeId : null
