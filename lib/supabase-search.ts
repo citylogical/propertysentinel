@@ -212,6 +212,7 @@ export function normalizeAddress(raw: string): string {
   if (!s) return s
   s = (s.split(',')[0] ?? s).trim()
   s = s.replace(/\s+(apt|apartment|unit|#)\s*.*$/i, '').trim()
+  s = s.replace(/\./g, '')          // strip periods ("S." → "S", "Blvd." → "Blvd")
   s = s.replace(/\s+/g, ' ').trim()
   s = s.toUpperCase()
   for (const [re, repl] of DIRECTIONAL_ABBREV) s = s.replace(re, repl)
@@ -654,9 +655,79 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
 
     if (error) throw new Error(error.message)
 
-    if (data) {
-      console.log('fetchProperty result:', JSON.stringify(data))
-      return { property: data as PropertyRow, nearestParcel: null, error: null }
+      if (data) {
+        console.log('fetchProperty result:', JSON.stringify(data))
+        return { property: data as PropertyRow, nearestParcel: null, error: null }
+      }
+  
+      // Tier 2.5 — "ST" → "SAINT" expansion
+      // Cook County stores some saint-named streets fully expanded ("4221 N SAINT LOUIS AVE")
+      // while users routinely type the abbreviation ("4221 N St Louis Ave"). Without this,
+      // the request silently dies through every later tier even though the PIN exists.
+      // Detects "ST" mid-address followed by a non-street-type word (so we don't grab
+      // legitimate street-type "ST" at the end like "MAIN ST").
+      {
+        const STREET_TYPES = new Set(['ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD', 'WAY', 'PKWY', 'TER', 'CIR', 'HWY'])
+        const tokens = normalizedAddress.split(' ')
+        const stIdx = tokens.findIndex((t, i) => t === 'ST' && i > 0 && i < tokens.length - 1 && !STREET_TYPES.has(tokens[i + 1]))
+        if (stIdx > 0) {
+          const expanded = [...tokens.slice(0, stIdx), 'SAINT', ...tokens.slice(stIdx + 1)].join(' ')
+          const saintFallback = await supabase
+            .from('properties')
+            .select(SELECT_COLS)
+            .eq('address', expanded)
+            .order('pin', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+            if (saintFallback.data) {
+              console.log('fetchProperty Tier 2.5 SAINT match:', expanded)
+              return { property: saintFallback.data as PropertyRow, nearestParcel: null, error: null }
+            }
+            // Also try prefix match for condo buildings stored with unit suffixes
+            // (e.g. "4652 N SAINT LOUIS AVE 1E" when search was "4652 N ST LOUIS AVE")
+            const saintPrefix = await supabase
+              .from('properties')
+              .select(SELECT_COLS)
+              .like('address', `${expanded} %`)
+              .order('pin', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+            if (saintPrefix.data) {
+              console.log('fetchProperty Tier 2.5 SAINT prefix match:', expanded)
+              return { property: saintPrefix.data as PropertyRow, nearestParcel: null, error: null }
+            }
+          }
+        }
+  
+      // Tier 2.6 — street alias substitution (legacy ↔ modern street names)
+    // Cook County Assessor stores MLK Drive as "S Park Ave" (pre-1968 rename),
+    // while 311/violations/permits use "Dr Martin Luther King Jr Dr" (modern form).
+    // Without these aliases, the request silently misses through every later tier
+    // even though the PIN exists.
+    {
+      const STREET_ALIASES: Array<[RegExp, string[]]> = [
+        [/ S KING DR$/, [' S S PARK AVE', ' S DR MARTIN LUTHER KING JR DR']],
+        [/ S S PARK AVE$/, [' S KING DR']],
+        [/ S DR MARTIN LUTHER KING JR DR$/, [' S KING DR', ' S S PARK AVE']],
+      ]
+      for (const [pattern, replacements] of STREET_ALIASES) {
+        if (pattern.test(normalizedAddress)) {
+          for (const replacement of replacements) {
+            const aliased = normalizedAddress.replace(pattern, replacement)
+            const aliasResult = await supabase
+              .from('properties')
+              .select(SELECT_COLS)
+              .eq('address_normalized', aliased)
+              .order('pin', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+            if (aliasResult.data) {
+              console.log('fetchProperty Tier 2.6 alias match:', aliased)
+              return { property: aliasResult.data as PropertyRow, nearestParcel: null, error: null }
+            }
+          }
+        }
+      }
     }
 
     // Tier 2.4 — manual building range lookup (runs before prefix match)

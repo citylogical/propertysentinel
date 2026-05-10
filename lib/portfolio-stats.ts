@@ -72,7 +72,28 @@ export function getAllAddresses(
   }
 
   addrs.delete('')
-  return Array.from(addrs)
+
+  // Street name aliases — legacy ↔ modern forms used inconsistently across datasets.
+  // Assessor (properties) uses "S Park Ave" for MLK; 311/violations/permits use the
+  // modern honorific "S Dr Martin Luther King Jr Dr". Without expansion, activity counts
+  // silently zero for portfolio rows on these streets even after the PIN resolves.
+  const STREET_ALIASES: Array<[RegExp, string[]]> = [
+    [/ S KING DR$/, [' S S PARK AVE', ' S DR MARTIN LUTHER KING JR DR']],
+    [/ S S PARK AVE$/, [' S KING DR', ' S DR MARTIN LUTHER KING JR DR']],
+    [/ S DR MARTIN LUTHER KING JR DR$/, [' S KING DR', ' S S PARK AVE']],
+  ]
+  const expanded = new Set(addrs)
+  for (const addr of addrs) {
+    for (const [pattern, replacements] of STREET_ALIASES) {
+      if (pattern.test(addr)) {
+        for (const replacement of replacements) {
+          expanded.add(addr.replace(pattern, replacement))
+        }
+      }
+    }
+  }
+  expanded.delete('')
+  return Array.from(expanded)
 }
 
 export interface PortfolioActivityStats {
