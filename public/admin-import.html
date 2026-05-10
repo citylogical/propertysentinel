@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin: Rent Roll Import</title>
+  <style>
+    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 20px; }
+    h1 { font-size: 18px; }
+    label { display: block; margin: 12px 0 4px; font-weight: bold; }
+    input[type=text] { width: 100%; padding: 6px; font-family: monospace; }
+    textarea { width: 100%; height: 240px; padding: 6px; font-family: monospace; font-size: 11px; }
+    button { padding: 10px 18px; margin: 8px 8px 8px 0; cursor: pointer; }
+    button.live { background: #c0392b; color: white; }
+    pre { background: #f4f4f4; padding: 12px; max-height: 600px; overflow: auto; font-size: 11px; }
+    .warn { background: #ffe; padding: 8px; border-left: 3px solid #cc0; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>Rent Roll Import — Admin Only</h1>
+  <div class="warn">You must be logged in as an admin. Live mode is destructive (writes to portfolio_properties + portfolio_property_units).</div>
+
+  <label>Target user clerk_id (writes will be scoped to this user)</label>
+  <input id="target" type="text" value="user_3DYLjdKurzsSliwno7vqkj26It6" />
+
+  <label>Rent roll CSV (paste contents — first line is header)</label>
+  <textarea id="csv" placeholder="Property Name,Unit,BD/BA,Tag,Status,Rent,Lease From,Lease To,Move-in,Move-out,OB Date&#10;..."></textarea>
+
+  <div>
+    <button onclick="run(true)">Dry run</button>
+    <button class="live" onclick="run(false)">LIVE run (writes data)</button>
+  </div>
+
+  <pre id="out">Output will appear here.</pre>
+
+  <script>
+    async function run(dryRun) {
+      const csv = document.getElementById('csv').value.trim()
+      const target = document.getElementById('target').value.trim()
+      const out = document.getElementById('out')
+      if (!csv) { out.textContent = 'Paste CSV first.'; return }
+      if (!target) { out.textContent = 'Target user ID required.'; return }
+      if (!dryRun && !confirm('Live run will INSERT 350+ portfolio rows and 590+ unit rows. Continue?')) return
+
+      out.textContent = 'Running... this can take 5-20 minutes. Do not close this tab.'
+      const t0 = Date.now()
+      try {
+        const url = `/api/admin/import-rentroll?dryRun=${dryRun}&targetUserId=${encodeURIComponent(target)}`
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/csv' },
+          body: csv,
+        })
+        const elapsed = Math.round((Date.now() - t0) / 1000)
+        const json = await res.json()
+        out.textContent = `Status: ${res.status} (${elapsed}s)\n\n` + JSON.stringify(json, null, 2)
+      } catch (e) {
+        out.textContent = 'Error: ' + (e?.message ?? String(e))
+      }
+    }
+  </script>
+</body>
+</html>

@@ -175,7 +175,7 @@ type Resolution = {
 // Main route handler
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -193,17 +193,12 @@ export async function GET(request: Request) {
   const dryRun = searchParams.get('dryRun') !== 'false' // default true
   const targetUserId = searchParams.get('targetUserId') || userId
 
-  // ─── Read & parse CSV ───────────────────────────────────────────────────
-  let csvContent: string
-  try {
-    csvContent = readFileSync(CSV_PATH, 'utf-8')
-  } catch {
+  // ─── Read CSV from POST body ────────────────────────────────────────────
+  const csvContent = await request.text()
+  if (!csvContent || csvContent.length < 100) {
     return NextResponse.json(
-      {
-        error: `Could not read CSV at ${CSV_PATH}`,
-        hint: 'Place rent roll at data/GCRD_rentroll.csv or set GCRD_RENTROLL_PATH env var',
-      },
-      { status: 500 }
+      { error: 'CSV content required in request body (paste raw CSV text)' },
+      { status: 400 }
     )
   }
 
