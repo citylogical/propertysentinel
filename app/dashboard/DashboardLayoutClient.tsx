@@ -1,5 +1,6 @@
 'use client'
 
+import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -21,12 +22,21 @@ export default function DashboardLayoutClient({
   today: string
 }) {
   const pathname = usePathname()
+  const { isSignedIn, isLoaded: clerkLoaded } = useUser()
   const [summaryData, setSummaryData] = useState<PortfolioSummaryData | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [summaryOpen, setSummaryOpen] = useState(false)
 
-  // Fetch summary data on mount
+  // Fetch summary data once Clerk knows whether the user is signed in.
+  // Re-fires on sign-in transition so the modal can open after auth
+  // flow completes without a hard refresh.
   useEffect(() => {
+    if (!clerkLoaded) return
+    if (!isSignedIn) {
+      setSummaryData(null)
+      setSummaryLoading(false)
+      return
+    }
     let cancelled = false
     setSummaryLoading(true)
     fetch('/api/dashboard/portfolio-summary')
@@ -43,7 +53,7 @@ export default function DashboardLayoutClient({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [clerkLoaded, isSignedIn])
 
   // Decide whether to auto-open the modal once summary data loads.
   // Three guards:
