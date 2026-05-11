@@ -16,6 +16,7 @@ type Props = {
   isOpen: boolean
   onClose: () => void
   propertyDisplayName: string
+  portfolioPropertyId: string
   units: PortfolioUnit[]
   /** Called after any successful edit so the parent can refresh detail/list. */
   onUnitsChanged?: () => void
@@ -40,6 +41,7 @@ export default function UnitsModal({
   isOpen,
   onClose,
   propertyDisplayName,
+  portfolioPropertyId,
   units: unitsProp,
   onUnitsChanged,
 }: Props) {
@@ -52,6 +54,30 @@ export default function UnitsModal({
   const [bulkEditing, setBulkEditing] = useState<FieldKey | null>(null)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [addingNew, setAddingNew] = useState(false)
+  const [newUnitForm, setNewUnitForm] = useState<{
+    unit_label: string
+    bd_ba: string
+    tag: string
+    status: string
+    rent: string
+    lease_from: string
+    lease_to: string
+    move_in: string
+    move_out: string
+    ob_date: string
+  }>({
+    unit_label: '',
+    bd_ba: '',
+    tag: '',
+    status: '',
+    rent: '',
+    lease_from: '',
+    lease_to: '',
+    move_in: '',
+    move_out: '',
+    ob_date: '',
+  })
 
   // Sync local units with prop on (re)open
   useEffect(() => {
@@ -61,6 +87,19 @@ export default function UnitsModal({
     setEditing(null)
     setBulkEditing(null)
     setErrorMsg(null)
+    setAddingNew(false)
+    setNewUnitForm({
+      unit_label: '',
+      bd_ba: '',
+      tag: '',
+      status: '',
+      rent: '',
+      lease_from: '',
+      lease_to: '',
+      move_in: '',
+      move_out: '',
+      ob_date: '',
+    })
   }, [isOpen, unitsProp])
 
   // Fetch tag/status discovery
@@ -87,11 +126,11 @@ export default function UnitsModal({
   useEffect(() => {
     if (!isOpen) return
     const h = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape' && !editing && !bulkEditing) onClose()
+      if (e.key === 'Escape' && !editing && !bulkEditing && !addingNew) onClose()
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [isOpen, onClose, editing, bulkEditing])
+  }, [isOpen, onClose, editing, bulkEditing, addingNew])
 
   // Body scroll lock
   useEffect(() => {
@@ -218,6 +257,104 @@ export default function UnitsModal({
     [selectedIds, units, onUnitsChanged]
   )
 
+  // Create a new unit
+  const createNewUnit = useCallback(async () => {
+    setSaving(true)
+    setErrorMsg(null)
+
+    const rentNum = newUnitForm.rent.replace(/[,$]/g, '').trim()
+    const patch: Record<string, unknown> = {
+      unit_label: newUnitForm.unit_label.trim() || null,
+      bd_ba: newUnitForm.bd_ba.trim() || null,
+      tag: newUnitForm.tag.trim() || null,
+      status: newUnitForm.status.trim() || null,
+      rent: rentNum ? Number(rentNum) : null,
+      lease_from: newUnitForm.lease_from || null,
+      lease_to: newUnitForm.lease_to || null,
+      move_in: newUnitForm.move_in || null,
+      move_out: newUnitForm.move_out || null,
+      ob_date: newUnitForm.ob_date || null,
+    }
+
+    try {
+      const res = await fetch('/api/dashboard/unit/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portfolio_property_id: portfolioPropertyId, patch }),
+      })
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: string }
+        throw new Error(j.error || 'Create failed')
+      }
+      const data = (await res.json()) as { unit?: PortfolioUnit }
+      if (data.unit) {
+        setUnits((prev) => [data.unit!, ...prev])
+      }
+      setAddingNew(false)
+      setNewUnitForm({
+        unit_label: '',
+        bd_ba: '',
+        tag: '',
+        status: '',
+        rent: '',
+        lease_from: '',
+        lease_to: '',
+        move_in: '',
+        move_out: '',
+        ob_date: '',
+      })
+      // refresh discovery (new tag/status values may have been introduced)
+      void fetch('/api/dashboard/units/tags')
+        .then((r) => r.json())
+        .then((d: { tags?: DiscoveryEntry[]; statuses?: DiscoveryEntry[] }) => {
+          setTagOptions(d.tags ?? [])
+          setStatusOptions(d.statuses ?? [])
+        })
+        .catch(() => {})
+      if (onUnitsChanged) onUnitsChanged()
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Create failed')
+    } finally {
+      setSaving(false)
+    }
+  }, [newUnitForm, portfolioPropertyId, onUnitsChanged])
+
+  // Delete a unit
+  const deleteUnit = useCallback(
+    async (unitId: string, unitLabel: string | null) => {
+      if (!confirm(`Delete unit ${unitLabel || unitId}? This cannot be undone.`)) return
+      setSaving(true)
+      setErrorMsg(null)
+      const prev = units
+      // optimistic
+      setUnits((p) => p.filter((u) => u.id !== unitId))
+      setSelectedIds((s) => {
+        const next = new Set(s)
+        next.delete(unitId)
+        return next
+      })
+      try {
+        const res = await fetch('/api/dashboard/unit/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unit_id: unitId }),
+        })
+        if (!res.ok) {
+          const j = (await res.json()) as { error?: string }
+          throw new Error(j.error || 'Delete failed')
+        }
+        if (onUnitsChanged) onUnitsChanged()
+      } catch (err) {
+        // rollback
+        setUnits(prev)
+        setErrorMsg(err instanceof Error ? err.message : 'Delete failed')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [units, onUnitsChanged]
+  )
+
   if (!isOpen) return null
   if (typeof document === 'undefined') return null
 
@@ -226,7 +363,7 @@ export default function UnitsModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="units-modal-title"
-      onClick={() => !editing && !bulkEditing && onClose()}
+      onClick={() => !editing && !bulkEditing && !addingNew && onClose()}
       style={{
         position: 'fixed',
         inset: 0,
@@ -305,6 +442,178 @@ export default function UnitsModal({
           </div>
         ) : null}
 
+        {/* Add-unit toolbar */}
+        <div
+          style={{
+            padding: '10px 20px',
+            borderBottom: '1px solid #ece8dd',
+            background: '#faf8f3',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 12, color: '#666' }}>
+            {units.length === 0 && !addingNew
+              ? 'No units yet — add one to start tracking.'
+              : `${units.length} unit${units.length === 1 ? '' : 's'}`}
+          </span>
+          {!addingNew ? (
+            <button
+              type="button"
+              onClick={() => setAddingNew(true)}
+              style={{
+                background: '#1e3a5f',
+                color: '#fff',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: 4,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              + Add unit
+            </button>
+          ) : null}
+        </div>
+
+        {/* New unit form */}
+        {addingNew ? (
+          <div
+            style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid #ece8dd',
+              background: '#fff',
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                color: '#1e3a5f',
+                fontWeight: 500,
+                textTransform: 'uppercase',
+                marginBottom: 10,
+              }}
+            >
+              New unit
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <NewUnitField
+                label="Unit label"
+                value={newUnitForm.unit_label}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, unit_label: v }))}
+                placeholder="e.g. 1, 2N, Garden"
+              />
+              <NewUnitField
+                label="BD/BA"
+                value={newUnitForm.bd_ba}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, bd_ba: v }))}
+                placeholder="e.g. 2/1.00"
+              />
+              <NewUnitField
+                label="Tag"
+                value={newUnitForm.tag}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, tag: v }))}
+                placeholder="e.g. FOR SALE"
+                datalistId="new-unit-tags"
+                options={tagOptions.map((t) => t.name)}
+              />
+              <NewUnitField
+                label="Status"
+                value={newUnitForm.status}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, status: v }))}
+                placeholder="e.g. Current"
+                datalistId="new-unit-statuses"
+                options={statusOptions.map((s) => s.name)}
+              />
+              <NewUnitField
+                label="Rent ($)"
+                value={newUnitForm.rent}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, rent: v }))}
+                placeholder="e.g. 1850"
+              />
+              <NewUnitField
+                label="Lease from"
+                type="date"
+                value={newUnitForm.lease_from}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, lease_from: v }))}
+              />
+              <NewUnitField
+                label="Lease to"
+                type="date"
+                value={newUnitForm.lease_to}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, lease_to: v }))}
+              />
+              <NewUnitField
+                label="Move-in"
+                type="date"
+                value={newUnitForm.move_in}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, move_in: v }))}
+              />
+              <NewUnitField
+                label="Move-out"
+                type="date"
+                value={newUnitForm.move_out}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, move_out: v }))}
+              />
+              <NewUnitField
+                label="OB date"
+                type="date"
+                value={newUnitForm.ob_date}
+                onChange={(v) => setNewUnitForm((f) => ({ ...f, ob_date: v }))}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setAddingNew(false)}
+                disabled={saving}
+                style={{
+                  background: '#fff',
+                  border: '1px solid #d9d3c2',
+                  color: '#1a1a1a',
+                  padding: '6px 14px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void createNewUnit()}
+                disabled={saving}
+                style={{
+                  background: '#1e3a5f',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '6px 14px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                {saving ? 'Saving…' : 'Save unit'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {/* Table */}
         <div style={{ overflow: 'auto', flex: 1 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -336,16 +645,17 @@ export default function UnitsModal({
                 <th style={th}>Move-in</th>
                 <th style={th}>Move-out</th>
                 <th style={th}>OB</th>
+                <th style={{ ...th, width: 36 }} aria-label="Delete" />
               </tr>
             </thead>
             <tbody>
-              {sortedUnits.length === 0 ? (
+              {sortedUnits.length === 0 && !addingNew ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     style={{ padding: 28, textAlign: 'center', color: '#999', fontSize: 13 }}
                   >
-                    No units recorded for this property.
+                    No units recorded yet. Use + Add unit above to start.
                   </td>
                 </tr>
               ) : (
@@ -423,6 +733,31 @@ export default function UnitsModal({
                       <td style={td}>{formatDate(u.move_in)}</td>
                       <td style={td}>{formatDate(u.move_out)}</td>
                       <td style={td}>{formatDate(u.ob_date)}</td>
+                      <td style={{ ...td, width: 36, textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void deleteUnit(u.id, u.unit_label)
+                          }}
+                          disabled={saving}
+                          aria-label={`Delete unit ${u.unit_label ?? u.id}`}
+                          title="Delete unit"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#999',
+                            cursor: saving ? 'not-allowed' : 'pointer',
+                            padding: 4,
+                            lineHeight: 1,
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   )
                 })
@@ -515,6 +850,73 @@ export default function UnitsModal({
       </div>
     </div>,
     document.body
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NewUnitField — labeled text/date input with optional datalist autocomplete
+// ─────────────────────────────────────────────────────────────────────────────
+
+type NewUnitFieldProps = {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: 'text' | 'date'
+  datalistId?: string
+  options?: string[]
+}
+
+function NewUnitField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  datalistId,
+  options,
+}: NewUnitFieldProps) {
+  return (
+    <div>
+      <label
+        style={{
+          display: 'block',
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: '0.04em',
+          color: '#666',
+          marginBottom: 4,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        list={datalistId}
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          border: '1px solid #d9d3c2',
+          borderRadius: 3,
+          fontSize: 12,
+          fontFamily: 'inherit',
+          background: '#fff',
+          outline: 'none',
+          minWidth: 0,
+        }}
+      />
+      {datalistId && options ? (
+        <datalist id={datalistId}>
+          {options.map((opt) => (
+            <option key={opt} value={opt} />
+          ))}
+        </datalist>
+      ) : null}
+    </div>
   )
 }
 

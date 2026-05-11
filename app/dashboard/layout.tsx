@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import DashboardTabs from './DashboardTabs'
+import DashboardLayoutClient from './DashboardLayoutClient'
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const { userId } = await auth()
@@ -29,21 +29,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <div className="prop-main-content">
-          <div className="dashboard-identity-row">
-            <div className="dashboard-identity-left">
-              <div className="dashboard-logo">PS</div>
-              <div className="dashboard-identity-text">
-                <h1>Dashboard</h1>
-                <div className="dashboard-identity-sub">
-                  {propertyCount} {propertyCount === 1 ? 'property' : 'properties'} · Last 12 months · {today}
-                </div>
-              </div>
-            </div>
-          </div>
-          <DashboardTabs />
+        <DashboardLayoutClient propertyCount={propertyCount} today={today}>
           {children}
-        </div>
+        </DashboardLayoutClient>
       </div>
     </div>
   )

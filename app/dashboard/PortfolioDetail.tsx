@@ -377,29 +377,27 @@ export default function PortfolioDetail({
                     : 'N/A'}
               </span>
             </div>
-            {units.length > 0 ? (
-              <div className="dashboard-dl-row">
-                <span className="dashboard-dl-key" style={{ fontWeight: 700 }}>
-                  {(ownerName ? `${ownerName.toUpperCase()} UNITS` : 'YOUR UNITS')} ({units.length})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowUnitsModal(true)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 12,
-                    color: '#1e3a5f',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    textAlign: 'right',
-                  }}
-                >
-                  See full details →
-                </button>
-              </div>
-            ) : null}
+            <div className="dashboard-dl-row">
+              <span className="dashboard-dl-key" style={{ fontWeight: 700 }}>
+                {(ownerName ? `${ownerName.toUpperCase()} UNITS` : 'YOUR UNITS')} ({units.length})
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowUnitsModal(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  fontSize: 12,
+                  color: '#1e3a5f',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  textAlign: 'right',
+                }}
+              >
+                {units.length === 0 ? '+ Add units →' : 'See full details →'}
+              </button>
+            </div>
           </div>
 
           <div className="dashboard-dl-group">
@@ -673,6 +671,7 @@ export default function PortfolioDetail({
           isOpen
           onClose={() => setShowUnitsModal(false)}
           propertyDisplayName={p.display_name || p.canonical_address}
+          portfolioPropertyId={p.id}
           units={units}
           onUnitsChanged={() => {
             if (onPropertyUpdated) onPropertyUpdated()

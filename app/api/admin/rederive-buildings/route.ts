@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   let query = supabase
     .from('portfolio_properties')
     .select(
-      'id, canonical_address, address_range, additional_streets, pins, property_class, year_built, implied_value, community_area, latest_building_complaint_date'
+      'id, canonical_address, address_range, additional_streets, pins, property_class, year_built, implied_value, community_area, latest_building_complaint_date, has_stop_work'
     )
     .eq('user_id', targetUserId)
 
@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     property_class: string | null
     community_area: string | null
     latest_building_complaint_date: string | null
+    has_stop_work: boolean
   }
   type Change = {
     id: string
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
     implied_value: number | null
     community_area: string | null
     latest_building_complaint_date: string | null
+    has_stop_work: boolean | null
   }>) {
     processed++
     if (processed % 25 === 0) {
@@ -98,6 +100,7 @@ export async function POST(request: Request) {
       property_class: row.property_class,
       community_area: row.community_area,
       latest_building_complaint_date: row.latest_building_complaint_date,
+      has_stop_work: Boolean(row.has_stop_work),
     }
 
     const pins = row.pins ?? []
@@ -132,6 +135,7 @@ export async function POST(request: Request) {
       // fan-out for this — address_range + additional_streets + pins drive
       // the fetchPortfolioActivity query set.
       let latestBuildingComplaint: string | null = null
+      let hasStopWorkFresh = false
       try {
         const activity = await fetchPortfolioActivity(
           supabase,
@@ -141,6 +145,7 @@ export async function POST(request: Request) {
           pins
         )
         latestBuildingComplaint = activity.stats.latest_building_complaint_date ?? null
+        hasStopWorkFresh = Boolean(activity.stats.has_stop_work)
       } catch (e) {
         console.error(
           `[rederive] activity refresh failed for ${row.canonical_address}:`,
@@ -154,6 +159,7 @@ export async function POST(request: Request) {
         property_class: snapshot.propertyClass,
         community_area: snapshot.communityArea,
         latest_building_complaint_date: latestBuildingComplaint,
+        has_stop_work: hasStopWorkFresh,
       }
 
       const diff: string[] = []
@@ -163,6 +169,7 @@ export async function POST(request: Request) {
       if (before.community_area !== after.community_area) diff.push('community_area')
       if (before.latest_building_complaint_date !== after.latest_building_complaint_date)
         diff.push('latest_building_complaint_date')
+      if (before.has_stop_work !== after.has_stop_work) diff.push('has_stop_work')
 
       changes.push({
         id: row.id,
@@ -181,6 +188,7 @@ export async function POST(request: Request) {
             property_class: after.property_class,
             community_area: after.community_area,
             latest_building_complaint_date: after.latest_building_complaint_date,
+            has_stop_work: after.has_stop_work,
             updated_at: new Date().toISOString(),
           })
           .eq('id', row.id)
@@ -208,6 +216,7 @@ export async function POST(request: Request) {
     property_class: 0,
     community_area: 0,
     latest_building_complaint_date: 0,
+    has_stop_work: 0,
   }
   for (const c of changedRows) {
     for (const f of c.diff) fieldFlipCounts[f] = (fieldFlipCounts[f] ?? 0) + 1

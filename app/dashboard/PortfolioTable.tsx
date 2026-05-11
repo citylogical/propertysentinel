@@ -34,7 +34,7 @@ type SortField =
 
 type SortDir = 'asc' | 'desc'
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100]
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 function defaultSmartSort(a: PortfolioProperty, b: PortfolioProperty): number {
   const ao = a.open_building_complaints ?? 0
@@ -150,8 +150,8 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   const sortDir = (urlParams.get('sort_dir') as SortDir | null) ?? 'desc'
   const filterTag = urlParams.get('filter_tag') ?? ''
   const filterStatus = urlParams.get('filter_status') ?? ''
-  const pageSizeRaw = parseInt(urlParams.get('page_size') ?? '25', 10)
-  const pageSize = PAGE_SIZE_OPTIONS.includes(pageSizeRaw) ? pageSizeRaw : 25
+  const pageSizeRaw = parseInt(urlParams.get('page_size') ?? '10', 10)
+  const pageSize = PAGE_SIZE_OPTIONS.includes(pageSizeRaw) ? pageSizeRaw : 10
   const pageRaw = parseInt(urlParams.get('page') ?? '1', 10)
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
 
@@ -584,43 +584,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   return (
     <>
       <div style={{ padding: '20px 28px' }}>
-        {/* Existing banner row */}
-        <div className="dashboard-banner-row">
-          <div className="dashboard-banner dashboard-banner-monitor">
-            <span>
-              <strong>Set up real-time monitoring</strong> — get alerts the moment something hits your portfolio
-            </span>
-            <button
-              type="button"
-              className="dashboard-banner-monitor-btn"
-              onClick={() => {
-                alert('Alert setup coming soon')
-              }}
-            >
-              Set up →
-            </button>
-          </div>
-          <div className="dashboard-banner dashboard-banner-right">
-            <div className="dashboard-banner-right-left">
-              <div className="dashboard-banner-count">{properties.length}</div>
-              <div className="dashboard-banner-count-text">
-                <strong>properties tracked</strong>
-                <br />
-                Search any address to add more
-              </div>
-            </div>
-            <button
-              type="button"
-              className="dashboard-banner-add-btn"
-              onClick={() => {
-                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))
-              }}
-            >
-              + Add property
-            </button>
-          </div>
-        </div>
-
         {isAdmin && selectedIds.size > 0 ? (
           <div className="dashboard-sel-bar">
             <div className="dashboard-sel-text">

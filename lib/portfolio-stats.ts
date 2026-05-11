@@ -206,7 +206,7 @@ export async function fetchPortfolioActivity(
         addresses.map((addr) =>
           supabase
             .from('violations')
-            .select('violation_status, inspection_status, is_stop_work_order')
+            .select('violation_status, inspection_status, is_stop_work_order, violation_date')
             .eq('address_normalized', addr)
             .limit(500)
             .then((r) => r.data ?? [])
@@ -325,11 +325,24 @@ export async function fetchPortfolioActivity(
   const allPermits = permitResults.flat()
 
   let totalOpenViolations = 0
+  const oneYearAgoIso = new Date(Date.now() - 365 * 86400000).toISOString()
   let hasStopWork = false
   for (const batch of openViolResults) {
     for (const v of batch) {
       if (isViolationOpenOrFailed(v)) totalOpenViolations++
-      if (v.is_stop_work_order === true) hasStopWork = true
+      const row = v as {
+        is_stop_work_order?: boolean | null
+        violation_status?: string | null
+        inspection_status?: string | null
+        violation_date?: string | null
+      }
+      if (!row.is_stop_work_order) continue
+      const status = String(row.violation_status ?? row.inspection_status ?? '').toUpperCase()
+      const isOpen = status === 'OPEN' || status === 'FAILED'
+      if (!isOpen) continue
+      const vd = row.violation_date
+      if (!vd) continue
+      if (vd >= oneYearAgoIso) hasStopWork = true
     }
   }
 
