@@ -22,7 +22,9 @@ type Props = {
 
 type SortField =
   | 'address'
+  | 'community_area'
   | 'units_total'
+  | 'latest_building_complaint_date'
   | 'open_building_complaints'
   | 'total_building_complaints_12mo'
   | 'total_complaints_12mo'
@@ -56,8 +58,15 @@ function getSortKey(p: PortfolioProperty, field: SortField): number | string {
   switch (field) {
     case 'address':
       return (p.display_name || p.address_range || p.canonical_address || '').toLowerCase()
+    case 'community_area':
+      return (p.community_area ?? '').toLowerCase()
     case 'units_total':
       return p.units_total ?? 0
+    case 'latest_building_complaint_date':
+      // Sort by most recent first; null → -Infinity-ish so they go to the bottom
+      return p.latest_building_complaint_date
+        ? new Date(p.latest_building_complaint_date).getTime()
+        : Number.NEGATIVE_INFINITY
     case 'open_building_complaints':
       return p.open_building_complaints ?? -1 // null below 0
     case 'total_building_complaints_12mo':
@@ -78,6 +87,39 @@ function getSortKey(p: PortfolioProperty, field: SortField): number | string {
 function formatUnitsSummary(p: PortfolioProperty): string {
   const total = p.units_total ?? 0
   return total > 0 ? String(total) : '—'
+}
+
+function formatLatestDate(iso: string | null): { short: string; full: string } | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const now = Date.now()
+  const ageMs = now - d.getTime()
+  const ageDays = Math.floor(ageMs / 86400000)
+  const ageHours = Math.floor(ageMs / 3600000)
+  const ageMin = Math.floor(ageMs / 60000)
+
+  let short: string
+  if (ageMs < 0) {
+    short = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } else if (ageMin < 60) {
+    short = `${Math.max(1, ageMin)}m ago`
+  } else if (ageHours < 24) {
+    short = `${ageHours}h ago`
+  } else if (ageDays < 7) {
+    short = `${ageDays}d ago`
+  } else {
+    short = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  const full = d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  return { short, full }
 }
 
 export default function PortfolioTable({ isAdmin = false }: Props) {
@@ -735,22 +777,45 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                     />
                   </th>
                 ) : null}
-                <th rowSpan={2} style={sortableHeaderStyle} onClick={() => handleHeaderClick('address')}>
-                  Address
+                <th
+                  rowSpan={2}
+                  style={{ width: 1, whiteSpace: 'nowrap', ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('address')}
+                >
+                  Name
                   <SortArrow field="address" />
+                </th>
+                <th
+                  rowSpan={2}
+                  style={{ width: 1, whiteSpace: 'nowrap', ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('community_area')}
+                >
+                  Neighborhood
+                  <SortArrow field="community_area" />
                 </th>
                 <th
                   className="r"
                   rowSpan={2}
-                  style={{ width: 100, ...sortableHeaderStyle }}
+                  style={{ width: 1, whiteSpace: 'nowrap', ...sortableHeaderStyle }}
                   onClick={() => handleHeaderClick('units_total')}
                 >
                   Units
                   <SortArrow field="units_total" />
                 </th>
                 <th
+                  rowSpan={2}
+                  aria-hidden
+                  style={{
+                    width: '100%',
+                    padding: 0,
+                    borderBottom: '2px solid #e5e1d6',
+                    fontSize: 0,
+                    lineHeight: 0,
+                  }}
+                />
+                <th
                   className="r dashboard-th-group"
-                  colSpan={3}
+                  colSpan={4}
                   style={{ borderBottom: '1px solid #e5e1d6' }}
                 >
                   Complaints
@@ -790,7 +855,15 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
               <tr>
                 <th
                   className="r dashboard-th-sub"
-                  style={{ width: 80, ...sortableHeaderStyle }}
+                  style={{ width: 95, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('latest_building_complaint_date')}
+                >
+                  Latest bldg
+                  <SortArrow field="latest_building_complaint_date" />
+                </th>
+                <th
+                  className="r dashboard-th-sub"
+                  style={{ width: 65, ...sortableHeaderStyle }}
                   onClick={() => handleHeaderClick('open_building_complaints')}
                 >
                   Open
@@ -798,7 +871,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 </th>
                 <th
                   className="r dashboard-th-sub"
-                  style={{ width: 95, ...sortableHeaderStyle }}
+                  style={{ width: 75, ...sortableHeaderStyle }}
                   onClick={() => handleHeaderClick('total_building_complaints_12mo')}
                 >
                   Building
@@ -806,7 +879,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 </th>
                 <th
                   className="r dashboard-th-sub"
-                  style={{ width: 90, ...sortableHeaderStyle }}
+                  style={{ width: 60, ...sortableHeaderStyle }}
                   onClick={() => handleHeaderClick('total_complaints_12mo')}
                 >
                   All
@@ -818,7 +891,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
               {paginated.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={isAdmin ? 11 : 10}
+                    colSpan={isAdmin ? 14 : 13}
                     style={{ padding: 36, textAlign: 'center', color: '#999', fontSize: 13 }}
                   >
                     No properties match these filters.
@@ -843,9 +916,11 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                           />
                         </td>
                       ) : null}
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap', paddingRight: 16 }}>
                         <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
-                        <span className="dashboard-addr-hood">{p.community_area || ''}</span>
+                      </td>
+                      <td style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap', paddingRight: 16 }}>
+                        {p.community_area || <span className="zero">—</span>}
                       </td>
                       <td
                         className="r"
@@ -853,9 +928,32 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                           fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                           fontSize: 12,
                           color: '#444',
+                          whiteSpace: 'nowrap',
+                          paddingRight: 24,
                         }}
                       >
                         {p.units_total > 0 ? formatUnitsSummary(p) : <span className="zero">—</span>}
+                      </td>
+                      <td aria-hidden style={{ padding: 0, borderBottom: '1px solid #eceae4' }} />
+                      <td className="r">
+                        {(() => {
+                          const ld = formatLatestDate(p.latest_building_complaint_date)
+                          if (!ld) return <span className="zero">—</span>
+                          return (
+                            <span
+                              title={ld.full}
+                              style={{
+                                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                                fontSize: 11,
+                                color: '#444',
+                                cursor: 'help',
+                                borderBottom: '1px dotted #c4c0b4',
+                              }}
+                            >
+                              {ld.short}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="r">
                         {p.open_building_complaints == null ? (

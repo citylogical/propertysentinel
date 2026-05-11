@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { fetchParcelUniverse } from '@/lib/supabase-search'
 import { getPortfolioSaveBuildingSnapshot } from '@/lib/portfolio-save-building-snapshot'
+import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
 
 export const maxDuration = 60
 
@@ -37,7 +38,9 @@ export async function POST(request: Request) {
 
   let query = supabase
     .from('portfolio_properties')
-    .select('id, canonical_address, pins, property_class, year_built, implied_value, community_area')
+    .select(
+      'id, canonical_address, address_range, additional_streets, pins, property_class, year_built, implied_value, community_area, latest_building_complaint_date'
+    )
     .eq('user_id', targetUserId)
 
   if (propertyIds && propertyIds.length > 0) {
@@ -55,6 +58,7 @@ export async function POST(request: Request) {
     implied_value: number | null
     property_class: string | null
     community_area: string | null
+    latest_building_complaint_date: string | null
   }
   type Change = {
     id: string
@@ -74,11 +78,14 @@ export async function POST(request: Request) {
   for (const row of (rows ?? []) as Array<{
     id: string
     canonical_address: string
+    address_range: string | null
+    additional_streets: string[] | null
     pins: string[] | null
     property_class: string | null
     year_built: string | null
     implied_value: number | null
     community_area: string | null
+    latest_building_complaint_date: string | null
   }>) {
     processed++
     if (processed % 25 === 0) {
@@ -90,6 +97,7 @@ export async function POST(request: Request) {
       implied_value: row.implied_value,
       property_class: row.property_class,
       community_area: row.community_area,
+      latest_building_complaint_date: row.latest_building_complaint_date,
     }
 
     const pins = row.pins ?? []
@@ -119,11 +127,33 @@ export async function POST(request: Request) {
         communityArea,
       })
 
+      // Also recompute latest_building_complaint_date by running the same
+      // activity helper used by import + edit + nightly. We need address
+      // fan-out for this — address_range + additional_streets + pins drive
+      // the fetchPortfolioActivity query set.
+      let latestBuildingComplaint: string | null = null
+      try {
+        const activity = await fetchPortfolioActivity(
+          supabase,
+          row.canonical_address,
+          row.address_range,
+          row.additional_streets,
+          pins
+        )
+        latestBuildingComplaint = activity.stats.latest_building_complaint_date ?? null
+      } catch (e) {
+        console.error(
+          `[rederive] activity refresh failed for ${row.canonical_address}:`,
+          e instanceof Error ? e.message : String(e)
+        )
+      }
+
       const after: FieldSet = {
         year_built: snapshot.yearBuilt,
         implied_value: snapshot.impliedValue,
         property_class: snapshot.propertyClass,
         community_area: snapshot.communityArea,
+        latest_building_complaint_date: latestBuildingComplaint,
       }
 
       const diff: string[] = []
@@ -131,6 +161,8 @@ export async function POST(request: Request) {
       if (before.implied_value !== after.implied_value) diff.push('implied_value')
       if (before.property_class !== after.property_class) diff.push('property_class')
       if (before.community_area !== after.community_area) diff.push('community_area')
+      if (before.latest_building_complaint_date !== after.latest_building_complaint_date)
+        diff.push('latest_building_complaint_date')
 
       changes.push({
         id: row.id,
@@ -148,6 +180,7 @@ export async function POST(request: Request) {
             implied_value: after.implied_value,
             property_class: after.property_class,
             community_area: after.community_area,
+            latest_building_complaint_date: after.latest_building_complaint_date,
             updated_at: new Date().toISOString(),
           })
           .eq('id', row.id)
@@ -174,6 +207,7 @@ export async function POST(request: Request) {
     implied_value: 0,
     property_class: 0,
     community_area: 0,
+    latest_building_complaint_date: 0,
   }
   for (const c of changedRows) {
     for (const f of c.diff) fieldFlipCounts[f] = (fieldFlipCounts[f] ?? 0) + 1

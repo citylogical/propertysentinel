@@ -49,6 +49,7 @@ export type PortfolioProperty = {
   total_complaints_12mo: number
   open_building_complaints: number | null
   total_building_complaints_12mo: number | null
+  latest_building_complaint_date: string | null
   total_violations_12mo: number
   total_permits: number
   shvr_count: number

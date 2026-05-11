@@ -101,6 +101,7 @@ export interface PortfolioActivityStats {
   total_complaints_12mo: number
   open_building_complaints: number
   total_building_complaints_12mo: number
+  latest_building_complaint_date: string | null
   open_violations: number
   total_violations_12mo: number
   total_permits_12mo: number
@@ -357,6 +358,17 @@ export async function fetchPortfolioActivity(
   const recent_violations = sortByIsoDateDesc(allViolations12, 'violation_date').slice(0, 50)
   const recent_permits = sortByIsoDateDesc(allPermits, 'issue_date').slice(0, 50)
 
+  // Latest building complaint timestamp — for the dashboard "Latest bldg" column.
+  // Uses the same DEFAULT_VISIBLE_CODES–filtered set as open/total building complaint counts.
+  let latest_building_complaint_date: string | null = null
+  for (const c of allComplaints) {
+    const dateStr = (c as { created_date?: string | null }).created_date
+    if (!dateStr) continue
+    if (latest_building_complaint_date == null || dateStr > latest_building_complaint_date) {
+      latest_building_complaint_date = dateStr
+    }
+  }
+
   return {
     recent_complaints,
     recent_violations,
@@ -366,6 +378,7 @@ export async function fetchPortfolioActivity(
       total_complaints_12mo: allComplaintsUnfiltered.length,
       open_building_complaints: openBuildingComplaints,
       total_building_complaints_12mo: totalBuildingComplaints12mo,
+      latest_building_complaint_date,
       open_violations: totalOpenViolations,
       total_violations_12mo: allViolations12.length,
       total_permits_12mo: allPermits.length,
