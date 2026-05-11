@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import NearbyListingsModal from '@/components/NearbyListingsModal'
 import AuditList from './AuditList'
 import CreateAuditModal from './CreateAuditModal'
@@ -12,12 +20,70 @@ type Props = {
   isAdmin?: boolean
 }
 
+type SortField =
+  | 'address'
+  | 'units_total'
+  | 'open_building_complaints'
+  | 'total_building_complaints_12mo'
+  | 'total_complaints_12mo'
+  | 'total_violations_12mo'
+  | 'total_permits'
+  | 'nearby_listings'
+
+type SortDir = 'asc' | 'desc'
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100]
+
+function defaultSmartSort(a: PortfolioProperty, b: PortfolioProperty): number {
+  const ao = a.open_building_complaints ?? 0
+  const bo = b.open_building_complaints ?? 0
+  if (bo !== ao) return bo - ao
+  const ab = a.total_building_complaints_12mo ?? a.total_complaints_12mo ?? a.open_complaints ?? 0
+  const bb = b.total_building_complaints_12mo ?? b.total_complaints_12mo ?? b.open_complaints ?? 0
+  if (bb !== ab) return bb - ab
+  const av = a.total_violations_12mo ?? 0
+  const bv = b.total_violations_12mo ?? 0
+  if (bv !== av) return bv - av
+  const ap = a.total_permits ?? 0
+  const bp = b.total_permits ?? 0
+  if (bp !== ap) return bp - ap
+  const al = a.nearby_listings ?? 0
+  const bl = b.nearby_listings ?? 0
+  return bl - al
+}
+
+function getSortKey(p: PortfolioProperty, field: SortField): number | string {
+  switch (field) {
+    case 'address':
+      return (p.display_name || p.address_range || p.canonical_address || '').toLowerCase()
+    case 'units_total':
+      return p.units_total ?? 0
+    case 'open_building_complaints':
+      return p.open_building_complaints ?? -1 // null below 0
+    case 'total_building_complaints_12mo':
+      return p.total_building_complaints_12mo ?? -1
+    case 'total_complaints_12mo':
+      return p.total_complaints_12mo ?? 0
+    case 'total_violations_12mo':
+      return p.total_violations_12mo ?? 0
+    case 'total_permits':
+      return p.total_permits ?? 0
+    case 'nearby_listings':
+      return p.nearby_listings ?? 0
+    default:
+      return 0
+  }
+}
+
 function formatUnitsSummary(p: PortfolioProperty): string {
   const total = p.units_total ?? 0
   return total > 0 ? String(total) : '—'
 }
 
 export default function PortfolioTable({ isAdmin = false }: Props) {
+  const router = useRouter()
+  const urlParams = useSearchParams()
+
   const [properties, setProperties] = useState<PortfolioProperty[]>([])
   const [ownerName, setOwnerName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,6 +101,35 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     status: 'pending' | 'running' | 'done' | 'idle' | 'error'
     message?: string
   } | null>(null)
+
+  // ─── URL-synced state ─────────────────────────────────────────────────
+  const searchQuery = urlParams.get('search') ?? ''
+  const sortField = (urlParams.get('sort_field') as SortField | null) ?? null
+  const sortDir = (urlParams.get('sort_dir') as SortDir | null) ?? 'desc'
+  const filterTag = urlParams.get('filter_tag') ?? ''
+  const filterStatus = urlParams.get('filter_status') ?? ''
+  const pageSizeRaw = parseInt(urlParams.get('page_size') ?? '25', 10)
+  const pageSize = PAGE_SIZE_OPTIONS.includes(pageSizeRaw) ? pageSizeRaw : 25
+  const pageRaw = parseInt(urlParams.get('page') ?? '1', 10)
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
+
+  const setUrlParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const next = new URLSearchParams(urlParams.toString())
+      for (const [key, val] of Object.entries(updates)) {
+        if (val == null || val === '') {
+          next.delete(key)
+        } else {
+          next.set(key, val)
+        }
+      }
+      router.replace(`?${next.toString()}`, { scroll: false })
+    },
+    [router, urlParams]
+  )
+
+  // Reset page to 1 whenever filters/search/sort change. We do this by
+  // intercepting the setters below and clearing `page` at the same time.
 
   const loadPortfolioList = useCallback(async () => {
     const listData = await fetch('/api/dashboard/list').then((r) => r.json())
@@ -89,11 +184,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
         }
         if (cancelled) return
         if (data.error) {
-          setBackfillJob((prev) =>
-            prev
-              ? { ...prev, status: 'error', message: data.error }
-              : prev
-          )
+          setBackfillJob((prev) => (prev ? { ...prev, status: 'error', message: data.error } : prev))
           return
         }
         if (data.status === 'done') {
@@ -104,7 +195,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
             failed: data.failed,
             status: 'done',
           })
-          // Refresh portfolio so the detail panel re-fetches and shows new paraphrases
           await loadPortfolioList()
           globalThis.setTimeout(() => {
             if (!cancelled) setBackfillJob(null)
@@ -167,25 +257,109 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     }
   }, [listingsProperty])
 
-  const filtered = [...properties].sort((a, b) => {
-    // Sort priority: open building complaints (actionable), then total building, then violations
-    const ao = a.open_building_complaints ?? 0
-    const bo = b.open_building_complaints ?? 0
-    if (bo !== ao) return bo - ao
-    const ab = a.total_building_complaints_12mo ?? a.total_complaints_12mo ?? a.open_complaints ?? 0
-    const bb = b.total_building_complaints_12mo ?? b.total_complaints_12mo ?? b.open_complaints ?? 0
-    if (bb !== ab) return bb - ab
-    const av = a.total_violations_12mo ?? 0
-    const bv = b.total_violations_12mo ?? 0
-    if (bv !== av) return bv - av
-    const ap = a.total_permits ?? 0
-    const bp = b.total_permits ?? 0
-    if (bp !== ap) return bp - ap
-    const al = a.nearby_listings ?? 0
-    const bl = b.nearby_listings ?? 0
-    return bl - al
-  })
+  // ─── Discovery for filter dropdowns ───────────────────────────────────
+  const [tagOptions, setTagOptions] = useState<{ name: string; count: number }[]>([])
+  const [statusOptions, setStatusOptions] = useState<{ name: string; count: number }[]>([])
 
+  useEffect(() => {
+    fetch('/api/dashboard/units/tags')
+      .then((r) => r.json())
+      .then(
+        (d: {
+          tags?: { name: string; count: number }[]
+          statuses?: { name: string; count: number }[]
+        }) => {
+          setTagOptions(d.tags ?? [])
+          setStatusOptions(d.statuses ?? [])
+        }
+      )
+      .catch(() => {
+        /* dropdowns empty, no biggie */
+      })
+  }, [properties])
+
+  // ─── Filter + sort + paginate ─────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return properties.filter((p) => {
+      if (q) {
+        const hay = `${p.display_name ?? ''} ${p.canonical_address ?? ''} ${p.address_range ?? ''} ${p.community_area ?? ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      if (filterTag) {
+        const tags = p.units_tag_breakdown ?? {}
+        if (!Object.keys(tags).includes(filterTag)) return false
+      }
+      if (filterStatus) {
+        const statuses = p.units_status_breakdown ?? {}
+        if (!Object.keys(statuses).includes(filterStatus)) return false
+      }
+      return true
+    })
+  }, [properties, searchQuery, filterTag, filterStatus])
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered]
+    if (!sortField) {
+      arr.sort(defaultSmartSort)
+      return arr
+    }
+    arr.sort((a, b) => {
+      const ka = getSortKey(a, sortField)
+      const kb = getSortKey(b, sortField)
+      let cmp = 0
+      if (typeof ka === 'number' && typeof kb === 'number') cmp = ka - kb
+      else cmp = String(ka).localeCompare(String(kb))
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [filtered, sortField, sortDir])
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pageStart = (safePage - 1) * pageSize
+  const paginated = sorted.slice(pageStart, pageStart + pageSize)
+
+  // Auto-correct invalid page in URL on snap
+  useEffect(() => {
+    if (page !== safePage) {
+      setUrlParams({ page: String(safePage) })
+    }
+  }, [page, safePage, setUrlParams])
+
+  // ─── Toolbar action handlers (all reset page=1) ───────────────────────
+  const handleSearchChange = (val: string) => {
+    setUrlParams({ search: val || null, page: '1' })
+  }
+
+  const handleFilterTagChange = (val: string) => {
+    setUrlParams({ filter_tag: val || null, page: '1' })
+  }
+
+  const handleFilterStatusChange = (val: string) => {
+    setUrlParams({ filter_status: val || null, page: '1' })
+  }
+
+  const handlePageSizeChange = (val: number) => {
+    setUrlParams({ page_size: String(val), page: '1' })
+  }
+
+  const handleHeaderClick = (field: SortField) => {
+    // toggle asc → desc → off
+    if (sortField !== field) {
+      setUrlParams({ sort_field: field, sort_dir: 'desc', page: '1' })
+    } else if (sortDir === 'desc') {
+      setUrlParams({ sort_dir: 'asc', page: '1' })
+    } else {
+      setUrlParams({ sort_field: null, sort_dir: null, page: '1' })
+    }
+  }
+
+  const handlePageChange = (newPage: number) => {
+    setUrlParams({ page: String(Math.max(1, Math.min(totalPages, newPage))) })
+  }
+
+  // ─── Selection ────────────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -196,10 +370,20 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set())
+    if (paginated.every((p) => selectedIds.has(p.id)) && paginated.length > 0) {
+      // Deselect all visible
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const p of paginated) next.delete(p.id)
+        return next
+      })
     } else {
-      setSelectedIds(new Set(filtered.map((p) => p.id)))
+      // Select all visible
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const p of paginated) next.add(p.id)
+        return next
+      })
     }
   }
 
@@ -310,6 +494,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     }
   }
 
+  // ─── Render ───────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -338,9 +523,26 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     return <DashboardEmptyState kind="no_properties" context="portfolio" />
   }
 
+  const SortArrow = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <span style={{ marginLeft: 4, color: '#bbb', fontSize: 9 }}>▾</span>
+    }
+    return (
+      <span style={{ marginLeft: 4, color: '#1e3a5f', fontSize: 9 }}>
+        {sortDir === 'desc' ? '▼' : '▲'}
+      </span>
+    )
+  }
+
+  const sortableHeaderStyle: CSSProperties = {
+    cursor: 'pointer',
+    userSelect: 'none',
+  }
+
   return (
     <>
       <div style={{ padding: '20px 28px' }}>
+        {/* Existing banner row */}
         <div className="dashboard-banner-row">
           <div className="dashboard-banner dashboard-banner-monitor">
             <span>
@@ -369,15 +571,89 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
               type="button"
               className="dashboard-banner-add-btn"
               onClick={() => {
-                window.dispatchEvent(
-                  new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
-                )
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))
               }}
             >
               + Add property
             </button>
           </div>
         </div>
+
+        {/* Wave 4 toolbar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            margin: '16px 0 12px',
+            fontSize: 13,
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Search address or property name…"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            style={{
+              flex: '1 1 280px',
+              maxWidth: 380,
+              padding: '7px 10px',
+              border: '1px solid #d9d3c2',
+              borderRadius: 4,
+              fontSize: 13,
+              fontFamily: 'inherit',
+              background: '#fff',
+            }}
+          />
+          <select
+            value={filterTag}
+            onChange={(e) => handleFilterTagChange(e.target.value)}
+            style={toolbarSelect}
+            aria-label="Filter by tag"
+          >
+            <option value="">All tags</option>
+            {tagOptions.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.name} ({t.count})
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => handleFilterStatusChange(e.target.value)}
+            style={toolbarSelect}
+            aria-label="Filter by status"
+          >
+            <option value="">All statuses</option>
+            {statusOptions.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name} ({s.count})
+              </option>
+            ))}
+          </select>
+
+          <div style={{ flex: 1 }} />
+
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
+            style={toolbarSelect}
+            aria-label="Page size"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} / page
+              </option>
+            ))}
+          </select>
+
+          <span style={{ color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
+            {sorted.length === properties.length
+              ? `${properties.length} properties`
+              : `${sorted.length} of ${properties.length}`}
+          </span>
+        </div>
+
         {isAdmin && selectedIds.size > 0 ? (
           <div className="dashboard-sel-bar">
             <div className="dashboard-sel-text">
@@ -387,14 +663,10 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 </span>
               ) : backfillJob && backfillJob.status === 'done' ? (
                 <span style={{ color: '#166534' }}>
-                  {backfillJob.message
-                    ? backfillJob.message
-                    : `Enriched ${backfillJob.processed} complaints (${backfillJob.failed} skipped)`}
+                  {backfillJob.message ? backfillJob.message : `Enriched ${backfillJob.processed} complaints (${backfillJob.failed} skipped)`}
                 </span>
               ) : backfillJob && backfillJob.status === 'error' ? (
-                <span style={{ color: 'var(--red, #c8102e)' }}>
-                  Backfill error: {backfillJob.message ?? 'unknown'}
-                </span>
+                <span style={{ color: 'var(--red, #c8102e)' }}>Backfill error: {backfillJob.message ?? 'unknown'}</span>
               ) : (
                 <span>{selectedIds.size} selected</span>
               )}
@@ -406,9 +678,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 onClick={() => void handleStartBackfill()}
                 disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
               >
-                {backfillJob && backfillJob.status === 'running'
-                  ? 'Enriching…'
-                  : 'Enrich 311 history'}
+                {backfillJob && backfillJob.status === 'running' ? 'Enriching…' : 'Enrich 311 history'}
               </button>
               <button
                 type="button"
@@ -437,6 +707,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
             </div>
           </div>
         ) : null}
+
         {selectedProperty ? (
           <PortfolioDetail
             property={selectedProperty}
@@ -449,6 +720,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
             }}
           />
         ) : null}
+
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">
             <thead>
@@ -457,15 +729,24 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                   <th className="dashboard-th-ck" rowSpan={2}>
                     <input
                       type="checkbox"
-                      checked={selectedIds.size === filtered.length && filtered.length > 0}
+                      checked={paginated.length > 0 && paginated.every((p) => selectedIds.has(p.id))}
                       onChange={toggleSelectAll}
-                      aria-label="Select all properties"
+                      aria-label="Select all on this page"
                     />
                   </th>
                 ) : null}
-                <th rowSpan={2}>Address</th>
-                <th className="r" rowSpan={2} style={{ width: 100 }}>
+                <th rowSpan={2} style={sortableHeaderStyle} onClick={() => handleHeaderClick('address')}>
+                  Address
+                  <SortArrow field="address" />
+                </th>
+                <th
+                  className="r"
+                  rowSpan={2}
+                  style={{ width: 100, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('units_total')}
+                >
                   Units
+                  <SortArrow field="units_total" />
                 </th>
                 <th
                   className="r dashboard-th-group"
@@ -474,14 +755,32 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 >
                   Complaints
                 </th>
-                <th className="r" rowSpan={2} style={{ width: 95 }}>
+                <th
+                  className="r"
+                  rowSpan={2}
+                  style={{ width: 95, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('total_violations_12mo')}
+                >
                   Violations
+                  <SortArrow field="total_violations_12mo" />
                 </th>
-                <th className="r" rowSpan={2} style={{ width: 80 }}>
+                <th
+                  className="r"
+                  rowSpan={2}
+                  style={{ width: 80, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('total_permits')}
+                >
                   Permits
+                  <SortArrow field="total_permits" />
                 </th>
-                <th className="r" rowSpan={2} style={{ width: 100 }}>
+                <th
+                  className="r"
+                  rowSpan={2}
+                  style={{ width: 100, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('nearby_listings')}
+                >
                   STR Listings
+                  <SortArrow field="nearby_listings" />
                 </th>
                 <th rowSpan={2} style={{ width: 130 }}>
                   Flags
@@ -489,123 +788,209 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 <th className="dashboard-th-actions" rowSpan={2} aria-label="Remove" />
               </tr>
               <tr>
-                <th className="r dashboard-th-sub" style={{ width: 80 }}>
+                <th
+                  className="r dashboard-th-sub"
+                  style={{ width: 80, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('open_building_complaints')}
+                >
                   Open
+                  <SortArrow field="open_building_complaints" />
                 </th>
-                <th className="r dashboard-th-sub" style={{ width: 95 }}>
+                <th
+                  className="r dashboard-th-sub"
+                  style={{ width: 95, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('total_building_complaints_12mo')}
+                >
                   Building
+                  <SortArrow field="total_building_complaints_12mo" />
                 </th>
-                <th className="r dashboard-th-sub" style={{ width: 90 }}>
+                <th
+                  className="r dashboard-th-sub"
+                  style={{ width: 90, ...sortableHeaderStyle }}
+                  onClick={() => handleHeaderClick('total_complaints_12mo')}
+                >
                   All
+                  <SortArrow field="total_complaints_12mo" />
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => {
-                const flag = getFlag(p)
-                return (
-                  <tr
-                    key={p.id}
-                    className={`${selectedId === p.id ? 'selected' : ''} ${selectedIds.has(p.id) ? 'checked' : ''}`}
-                    onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+              {paginated.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={isAdmin ? 11 : 10}
+                    style={{ padding: 36, textAlign: 'center', color: '#999', fontSize: 13 }}
                   >
-                    {isAdmin ? (
-                      <td className="dashboard-td-ck" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(p.id)}
-                          onChange={() => toggleSelect(p.id)}
-                          aria-label={`Select ${p.display_name || p.canonical_address}`}
-                        />
+                    No properties match these filters.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((p) => {
+                  const flag = getFlag(p)
+                  return (
+                    <tr
+                      key={p.id}
+                      className={`${selectedId === p.id ? 'selected' : ''} ${selectedIds.has(p.id) ? 'checked' : ''}`}
+                      onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                    >
+                      {isAdmin ? (
+                        <td className="dashboard-td-ck" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleSelect(p.id)}
+                            aria-label={`Select ${p.display_name || p.canonical_address}`}
+                          />
+                        </td>
+                      ) : null}
+                      <td>
+                        <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
+                        <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                       </td>
-                    ) : null}
-                    <td>
-                      <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
-                      <span className="dashboard-addr-hood">{p.community_area || ''}</span>
-                    </td>
-                    <td className="r" style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 12, color: '#444' }}>
-                      {p.units_total > 0 ? formatUnitsSummary(p) : <span className="zero">—</span>}
-                    </td>
-                    <td className="r">
-                      {p.open_building_complaints == null ? (
-                        <span className="zero" title="Refresh property to populate">
-                          —
-                        </span>
-                      ) : p.open_building_complaints > 0 ? (
-                        <span style={{ color: '#b8302a', fontWeight: 600 }}>{p.open_building_complaints}</span>
-                      ) : (
-                        <span className="zero">0</span>
-                      )}
-                    </td>
-                    <td className="r">
-                      {p.total_building_complaints_12mo == null ? (
-                        <span className="zero" title="Refresh property to populate">
-                          —
-                        </span>
-                      ) : p.total_building_complaints_12mo > 0 ? (
-                        p.total_building_complaints_12mo
-                      ) : (
-                        <span className="zero">0</span>
-                      )}
-                    </td>
-                    <td className="r">
-                      {(p.total_complaints_12mo ?? 0) > 0 ? (
-                        p.total_complaints_12mo
-                      ) : (
-                        <span className="zero">0</span>
-                      )}
-                    </td>
-                    <td className="r">
-                      {(p.total_violations_12mo ?? 0) > 0 ? p.total_violations_12mo ?? 0 : <span className="zero">0</span>}
-                    </td>
-                    <td className="r">
-                      {p.total_permits > 0 ? p.total_permits : <span className="zero">0</span>}
-                    </td>
-                    <td className="r">
-                      {(p.nearby_listings ?? 0) > 0 ? (
+                      <td
+                        className="r"
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 12,
+                          color: '#444',
+                        }}
+                      >
+                        {p.units_total > 0 ? formatUnitsSummary(p) : <span className="zero">—</span>}
+                      </td>
+                      <td className="r">
+                        {p.open_building_complaints == null ? (
+                          <span className="zero" title="Refresh property to populate">
+                            —
+                          </span>
+                        ) : p.open_building_complaints > 0 ? (
+                          <span style={{ color: '#b8302a', fontWeight: 600 }}>{p.open_building_complaints}</span>
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {p.total_building_complaints_12mo == null ? (
+                          <span className="zero" title="Refresh property to populate">
+                            —
+                          </span>
+                        ) : p.total_building_complaints_12mo > 0 ? (
+                          p.total_building_complaints_12mo
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {(p.total_complaints_12mo ?? 0) > 0 ? p.total_complaints_12mo : <span className="zero">0</span>}
+                      </td>
+                      <td className="r">
+                        {(p.total_violations_12mo ?? 0) > 0 ? (
+                          p.total_violations_12mo ?? 0
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {p.total_permits > 0 ? p.total_permits : <span className="zero">0</span>}
+                      </td>
+                      <td className="r">
+                        {(p.nearby_listings ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            className="dashboard-val-link"
+                            style={{ color: '#b87514', fontWeight: 500 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setListingsProperty(p)
+                            }}
+                          >
+                            {p.nearby_listings}
+                          </button>
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td>
+                        {flag ? (
+                          <span className={`dashboard-flag ${flag.color}`}>
+                            <span className={`dashboard-flag-dot ${flag.color}`} />
+                            {flag.label}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="dashboard-td-actions">
                         <button
                           type="button"
-                          className="dashboard-val-link"
-                          style={{ color: '#b87514', fontWeight: 500 }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setListingsProperty(p)
-                          }}
+                          className="dashboard-delete-btn"
+                          title="Remove from portfolio"
+                          aria-label="Remove from portfolio"
+                          onClick={(e) => handleDelete(e, p)}
                         >
-                          {p.nearby_listings}
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
                         </button>
-                      ) : (
-                        <span className="zero">0</span>
-                      )}
-                    </td>
-                    <td>
-                      {flag ? (
-                        <span className={`dashboard-flag ${flag.color}`}>
-                          <span className={`dashboard-flag-dot ${flag.color}`} />
-                          {flag.label}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="dashboard-td-actions">
-                      <button
-                        type="button"
-                        className="dashboard-delete-btn"
-                        title="Remove from portfolio"
-                        aria-label="Remove from portfolio"
-                        onClick={(e) => handleDelete(e, p)}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              padding: '16px 0',
+              fontSize: 13,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => handlePageChange(safePage - 1)}
+              disabled={safePage <= 1}
+              style={{
+                ...paginationBtn,
+                opacity: safePage <= 1 ? 0.4 : 1,
+                cursor: safePage <= 1 ? 'default' : 'pointer',
+              }}
+            >
+              ‹ Prev
+            </button>
+            <span style={{ color: '#666', fontFamily: 'var(--mono)', fontSize: 12 }}>
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => handlePageChange(safePage + 1)}
+              disabled={safePage >= totalPages}
+              style={{
+                ...paginationBtn,
+                opacity: safePage >= totalPages ? 0.4 : 1,
+                cursor: safePage >= totalPages ? 'default' : 'pointer',
+              }}
+            >
+              Next ›
+            </button>
+          </div>
+        ) : null}
+
         {isAdmin ? <AuditList /> : null}
       </div>
       {showAuditModal ? (
@@ -632,4 +1017,26 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
       ) : null}
     </>
   )
+}
+
+const toolbarSelect: CSSProperties = {
+  padding: '7px 8px',
+  border: '1px solid #d9d3c2',
+  borderRadius: 4,
+  fontSize: 12,
+  fontFamily: 'inherit',
+  background: '#fff',
+  color: '#1a1a1a',
+  cursor: 'pointer',
+  outline: 'none',
+}
+
+const paginationBtn: CSSProperties = {
+  padding: '6px 14px',
+  border: '1px solid #d9d3c2',
+  borderRadius: 4,
+  background: '#fff',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  color: '#1a1a1a',
 }
