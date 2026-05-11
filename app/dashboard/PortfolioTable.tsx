@@ -579,6 +579,73 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
           </div>
         </div>
 
+        {isAdmin && selectedIds.size > 0 ? (
+          <div className="dashboard-sel-bar">
+            <div className="dashboard-sel-text">
+              {backfillJob && backfillJob.status === 'running' ? (
+                <span>
+                  Enriching {backfillJob.processed} / {backfillJob.total}…
+                </span>
+              ) : backfillJob && backfillJob.status === 'done' ? (
+                <span style={{ color: '#166534' }}>
+                  {backfillJob.message ? backfillJob.message : `Enriched ${backfillJob.processed} complaints (${backfillJob.failed} skipped)`}
+                </span>
+              ) : backfillJob && backfillJob.status === 'error' ? (
+                <span style={{ color: 'var(--red, #c8102e)' }}>Backfill error: {backfillJob.message ?? 'unknown'}</span>
+              ) : (
+                <span>{selectedIds.size} selected</span>
+              )}
+            </div>
+            <div className="dashboard-sel-btns">
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-backfill"
+                onClick={() => void handleStartBackfill()}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                {backfillJob && backfillJob.status === 'running' ? 'Enriching…' : 'Enrich 311 history'}
+              </button>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-audit"
+                onClick={() => setShowAuditModal(true)}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                Create audit
+              </button>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-remove"
+                onClick={() => void handleRemoveSelected()}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                Remove properties
+              </button>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-unselect"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                Unselect
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedProperty ? (
+          <PortfolioDetail
+            property={selectedProperty}
+            onClose={() => setSelectedId(null)}
+            showItemDetails={true}
+            isAdmin={isAdmin}
+            ownerName={ownerName}
+            onPropertyUpdated={() => {
+              void loadPortfolioList()
+            }}
+          />
+        ) : null}
+
         {/* Wave 4 toolbar */}
         <div
           style={{
@@ -653,73 +720,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
               : `${sorted.length} of ${properties.length}`}
           </span>
         </div>
-
-        {isAdmin && selectedIds.size > 0 ? (
-          <div className="dashboard-sel-bar">
-            <div className="dashboard-sel-text">
-              {backfillJob && backfillJob.status === 'running' ? (
-                <span>
-                  Enriching {backfillJob.processed} / {backfillJob.total}…
-                </span>
-              ) : backfillJob && backfillJob.status === 'done' ? (
-                <span style={{ color: '#166534' }}>
-                  {backfillJob.message ? backfillJob.message : `Enriched ${backfillJob.processed} complaints (${backfillJob.failed} skipped)`}
-                </span>
-              ) : backfillJob && backfillJob.status === 'error' ? (
-                <span style={{ color: 'var(--red, #c8102e)' }}>Backfill error: {backfillJob.message ?? 'unknown'}</span>
-              ) : (
-                <span>{selectedIds.size} selected</span>
-              )}
-            </div>
-            <div className="dashboard-sel-btns">
-              <button
-                type="button"
-                className="dashboard-sel-btn dashboard-sel-btn-backfill"
-                onClick={() => void handleStartBackfill()}
-                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
-              >
-                {backfillJob && backfillJob.status === 'running' ? 'Enriching…' : 'Enrich 311 history'}
-              </button>
-              <button
-                type="button"
-                className="dashboard-sel-btn dashboard-sel-btn-audit"
-                onClick={() => setShowAuditModal(true)}
-                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
-              >
-                Create audit
-              </button>
-              <button
-                type="button"
-                className="dashboard-sel-btn dashboard-sel-btn-remove"
-                onClick={() => void handleRemoveSelected()}
-                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
-              >
-                Remove properties
-              </button>
-              <button
-                type="button"
-                className="dashboard-sel-btn dashboard-sel-btn-unselect"
-                onClick={() => setSelectedIds(new Set())}
-                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
-              >
-                Unselect
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {selectedProperty ? (
-          <PortfolioDetail
-            property={selectedProperty}
-            onClose={() => setSelectedId(null)}
-            showItemDetails={true}
-            isAdmin={isAdmin}
-            ownerName={ownerName}
-            onPropertyUpdated={() => {
-              void loadPortfolioList()
-            }}
-          />
-        ) : null}
 
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">

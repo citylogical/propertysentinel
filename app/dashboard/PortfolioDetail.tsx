@@ -76,6 +76,7 @@ export default function PortfolioDetail({
   const [showListings, setShowListings] = useState(false)
   const [showUnitsModal, setShowUnitsModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [activityRange, setActivityRange] = useState<'12mo' | '6mo' | '3mo' | '1mo' | '1wk'>('12mo')
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [selectedActivityKey, setSelectedActivityKey] = useState<string | null>(null)
 
@@ -85,7 +86,7 @@ export default function PortfolioDetail({
 
   useEffect(() => {
     setSelectedActivityKey(null)
-  }, [p.id])
+  }, [p.id, activityRange])
 
   useEffect(() => {
     setDetailLoading(true)
@@ -238,8 +239,16 @@ export default function PortfolioDetail({
         }),
       ]
         .filter((a) => a.date)
+        .filter((a) => {
+          if (activityRange === '12mo') return true
+          const days =
+            activityRange === '6mo' ? 182 : activityRange === '3mo' ? 91 : activityRange === '1mo' ? 30 : 7
+          const cutoff = Date.now() - days * 86400000
+          const t = new Date(a.date).getTime()
+          return Number.isFinite(t) && t >= cutoff
+        })
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 9)
+        .slice(0, activityRange === '12mo' ? 9 : 25)
 
   const activityKey = (a: ActivityItem) => `${a.type}:${a.id}`
   const effectiveSelectedKey =
@@ -442,13 +451,47 @@ export default function PortfolioDetail({
 
         <div className="dashboard-detail-right">
           <div className="dashboard-dr-top">
-            <div className="dashboard-dr-label">Recent activity</div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                marginBottom: 6,
+              }}
+            >
+              <div className="dashboard-dr-label" style={{ margin: 0 }}>
+                Recent activity
+              </div>
+              <select
+                value={activityRange}
+                onChange={(e) => setActivityRange(e.target.value as typeof activityRange)}
+                style={{
+                  padding: '4px 6px',
+                  fontSize: 11,
+                  border: '1px solid #d9d3c2',
+                  borderRadius: 3,
+                  background: '#fff',
+                  fontFamily: 'inherit',
+                  color: '#1a1a1a',
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+                aria-label="Activity date range"
+              >
+                <option value="12mo">Last 12 months</option>
+                <option value="6mo">Last 6 months</option>
+                <option value="3mo">Last 3 months</option>
+                <option value="1mo">Last 30 days</option>
+                <option value="1wk">Last 7 days</option>
+              </select>
+            </div>
             <div className="dashboard-tl">
               {detailLoading ? (
                 <div style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>Loading…</div>
               ) : activity.length === 0 ? (
                 <div style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>
-                  No activity in the last 12 months.
+                  No activity in the {activityRange === '12mo' ? 'last 12 months' : activityRange === '6mo' ? 'last 6 months' : activityRange === '3mo' ? 'last 3 months' : activityRange === '1mo' ? 'last 30 days' : 'last 7 days'}.
                 </div>
               ) : (
                 activity.map((a, i) => {

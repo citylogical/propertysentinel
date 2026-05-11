@@ -65,11 +65,12 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [hasProperties, setHasProperties] = useState<boolean | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [range, setRange] = useState<'12mo' | '6mo' | '3mo' | '1mo' | '1wk'>('1wk')
 
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`/api/dashboard/activity?limit=${PAGE_SIZE}&offset=${offset}`)
+    fetch(`/api/dashboard/activity?limit=${PAGE_SIZE}&offset=${offset}&range=${range}`)
       .then((r) => r.json())
       .then((data: { items?: ActivityRow[]; total?: number; error?: string; has_properties?: boolean }) => {
         if (data.error) {
@@ -93,7 +94,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
         setError(String(e))
       })
       .finally(() => setLoading(false))
-  }, [offset])
+  }, [offset, range])
 
   const selectedRow = rows.find((r) => rowKey(r) === selectedKey) ?? null
 
@@ -128,6 +129,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           alignItems: 'baseline',
           justifyContent: 'space-between',
           marginBottom: 12,
+          gap: 16,
         }}
       >
         <div>
@@ -143,14 +145,43 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
             Activity Feed
           </div>
           <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
-            {loading ? 'Loading…' : `${total} events · last 12 months`}
+            {loading
+              ? 'Loading…'
+              : `${total} events · ${range === '12mo' ? 'last 12 months' : range === '6mo' ? 'last 6 months' : range === '3mo' ? 'last 3 months' : range === '1mo' ? 'last 30 days' : 'last 7 days'}`}
           </div>
         </div>
-        {totalPages > 1 ? (
-          <div style={{ fontSize: 12, color: '#8a94a0' }}>
-            Page {currentPage} of {totalPages}
-          </div>
-        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <select
+            value={range}
+            onChange={(e) => {
+              setRange(e.target.value as typeof range)
+              setOffset(0)
+            }}
+            style={{
+              padding: '6px 10px',
+              fontSize: 12,
+              border: '1px solid #d9d3c2',
+              borderRadius: 4,
+              background: '#fff',
+              fontFamily: 'inherit',
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+            aria-label="Date range"
+          >
+            <option value="1wk">Last 7 days</option>
+            <option value="1mo">Last 30 days</option>
+            <option value="3mo">Last 3 months</option>
+            <option value="6mo">Last 6 months</option>
+            <option value="12mo">Last 12 months</option>
+          </select>
+          {totalPages > 1 ? (
+            <div style={{ fontSize: 12, color: '#8a94a0' }}>
+              Page {currentPage} of {totalPages}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
@@ -207,7 +238,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
             </div>
           ) : rows.length === 0 ? (
             <div style={{ padding: '40px 16px', textAlign: 'center', color: '#8a94a0', fontSize: 13 }}>
-              No activity in the last 12 months across your portfolio.
+              No activity in the {range === '12mo' ? 'last 12 months' : range === '6mo' ? 'last 6 months' : range === '3mo' ? 'last 3 months' : range === '1mo' ? 'last 30 days' : 'last 7 days'} across your portfolio.
             </div>
           ) : (
             rows.map((row, idx) => {

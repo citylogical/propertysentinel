@@ -85,6 +85,17 @@ export async function GET(request: Request) {
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '50', 10) || 50, 1), 200)
   const offset = Math.max(parseInt(searchParams.get('offset') ?? '0', 10) || 0, 0)
 
+  // range: 12mo | 6mo | 3mo | 1mo | 1wk; default 1wk so first paint stays snappy
+  const rangeParam = (searchParams.get('range') ?? '1wk') as '12mo' | '6mo' | '3mo' | '1mo' | '1wk'
+  const RANGE_DAYS: Record<typeof rangeParam, number> = {
+    '12mo': 365,
+    '6mo': 182,
+    '3mo': 91,
+    '1mo': 30,
+    '1wk': 7,
+  }
+  const rangeDays = RANGE_DAYS[rangeParam] ?? 7
+
   const supabase = getSupabaseAdmin()
 
   // Fetch user's portfolio. Each property expands into one or more
@@ -141,14 +152,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ items: [], total: 0, limit, offset, has_properties: true })
   }
 
-  const twelveMonthsAgo = new Date(Date.now() - 365 * 86400000).toISOString()
+  const rangeCutoff = new Date(Date.now() - rangeDays * 86400000).toISOString()
 
   // ── Complaints ─────────────────────────────────────────────────────────
   const { data: complaints, error: complaintsErr } = await supabase
     .from('complaints_311')
     .select(COMPLAINT_FIELDS)
     .in('address_normalized', allAddresses)
-    .gte('created_date', twelveMonthsAgo)
+    .gte('created_date', rangeCutoff)
     .order('created_date', { ascending: false })
     .limit(500)
 
@@ -161,7 +172,7 @@ export async function GET(request: Request) {
     .from('violations')
     .select(VIOLATION_FIELDS)
     .in('address_normalized', allAddresses)
-    .gte('violation_date', twelveMonthsAgo)
+    .gte('violation_date', rangeCutoff)
     .order('violation_date', { ascending: false })
     .limit(500)
 
@@ -174,7 +185,7 @@ export async function GET(request: Request) {
     .from('permits')
     .select(PERMIT_FIELDS)
     .in('address_normalized', allAddresses)
-    .gte('issue_date', twelveMonthsAgo)
+    .gte('issue_date', rangeCutoff)
     .order('issue_date', { ascending: false })
     .limit(500)
 
@@ -289,5 +300,5 @@ export async function GET(request: Request) {
   const total = merged.length
   const items = merged.slice(offset, offset + limit)
 
-  return NextResponse.json({ items, total, limit, offset, has_properties: true })
+  return NextResponse.json({ items, total, limit, offset, range: rangeParam, has_properties: true })
 }
