@@ -1,6 +1,7 @@
 'use client'
 
 import { useUser, useClerk } from '@clerk/nextjs'
+import { UserProfile } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 
 type SubscriberProfile = {
@@ -23,6 +24,7 @@ export default function ProfileContent() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSecurityModal, setShowSecurityModal] = useState(false)
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -34,27 +36,9 @@ export default function ProfileContent() {
   const [plan, setPlan] = useState('')
   const [role, setRole] = useState('')
   const [memberSince, setMemberSince] = useState('')
-  const [quota, setQuota] = useState<{
-    remaining: number | null
-    limit: number | null
-    unlimited: boolean
-    used: number
-  } | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
-
-    void fetch('/api/leads/quota')
-      .then((res) => res.json())
-      .then((data: { remaining: number | null; limit: number | null; unlimited: boolean; used: number }) => {
-        setQuota({
-          remaining: data.remaining,
-          limit: data.limit,
-          unlimited: data.unlimited,
-          used: data.used,
-        })
-      })
-      .catch(() => {})
 
     fetch('/api/profile/update')
       .then((res) => res.json())
@@ -128,159 +112,354 @@ export default function ProfileContent() {
     )
   }
 
+  const roleLabel =
+    role === 'admin' ? 'Administrator' : role === 'approved' ? 'Approved subscriber' : 'Free tier'
+
   return (
-    <div className="profile-content">
-      <div className="profile-content-card">
-        <div className="profile-content-card-header">Account information</div>
-        <div className="profile-content-card-body">
-          <div className="profile-content-field">
-            <label className="profile-content-field-label" htmlFor="profile-email">
-              Email
-            </label>
-            <input
+    <>
+      <div className="profile-content" style={{ maxWidth: 720, margin: '0 auto' }}>
+        {/* Account information card */}
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 8,
+            border: '1px solid #ece8dd',
+            overflow: 'hidden',
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#243f5e',
+              color: '#fff',
+              padding: '14px 22px',
+              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Account information
+          </div>
+          <div style={{ padding: '22px 22px 8px' }}>
+            <Field
               id="profile-email"
-              className="profile-content-field-input profile-content-field-readonly"
-              type="email"
+              label="Email"
               value={email}
               readOnly
+              hint="Use 'Manage sign-in & security' below to change"
             />
-          </div>
-          <div className="profile-content-field-row">
-            <div className="profile-content-field">
-              <label className="profile-content-field-label" htmlFor="profile-first">
-                First name
-              </label>
-              <input
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field
                 id="profile-first"
-                className="profile-content-field-input"
-                type="text"
+                label="First name"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={setFirstName}
                 placeholder="First name"
               />
-            </div>
-            <div className="profile-content-field">
-              <label className="profile-content-field-label" htmlFor="profile-last">
-                Last name
-              </label>
-              <input
+              <Field
                 id="profile-last"
-                className="profile-content-field-input"
-                type="text"
+                label="Last name"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={setLastName}
                 placeholder="Last name"
               />
             </div>
-          </div>
-          <div className="profile-content-field">
-            <label className="profile-content-field-label" htmlFor="profile-org">
-              Organization
-            </label>
-            <input
+
+            <Field
               id="profile-org"
-              className="profile-content-field-input"
-              type="text"
+              label="Organization"
               value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
+              onChange={setOrganization}
               placeholder="Company or property management firm"
             />
-          </div>
-          <div className="profile-content-field-row">
-            <div className="profile-content-field">
-              <label className="profile-content-field-label" htmlFor="profile-phone">
-                Phone
-              </label>
-              <input
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field
                 id="profile-phone"
-                className="profile-content-field-input"
-                type="tel"
+                label="Phone"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={setPhone}
                 placeholder="(312) 555-0100"
+                type="tel"
               />
-            </div>
-            <div className="profile-content-field">
-              <label className="profile-content-field-label" htmlFor="profile-zip">
-                Zip code
-              </label>
-              <input
+              <Field
                 id="profile-zip"
-                className="profile-content-field-input"
-                type="text"
+                label="Zip code"
                 value={zip}
-                onChange={(e) => setZip(e.target.value)}
+                onChange={setZip}
                 placeholder="60601"
                 maxLength={10}
               />
             </div>
           </div>
+          <div
+            style={{
+              padding: '14px 22px',
+              borderTop: '1px solid #f0ede5',
+              background: '#faf8f3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 12,
+            }}
+          >
+            {error ? (
+              <span style={{ color: '#b8302a', fontSize: 12 }}>{error}</span>
+            ) : null}
+            {saved ? (
+              <span style={{ color: '#166534', fontSize: 12, fontWeight: 500 }}>
+                Saved ✓
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                background: '#1e3a5f',
+                color: '#fff',
+                border: 'none',
+                padding: '8px 18px',
+                borderRadius: 4,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.6 : 1,
+                fontFamily: 'inherit',
+              }}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
         </div>
-        <div className="profile-content-card-footer">
-          {error && <span className="profile-content-error">{error}</span>}
-          {saved && <span className="profile-content-saved">Saved</span>}
-          <button type="button" className="profile-content-save-btn" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save changes'}
+
+        {/* Plan card — compact horizontal */}
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 8,
+            border: '1px solid #ece8dd',
+            overflow: 'hidden',
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#243f5e',
+              color: '#fff',
+              padding: '14px 22px',
+              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Plan
+          </div>
+          <div
+            style={{
+              padding: '20px 22px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 14,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.2 }}>
+                {plan || 'Free'}
+              </div>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{roleLabel}</div>
+            </div>
+            {memberSince ? (
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                    fontSize: 10,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: '#888',
+                  }}
+                >
+                  Member since
+                </div>
+                <div style={{ fontSize: 13, color: '#1a1a1a', marginTop: 2 }}>{memberSince}</div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Footer — security link + sign out */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 4px 24px',
+            fontSize: 13,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowSecurityModal(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#1e3a5f',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 13,
+            }}
+          >
+            Manage sign-in & security →
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut({ redirectUrl: '/' })}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#888',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 13,
+            }}
+          >
+            Sign out
           </button>
         </div>
       </div>
 
-      <div className="profile-content-card">
-        <div className="profile-content-card-header">Plan</div>
-        <div className="profile-content-card-body">
-          <div className="profile-content-plan-row">
-            <div>
-              <div className="profile-content-plan-name">{plan || 'Free'}</div>
-              <div className="profile-content-plan-sub">
-                {role === 'admin'
-                  ? 'Administrator'
-                  : role === 'approved'
-                    ? 'Approved subscriber'
-                    : 'Free tier'}
-              </div>
-            </div>
-          </div>
-          {quota && (
-            <div
+      {/* Clerk UserProfile modal */}
+      {showSecurityModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowSecurityModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 8,
+              maxWidth: 880,
+              width: '100%',
+              maxHeight: '88vh',
+              overflow: 'auto',
+              boxShadow: '0 30px 90px rgba(0,0,0,0.3)',
+              position: 'relative',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowSecurityModal(false)}
+              aria-label="Close"
               style={{
-                marginTop: 16,
-                padding: '12px 14px',
-                background: '#e8e4db',
-                border: '1px solid #d4cfc4',
-                borderRadius: 6,
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                background: 'transparent',
+                border: 'none',
+                fontSize: 24,
+                cursor: 'pointer',
+                color: '#666',
+                zIndex: 10,
+                padding: 4,
               }}
             >
-              <div
-                style={{
-                  fontFamily: "'DM Mono', monospace",
-                  fontSize: 9,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: '#6b7280',
-                  marginBottom: 4,
-                }}
-              >
-                Lead Unlocks
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f2744' }}>
-                {quota.unlimited
-                  ? 'Unlimited'
-                  : `${quota.remaining ?? 0} of ${quota.limit ?? 5} credits remaining`}
-              </div>
-              {!quota.unlimited && (
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                  {quota.used} used to date
-                </div>
-              )}
-            </div>
-          )}
-          {memberSince && <div className="profile-content-plan-meta">Member since {memberSince}</div>}
+              ×
+            </button>
+            <UserProfile
+              routing="hash"
+              appearance={{
+                elements: {
+                  rootBox: { width: '100%' },
+                  card: { boxShadow: 'none', border: 'none' },
+                },
+              }}
+            />
+          </div>
         </div>
-      </div>
+      ) : null}
+    </>
+  )
+}
 
-      <button type="button" className="profile-content-signout" onClick={() => signOut({ redirectUrl: '/' })}>
-        Sign out
-      </button>
+// ─────────────────────────────────────────────────────────────────────────
+// Field — labeled input subcomponent
+// ─────────────────────────────────────────────────────────────────────────
+
+type FieldProps = {
+  id: string
+  label: string
+  value: string
+  onChange?: (v: string) => void
+  placeholder?: string
+  readOnly?: boolean
+  hint?: string
+  type?: string
+  maxLength?: number
+}
+
+function Field({ id, label, value, onChange, placeholder, readOnly, hint, type = 'text', maxLength }: FieldProps) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label
+        htmlFor={id}
+        style={{
+          display: 'block',
+          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: '#666',
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        readOnly={readOnly}
+        maxLength={maxLength}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          fontSize: 13,
+          fontFamily: 'inherit',
+          border: '1px solid #d9d3c2',
+          borderRadius: 4,
+          background: readOnly ? '#f5f2eb' : '#fff',
+          color: readOnly ? '#666' : '#1a1a1a',
+          outline: 'none',
+        }}
+      />
+      {hint ? (
+        <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>{hint}</div>
+      ) : null}
     </div>
   )
 }

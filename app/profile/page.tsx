@@ -21,9 +21,21 @@ export default async function ProfilePage() {
     <div className="address-page">
       <div className="prop-page-shell">
         <div className="prop-main-content">
-          <div className="address-header">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="address-header-street">Account</div>
+          <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 24px 0' }}>
+            <h1
+              style={{
+                fontFamily: 'Merriweather, Georgia, serif',
+                fontSize: 24,
+                fontWeight: 600,
+                color: '#1a1a1a',
+                margin: 0,
+                lineHeight: 1.2,
+              }}
+            >
+              Account
+            </h1>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+              Manage your information and access
             </div>
           </div>
           <ProfileContent />

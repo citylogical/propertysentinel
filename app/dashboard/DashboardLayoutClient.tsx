@@ -71,7 +71,7 @@ export default function DashboardLayoutClient({
           <div className="dashboard-identity-left">
             <div className="dashboard-logo">PS</div>
             <div className="dashboard-identity-text">
-              <h1>Dashboard</h1>
+              <h1>{summaryData?.organization ? `${summaryData.organization} Dashboard` : 'Dashboard'}</h1>
               <div className="dashboard-identity-sub">
                 Last 12 months ·{' '}
                 {new Date().toLocaleDateString('en-US', {
