@@ -2,6 +2,7 @@ import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
+import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -26,6 +27,9 @@ const PERMIT_FIELDS =
   'permit_number, permit_type, permit_status, work_description, ' +
   'issue_date, reported_cost, total_fee, ' +
   'contact_1_name, contact_1_type, address, address_normalized'
+
+// Default-visible 311 SR codes — same set as lib/portfolio-stats.ts (open_building_complaints / total_building_complaints_12mo).
+const BUILDING_SR_CODES = Array.from(DEFAULT_VISIBLE_CODES)
 
 type ComplaintRow = Record<string, unknown> & {
   sr_number?: string | null
@@ -96,6 +100,12 @@ export async function GET(request: Request) {
   }
   const rangeDays = RANGE_DAYS[rangeParam] ?? 7
 
+  // category: which underlying tables to query
+  const categoryParam = (searchParams.get('category') ?? 'all') as 'all' | '311' | 'violation' | 'permit'
+  const buildingFilter = (searchParams.get('building_filter') ?? 'building') as 'all' | 'building' | 'other'
+  const statusFilter = (searchParams.get('status') ?? 'all') as 'all' | 'open' | 'closed'
+  const searchQuery = (searchParams.get('search') ?? '').trim()
+
   const supabase = getSupabaseAdmin()
 
   // Fetch user's portfolio. Each property expands into one or more
@@ -155,7 +165,7 @@ export async function GET(request: Request) {
   const rangeCutoff = new Date(Date.now() - rangeDays * 86400000).toISOString()
 
   // ── Complaints ─────────────────────────────────────────────────────────
-  const { data: complaints, error: complaintsErr } = await supabase
+  let complaintsQuery = supabase
     .from('complaints_311')
     .select(COMPLAINT_FIELDS)
     .in('address_normalized', allAddresses)
@@ -163,12 +173,35 @@ export async function GET(request: Request) {
     .order('created_date', { ascending: false })
     .limit(500)
 
+  if (categoryParam !== 'all' && categoryParam !== '311') {
+    complaintsQuery = complaintsQuery.eq('sr_short_code', '__NONE__')
+  }
+  if (buildingFilter === 'building') {
+    complaintsQuery = complaintsQuery.in('sr_short_code', BUILDING_SR_CODES)
+  } else if (buildingFilter === 'other') {
+    complaintsQuery = complaintsQuery.not(
+      'sr_short_code',
+      'in',
+      `(${BUILDING_SR_CODES.map((c) => `"${c}"`).join(',')})`
+    )
+  }
+  if (statusFilter === 'open') {
+    complaintsQuery = complaintsQuery.ilike('status', 'open')
+  } else if (statusFilter === 'closed') {
+    complaintsQuery = complaintsQuery.not('status', 'ilike', 'open')
+  }
+  if (searchQuery) {
+    complaintsQuery = complaintsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+  }
+
+  const { data: complaints, error: complaintsErr } = await complaintsQuery
+
   if (complaintsErr) {
     return NextResponse.json({ error: complaintsErr.message }, { status: 500 })
   }
 
   // ── Violations ─────────────────────────────────────────────────────────
-  const { data: violations, error: violationsErr } = await supabase
+  let violationsQuery = supabase
     .from('violations')
     .select(VIOLATION_FIELDS)
     .in('address_normalized', allAddresses)
@@ -176,18 +209,46 @@ export async function GET(request: Request) {
     .order('violation_date', { ascending: false })
     .limit(500)
 
+  if (categoryParam !== 'all' && categoryParam !== 'violation') {
+    violationsQuery = violationsQuery.eq('violation_id', '__NONE__')
+  }
+  if (statusFilter === 'open') {
+    violationsQuery = violationsQuery.or(
+      'violation_status.ilike.open,violation_status.ilike.failed,inspection_status.ilike.open,inspection_status.ilike.failed'
+    )
+  } else if (statusFilter === 'closed') {
+    violationsQuery = violationsQuery.not('violation_status', 'ilike', 'open').not('violation_status', 'ilike', 'failed')
+  }
+  if (searchQuery) {
+    violationsQuery = violationsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+  }
+
+  const { data: violations, error: violationsErr } = await violationsQuery
+
   if (violationsErr) {
     return NextResponse.json({ error: violationsErr.message }, { status: 500 })
   }
 
   // ── Permits ────────────────────────────────────────────────────────────
-  const { data: permits, error: permitsErr } = await supabase
+  let permitsQuery = supabase
     .from('permits')
     .select(PERMIT_FIELDS)
     .in('address_normalized', allAddresses)
     .gte('issue_date', rangeCutoff)
     .order('issue_date', { ascending: false })
     .limit(500)
+
+  if (categoryParam !== 'all' && categoryParam !== 'permit') {
+    permitsQuery = permitsQuery.eq('permit_number', '__NONE__')
+  }
+  if (statusFilter !== 'all') {
+    permitsQuery = permitsQuery.eq('permit_number', '__NONE__')
+  }
+  if (searchQuery) {
+    permitsQuery = permitsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+  }
+
+  const { data: permits, error: permitsErr } = await permitsQuery
 
   if (permitsErr) {
     return NextResponse.json({ error: permitsErr.message }, { status: 500 })
@@ -300,5 +361,16 @@ export async function GET(request: Request) {
   const total = merged.length
   const items = merged.slice(offset, offset + limit)
 
-  return NextResponse.json({ items, total, limit, offset, range: rangeParam, has_properties: true })
+  return NextResponse.json({
+    items,
+    total,
+    limit,
+    offset,
+    range: rangeParam,
+    category: categoryParam,
+    building_filter: buildingFilter,
+    status: statusFilter,
+    search: searchQuery || null,
+    has_properties: true,
+  })
 }

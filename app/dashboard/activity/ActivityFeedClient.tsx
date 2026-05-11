@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import ComplaintDetail, { type ComplaintDetailRecord } from '../details/ComplaintDetail'
 import ViolationDetail, { type ViolationDetailRecord } from '../details/ViolationDetail'
 import PermitDetail, { type PermitDetailRecord } from '../details/PermitDetail'
@@ -66,11 +66,35 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
   const [hasProperties, setHasProperties] = useState<boolean | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [range, setRange] = useState<'12mo' | '6mo' | '3mo' | '1mo' | '1wk'>('1wk')
+  const [category, setCategory] = useState<'all' | '311' | 'violation' | 'permit'>('all')
+  const [buildingFilter, setBuildingFilter] = useState<'all' | 'building' | 'other'>('building')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchDebounced, setSearchDebounced] = useState('')
+
+  // Debounce search input → committed query (300ms)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchDebounced(searchInput.trim())
+      setOffset(0)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`/api/dashboard/activity?limit=${PAGE_SIZE}&offset=${offset}&range=${range}`)
+    const params = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+      range,
+      category,
+      building_filter: buildingFilter,
+      status: statusFilter,
+    })
+    if (searchDebounced) params.set('search', searchDebounced)
+
+    fetch(`/api/dashboard/activity?${params.toString()}`)
       .then((r) => r.json())
       .then((data: { items?: ActivityRow[]; total?: number; error?: string; has_properties?: boolean }) => {
         if (data.error) {
@@ -94,7 +118,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
         setError(String(e))
       })
       .finally(() => setLoading(false))
-  }, [offset, range])
+  }, [offset, range, category, buildingFilter, statusFilter, searchDebounced])
 
   const selectedRow = rows.find((r) => rowKey(r) === selectedKey) ?? null
 
@@ -151,31 +175,6 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <select
-            value={range}
-            onChange={(e) => {
-              setRange(e.target.value as typeof range)
-              setOffset(0)
-            }}
-            style={{
-              padding: '6px 10px',
-              fontSize: 12,
-              border: '1px solid #d9d3c2',
-              borderRadius: 4,
-              background: '#fff',
-              fontFamily: 'inherit',
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-            aria-label="Date range"
-          >
-            <option value="1wk">Last 7 days</option>
-            <option value="1mo">Last 30 days</option>
-            <option value="3mo">Last 3 months</option>
-            <option value="6mo">Last 6 months</option>
-            <option value="12mo">Last 12 months</option>
-          </select>
           {totalPages > 1 ? (
             <div style={{ fontSize: 12, color: '#8a94a0' }}>
               Page {currentPage} of {totalPages}
@@ -209,6 +208,102 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
       >
         {/* ── List pane ─────────────────────────────────────────────── */}
         <div style={{ background: '#fff', border: '1px solid #e5e1d6', minWidth: 0 }}>
+          {/* Filter toolbar — each control sits above its corresponding column */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '110px minmax(0, 1.6fr) 76px minmax(0, 2fr) 70px',
+              gap: 12,
+              padding: '10px 14px 8px',
+              borderBottom: '1px solid #f0ede6',
+              alignItems: 'center',
+            }}
+          >
+            <select
+              value={range}
+              onChange={(e) => {
+                setRange(e.target.value as typeof range)
+                setOffset(0)
+              }}
+              style={toolbarSelect}
+              aria-label="Date range"
+            >
+              <option value="1wk">Last 7 days</option>
+              <option value="1mo">Last 30 days</option>
+              <option value="3mo">Last 3 months</option>
+              <option value="6mo">Last 6 months</option>
+              <option value="12mo">Last 12 months</option>
+            </select>
+
+            <input
+              type="search"
+              placeholder="Search address…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              style={{
+                padding: '6px 8px',
+                fontSize: 12,
+                border: '1px solid #d9d3c2',
+                borderRadius: 4,
+                background: '#fff',
+                fontFamily: 'inherit',
+                outline: 'none',
+                width: '100%',
+                minWidth: 0,
+              }}
+              aria-label="Search address"
+            />
+
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value as typeof category)
+                setOffset(0)
+              }}
+              style={toolbarSelect}
+              aria-label="Category filter"
+            >
+              <option value="all">All</option>
+              <option value="311">311</option>
+              <option value="violation">Violation</option>
+              <option value="permit">Permit</option>
+            </select>
+
+            <select
+              value={buildingFilter}
+              onChange={(e) => {
+                setBuildingFilter(e.target.value as typeof buildingFilter)
+                setOffset(0)
+              }}
+              disabled={category !== 'all' && category !== '311'}
+              style={{
+                ...toolbarSelect,
+                opacity: category !== 'all' && category !== '311' ? 0.5 : 1,
+                cursor: category !== 'all' && category !== '311' ? 'not-allowed' : 'pointer',
+              }}
+              aria-label="Building filter"
+              title={category !== 'all' && category !== '311' ? 'Applies to 311 complaints only' : undefined}
+            >
+              <option value="building">Building only</option>
+              <option value="other">Other only</option>
+              <option value="all">All types</option>
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as typeof statusFilter)
+                setOffset(0)
+              }}
+              style={{ ...toolbarSelect, textAlign: 'right' }}
+              aria-label="Status filter"
+            >
+              <option value="all">All</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+
           {/* Column headers */}
           <div
             style={{
@@ -508,4 +603,18 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
       </div>
     </div>
   )
+}
+
+const toolbarSelect: CSSProperties = {
+  padding: '6px 8px',
+  fontSize: 12,
+  border: '1px solid #d9d3c2',
+  borderRadius: 4,
+  background: '#fff',
+  fontFamily: 'inherit',
+  color: '#1a1a1a',
+  cursor: 'pointer',
+  outline: 'none',
+  width: '100%',
+  minWidth: 0,
 }
