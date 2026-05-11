@@ -12,8 +12,14 @@ type Props = {
   isAdmin?: boolean
 }
 
+function formatUnitsSummary(p: PortfolioProperty): string {
+  const total = p.units_total ?? 0
+  return total > 0 ? String(total) : '—'
+}
+
 export default function PortfolioTable({ isAdmin = false }: Props) {
   const [properties, setProperties] = useState<PortfolioProperty[]>([])
+  const [ownerName, setOwnerName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -36,6 +42,9 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
       throw new Error(String(listData.error))
     }
     setProperties((listData.properties as PortfolioProperty[]) ?? [])
+    setOwnerName(
+      ((listData.subscriber as { organization?: string | null } | undefined)?.organization ?? null)
+    )
   }, [])
 
   useEffect(() => {
@@ -434,6 +443,10 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
             onClose={() => setSelectedId(null)}
             showItemDetails={true}
             isAdmin={isAdmin}
+            ownerName={ownerName}
+            onPropertyUpdated={() => {
+              void loadPortfolioList()
+            }}
           />
         ) : null}
         <div className="dashboard-table-wrap">
@@ -451,6 +464,9 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                   </th>
                 ) : null}
                 <th rowSpan={2}>Address</th>
+                <th className="r" rowSpan={2} style={{ width: 100 }}>
+                  Units
+                </th>
                 <th
                   className="r dashboard-th-group"
                   colSpan={3}
@@ -506,6 +522,9 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                     <td>
                       <span className="dashboard-addr">{p.display_name || p.address_range || p.canonical_address}</span>
                       <span className="dashboard-addr-hood">{p.community_area || ''}</span>
+                    </td>
+                    <td className="r" style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 12, color: '#444' }}>
+                      {p.units_total > 0 ? formatUnitsSummary(p) : <span className="zero">—</span>}
                     </td>
                     <td className="r">
                       {p.open_building_complaints == null ? (

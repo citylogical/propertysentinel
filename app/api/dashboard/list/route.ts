@@ -10,6 +10,12 @@ export async function GET() {
 
   const supabase = getSupabaseAdmin()
 
+  const { data: subscriber } = await supabase
+    .from('subscribers')
+    .select('organization')
+    .eq('clerk_id', userId)
+    .maybeSingle()
+
   const { data: properties, error } = await supabase
     .from('portfolio_properties')
     .select(
@@ -135,5 +141,10 @@ export async function GET() {
     recent_permits: [] as Record<string, unknown>[],
   }))
 
-  return NextResponse.json({ properties: mapped })
+  return NextResponse.json({
+    properties: mapped,
+    subscriber: {
+      organization: (subscriber?.organization as string | null) ?? null,
+    },
+  })
 }

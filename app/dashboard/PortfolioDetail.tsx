@@ -7,8 +7,10 @@ import ComplaintDetail, { type ComplaintDetailRecord } from './details/Complaint
 import ViolationDetail, { type ViolationDetailRecord } from './details/ViolationDetail'
 import PermitDetail, { type PermitDetailRecord } from './details/PermitDetail'
 import { StatusPill, formatDate, type StatusKind } from './details/_shared'
-import type { PortfolioProperty } from './types'
+import type { PortfolioProperty, PortfolioUnit } from './types'
 import { getClassDescription } from '@/lib/class-codes'
+import UnitsModal from './UnitsModal'
+import EditBuildingModal from './EditBuildingModal'
 
 type Props = {
   property: PortfolioProperty
@@ -23,6 +25,10 @@ type Props = {
   onUpgradePrompt?: () => void
   /** When true, surfaces tenant-PII fields (raw description, unit, complainant type, danger flag, owner notified/occupied). Defaults to false (public-safe). */
   isAdmin?: boolean
+  /** Display name of the current user — used to prefix the user-specific Units section header. */
+  ownerName?: string | null
+  /** Called after a successful in-place edit so the parent can refresh portfolio data. */
+  onPropertyUpdated?: () => void
 }
 
 type DetailPayload = {
@@ -34,6 +40,7 @@ type DetailPayload = {
   str_registrations?: number
   is_restricted_zone?: boolean
   nearby_listings?: number
+  units?: PortfolioUnit[]
 }
 
 type ComplaintSource = Record<string, unknown>
@@ -60,11 +67,15 @@ export default function PortfolioDetail({
   showItemDetails = false,
   onUpgradePrompt,
   isAdmin = false,
+  ownerName,
+  onPropertyUpdated,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [detailData, setDetailData] = useState<DetailPayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(true)
   const [showListings, setShowListings] = useState(false)
+  const [showUnitsModal, setShowUnitsModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [selectedActivityKey, setSelectedActivityKey] = useState<string | null>(null)
 
@@ -117,6 +128,12 @@ export default function PortfolioDetail({
 
   const money = (val: number | null) =>
     val != null && Number.isFinite(val) ? `$${val.toLocaleString()}` : 'N/A'
+
+  const rent = (val: number | null) =>
+    val != null && Number.isFinite(val) ? `$${val.toLocaleString()}/mo` : '—'
+
+  const units = (detailData?.units ?? []) as PortfolioUnit[]
+  const inlineUnits = units.slice(0, 3)
 
   const chars = (p.building_chars ?? {}) as Record<string, unknown>
 
@@ -263,7 +280,34 @@ export default function PortfolioDetail({
           )}
 
           <div className="dashboard-dl-group">
-            <div className="dashboard-dl-group-label">Building</div>
+            <div
+              className="dashboard-dl-group-label"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <span>Building</span>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  fontSize: 11,
+                  color: '#1e3a5f',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  textTransform: 'none',
+                  letterSpacing: 'normal',
+                }}
+              >
+                Edit details →
+              </button>
+            </div>
             <div className="dashboard-dl-row">
               <span
                 className="dashboard-dl-key"
@@ -324,6 +368,29 @@ export default function PortfolioDetail({
                     : 'N/A'}
               </span>
             </div>
+            {units.length > 0 ? (
+              <div className="dashboard-dl-row">
+                <span className="dashboard-dl-key" style={{ fontWeight: 700 }}>
+                  {(ownerName ? `${ownerName.toUpperCase()} UNITS` : 'YOUR UNITS')} ({units.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowUnitsModal(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: 12,
+                    color: '#1e3a5f',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    textAlign: 'right',
+                  }}
+                >
+                  See full details →
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="dashboard-dl-group">
@@ -556,6 +623,27 @@ export default function PortfolioDetail({
           address={p.display_name || p.canonical_address}
           lat={propertyCoords.lat}
           lng={propertyCoords.lng}
+        />
+      ) : null}
+      {showUnitsModal ? (
+        <UnitsModal
+          isOpen
+          onClose={() => setShowUnitsModal(false)}
+          propertyDisplayName={p.display_name || p.canonical_address}
+          units={units}
+          onUnitsChanged={() => {
+            if (onPropertyUpdated) onPropertyUpdated()
+          }}
+        />
+      ) : null}
+      {showEditModal ? (
+        <EditBuildingModal
+          isOpen
+          onClose={() => setShowEditModal(false)}
+          property={p}
+          onSaved={() => {
+            if (onPropertyUpdated) onPropertyUpdated()
+          }}
         />
       ) : null}
     </div>
