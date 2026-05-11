@@ -25,6 +25,7 @@ export default function DashboardLayoutClient({
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [summaryOpen, setSummaryOpen] = useState(false)
 
+  // Fetch summary data on mount
   useEffect(() => {
     let cancelled = false
     setSummaryLoading(true)
@@ -39,6 +40,22 @@ export default function DashboardLayoutClient({
         if (!cancelled) setSummaryLoading(false)
       })
 
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Decide whether to auto-open the modal once summary data loads.
+  // Three guards:
+  //  1) Don't open if the API didn't return data (likely unauthenticated or error)
+  //  2) Don't open if the portfolio is empty (nothing to show)
+  //  3) Respect localStorage suppression + sessionStorage "already seen" flags
+  //  Force-open via ?show_summary=1 bypasses all guards EXCEPT requiring data.
+  useEffect(() => {
+    if (summaryLoading) return
+    if (!summaryData) return
+    if ((summaryData.headline?.total_buildings ?? 0) === 0) return
+
     const suppressed =
       typeof window !== 'undefined' && window.localStorage.getItem('ps_summary_suppressed') === 'true'
     const seenThisSession =
@@ -50,11 +67,7 @@ export default function DashboardLayoutClient({
       setSummaryOpen(true)
       if (typeof window !== 'undefined') window.sessionStorage.setItem('ps_summary_seen', 'true')
     }
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  }, [summaryLoading, summaryData])
 
   return (
     <div className="prop-main-content">
