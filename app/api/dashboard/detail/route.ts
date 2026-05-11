@@ -28,6 +28,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  const { data: unitRows } = await supabase
+    .from('portfolio_property_units')
+    .select('id, portfolio_property_id, unit_label, bd_ba, tag, status, rent, lease_from, lease_to, move_in, move_out, ob_date, source, created_at, updated_at')
+    .eq('portfolio_property_id', propertyId)
+    .order('unit_label', { ascending: true, nullsFirst: false })
+
+  const units = unitRows ?? []
+
   const row = prop as {
     canonical_address?: string | null
     address_range?: string | null
@@ -46,6 +54,7 @@ export async function GET(request: Request) {
       str_registrations: 0,
       is_restricted_zone: false,
       nearby_listings: 0,
+      units,
     })
   }
 
@@ -69,5 +78,6 @@ export async function GET(request: Request) {
     str_registrations: result.stats.str_registrations,
     is_restricted_zone: result.stats.is_restricted_zone,
     nearby_listings: result.stats.nearby_listings,
+    units,
   })
 }

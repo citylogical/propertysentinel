@@ -54,6 +54,43 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const propertyIds = (properties ?? []).map((p) => p.id as string)
+  let unitsByProperty = new Map<
+    string,
+    { total: number; statusBreakdown: Record<string, number>; tagBreakdown: Record<string, number> }
+  >()
+
+  if (propertyIds.length > 0) {
+    const { data: unitRows, error: unitErr } = await supabase
+      .from('portfolio_property_units')
+      .select('portfolio_property_id, tag, status')
+      .in('portfolio_property_id', propertyIds)
+
+    if (unitErr) {
+      console.error('Portfolio unit aggregate error:', unitErr)
+    }
+
+    for (const u of (unitRows ?? []) as {
+      portfolio_property_id: string
+      tag: string | null
+      status: string | null
+    }[]) {
+      const existing = unitsByProperty.get(u.portfolio_property_id) ?? {
+        total: 0,
+        statusBreakdown: {},
+        tagBreakdown: {},
+      }
+      existing.total++
+      if (u.status) {
+        existing.statusBreakdown[u.status] = (existing.statusBreakdown[u.status] ?? 0) + 1
+      }
+      if (u.tag) {
+        existing.tagBreakdown[u.tag] = (existing.tagBreakdown[u.tag] ?? 0) + 1
+      }
+      unitsByProperty.set(u.portfolio_property_id, existing)
+    }
+  }
+
   const mapped = (properties ?? []).map((p) => ({
     id: p.id as string,
     canonical_address: p.canonical_address as string,
@@ -64,6 +101,9 @@ export async function GET() {
     display_name: (p.display_name as string | null) ?? null,
     units_override: (p.units_override as number | null) ?? null,
     sqft_override: (p.sqft_override as number | null) ?? null,
+    units_total: unitsByProperty.get(p.id as string)?.total ?? 0,
+    units_status_breakdown: unitsByProperty.get(p.id as string)?.statusBreakdown ?? {},
+    units_tag_breakdown: unitsByProperty.get(p.id as string)?.tagBreakdown ?? {},
     notes: (p.notes as string | null) ?? null,
     alerts_enabled: Boolean(p.alerts_enabled),
     created_at: p.created_at as string,

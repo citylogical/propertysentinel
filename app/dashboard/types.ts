@@ -9,6 +9,24 @@ export type BuildingCharsRow = {
   repair_condition?: string | null
 } | null
 
+export type PortfolioUnit = {
+  id: string
+  portfolio_property_id: string
+  unit_label: string | null
+  bd_ba: string | null
+  tag: string | null
+  status: string | null
+  rent: number | null
+  lease_from: string | null
+  lease_to: string | null
+  move_in: string | null
+  move_out: string | null
+  ob_date: string | null
+  source: string
+  created_at: string
+  updated_at: string
+}
+
 export type PortfolioProperty = {
   id: string
   user_id?: string
@@ -19,6 +37,9 @@ export type PortfolioProperty = {
   slug: string
   display_name: string | null
   units_override: number | null
+  units_total: number
+  units_status_breakdown: Record<string, number>
+  units_tag_breakdown: Record<string, number>
   sqft_override: number | null
   notes: string | null
   alerts_enabled: boolean
