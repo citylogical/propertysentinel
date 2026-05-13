@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 type AlertSettings = {
   subscriber_id: string
   email_digest_enabled: boolean
+  email_digest_send_when_empty: boolean
   sms_realtime_enabled: boolean
   trigger_complaints: boolean
   trigger_violations: boolean
@@ -154,6 +155,13 @@ export default function SettingsContent() {
           onChange={(v) => toggleSetting('email_digest_enabled', v)}
           disabled={saving}
         />
+        <ToggleRow
+          label="Send digest even when no activity"
+          description="Get a daily 'all clear' email confirming the system is monitoring"
+          checked={settings.email_digest_send_when_empty}
+          onChange={(v) => toggleSetting('email_digest_send_when_empty', v)}
+          disabled={saving || !settings.email_digest_enabled}
+        />
         <div style={{ marginTop: 16 }}>
           <div
             style={{
@@ -198,18 +206,8 @@ export default function SettingsContent() {
 
       {/* SMS Alerts */}
       <Card title="SMS alerts">
-        <div
-          style={{
-            background: '#fff8e0',
-            border: '1px solid #f0e0a0',
-            padding: '10px 12px',
-            borderRadius: 4,
-            marginBottom: 14,
-            fontSize: 12,
-            color: '#866100',
-          }}
-        >
-          SMS alerts coming soon — pending carrier verification (typically 1–7 business days)
+        <div style={{ background: '#eaf0f7', border: '1px solid #c6d4e3', padding: '10px 12px', borderRadius: 4, marginBottom: 14, fontSize: 12, color: '#3a5577' }}>
+          We&apos;re finalizing carrier verification with our SMS provider. Add your phone number now — real-time alerts will start firing as soon as we&apos;re cleared (typically within a few business days).
         </div>
         <ToggleRow
           label="Real-time SMS alerts"
@@ -218,7 +216,7 @@ export default function SettingsContent() {
           onChange={(v) => toggleSetting('sms_realtime_enabled', v)}
           disabled
         />
-        <div style={{ marginTop: 16, opacity: 0.5 }}>
+        <div style={{ marginTop: 16 }}>
           <div
             style={{
               fontFamily: 'monospace',
@@ -253,7 +251,6 @@ export default function SettingsContent() {
                 onChangeValue={setEditingValue}
                 onSave={() => void saveRecipient('sms', pos)}
                 onRemove={existing ? () => void removeRecipient(existing.id) : undefined}
-                disabled
               />
             )
           })}

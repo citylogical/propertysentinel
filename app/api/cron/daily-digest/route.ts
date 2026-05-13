@@ -50,6 +50,7 @@ export async function GET(request: Request) {
       trigger_violations,
       trigger_permits,
       trigger_stop_work,
+      email_digest_send_when_empty,
       subscribers!inner(email_alerts)
     `
     )
@@ -58,13 +59,14 @@ export async function GET(request: Request) {
 
   const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
 
-  for (const setting of (enabledSubs ?? []) as Array<{
+  for (const setting of (enabledSubs ?? []) as unknown as Array<{
     subscriber_id: string
     trigger_complaints: boolean
     trigger_violations: boolean
     trigger_permits: boolean
     trigger_stop_work: boolean
-    subscribers: { email_alerts: boolean }[]
+    email_digest_send_when_empty: boolean
+    subscribers?: { email_alerts: boolean }
   }>) {
     try {
       // Skip if already sent today (idempotency)
@@ -164,7 +166,8 @@ export async function GET(request: Request) {
         }
       }
 
-      if (setting.trigger_violations) {
+      // Query violations if either trigger_violations OR trigger_stop_work is on
+      if (setting.trigger_violations || setting.trigger_stop_work) {
         const { data: violations } = await supabase
           .from('violations')
           .select('violation_description, violation_date, address_normalized, is_stop_work_order, inspection_number')
@@ -187,11 +190,17 @@ export async function GET(request: Request) {
           if (!v.address_normalized || !v.violation_date) continue
           const meta = addressToProperty.get(v.address_normalized)
           if (!meta) continue
+
+          const isStopWork = Boolean(v.is_stop_work_order)
+          // Gate by the appropriate trigger
+          if (isStopWork && !setting.trigger_stop_work) continue
+          if (!isStopWork && !setting.trigger_violations) continue
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
             kind: 'violation',
-            label: v.is_stop_work_order ? 'STOP-WORK ORDER' : 'Violation',
+            label: isStopWork ? 'STOP-WORK ORDER' : 'Violation',
             description: v.violation_description?.trim() || null,
             date: v.violation_date,
           })
@@ -232,8 +241,18 @@ export async function GET(request: Request) {
         }
       }
 
-      // Note: empty-event digests still send — Mark sees a daily "all quiet"
-      // confirmation that the system is actively monitoring.
+      // Empty-event digests: skip if user has opted out
+      if (events.length === 0 && !setting.email_digest_send_when_empty) {
+        await supabase.from('alert_digest_log').insert({
+          subscriber_id: setting.subscriber_id,
+          digest_date: digestDate,
+          recipients: emails,
+          events_count: 0,
+          status: 'skipped_no_events',
+        })
+        results.push({ subscriber_id: setting.subscriber_id, status: 'skipped_no_events_by_preference', count: 0 })
+        continue
+      }
 
       // Render email
       const orgName = organization || 'Your portfolio'

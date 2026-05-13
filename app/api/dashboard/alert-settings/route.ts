@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const ALLOWED_TOGGLES = new Set([
   'email_digest_enabled',
+  'email_digest_send_when_empty',
   'sms_realtime_enabled',
   'trigger_complaints',
   'trigger_violations',
