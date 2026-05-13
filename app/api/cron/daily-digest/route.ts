@@ -320,6 +320,23 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (m) => map[m] ?? m)
 }
 
+function formatChicagoTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    })
+  } catch {
+    return iso
+  }
+}
+
 function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string): string {
   const formattedDate = new Date(digestDate).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -347,10 +364,13 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           return `
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #f0ede5;">
-                <div style="font-size: 13px; color: ${labelColor}; font-weight: ${labelWeight};">
+                <div style="font-size: 13px; color: ${labelColor} !important; font-weight: ${labelWeight};">
                   ${escapeHtml(e.label)}
                 </div>
-                ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
+                ${e.description ? `<div style="font-size: 12px; color: #666 !important; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
+                <div style="font-size: 11px; color: #999 !important; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
+                  ${escapeHtml(formatChicagoTime(e.date))}
+                </div>
               </td>
             </tr>
           `
@@ -359,7 +379,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 
       return `
         <div style="margin-bottom: 24px;">
-          <div style="font-family: Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
+          <div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a !important; margin-bottom: 8px;">
             ${escapeHtml(display)}
           </div>
           <table style="width: 100%; border-collapse: collapse;">
@@ -380,24 +400,47 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
   <title>Property Sentinel daily digest</title>
 </head>
-<body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-  <table style="width: 100%; max-width: 600px; margin: 0 auto; background: #faf8f3;">
+<body style="margin: 0; padding: 0; background: #faf8f3 !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+  <table style="width: 100%; max-width: 600px; margin: 0 auto; background: #faf8f3 !important;">
     <tr>
       <td style="padding: 32px 24px;">
         <!-- Header -->
-        <div style="background: #243f5e; color: #fff; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-          <div style="font-family: Georgia, serif; font-size: 20px; font-weight: 600;">
-            ${escapeHtml(orgName)} — Daily digest
-          </div>
-          <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">
-            ${escapeHtml(formattedDate)}
-          </div>
+        <div style="background: #243f5e !important; color: #ffffff !important; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+          <table style="border-collapse: collapse; width: 100%;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <div style="font-family: 'Merriweather', Georgia, serif; font-size: 20px; font-weight: 600; line-height: 1.2; color: #ffffff !important;">
+                  ${escapeHtml(orgName)} — Daily digest
+                </div>
+                <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">
+                  ${escapeHtml(formattedDate)}
+                </div>
+              </td>
+              <td style="vertical-align: middle; text-align: right; width: 64px; padding-left: 14px;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="247 249 529 529" width="36" height="36" fill="#ffffff" style="display: inline-block;">
+                  <g transform="translate(0,1024) scale(0.1,-0.1)" stroke="none">
+                    <path d="M5090 7395 l0 -155 -30 0 -30 0 0 -229 0 -230 -53 -24 c-29 -13 -69 -39 -90 -56 -48 -43 -97 -142 -104 -214 l-6 -57 337 0 336 0 0 33 c0 51 -26 128 -61 181 -33 49 -113 110 -161 122 l-28 6 0 234 0 234 -30 0 -30 0 0 155 0 155 -25 0 -25 0 0 -155z"/>
+                    <path d="M4740 4510 l0 -1850 155 0 155 0 0 1505 0 1505 60 0 60 0 2 -1502 3 -1503 158 -3 157 -3 0 1851 0 1850 -375 0 -375 0 0 -1850z"/>
+                    <path d="M4305 4318 c-3 -706 -5 -1366 -3 -1468 l3 -185 158 -3 157 -3 0 1471 0 1470 -154 0 -154 0 -7 -1282z"/>
+                    <path d="M5610 4130 l0 -1470 155 0 155 0 0 1470 0 1470 -155 0 -155 0 0 -1470z"/>
+                    <path d="M3600 3895 l0 -395 -280 0 -280 0 0 -420 0 -420 575 0 575 0 0 815 0 815 -295 0 -295 0 0 -395z"/>
+                    <path d="M6030 3475 l0 -815 578 2 577 3 3 418 2 417 -280 0 -280 0 -2 253 c-2 138 -2 279 0 312 1 33 0 97 -4 143 l-6 82 -294 0 -294 0 0 -815z"/>
+                  </g>
+                </svg>
+                <div style="font-family: 'Merriweather', Georgia, serif; font-size: 9px; line-height: 1.1; color: #ffffff !important; margin-top: 4px; font-weight: 500; letter-spacing: 0.02em;">
+                  Property<br>Sentinel
+                </div>
+              </td>
+            </tr>
+          </table>
         </div>
 
         <!-- Stats bar -->
-        <div style="background: #fff; padding: 16px 24px; border-bottom: 1px solid #ece8dd;">
+        <div style="background: #ffffff !important; padding: 16px 24px; border-bottom: 1px solid #ece8dd;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="text-align: center; padding: 8px;">
@@ -417,7 +460,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
         </div>
 
         <!-- Events by property -->
-        <div style="background: #fff; padding: 24px; border-radius: 0 0 8px 8px;">
+        <div style="background: #ffffff !important; padding: 24px; border-radius: 0 0 8px 8px;">
           ${propertyBlocks}
         </div>
 
