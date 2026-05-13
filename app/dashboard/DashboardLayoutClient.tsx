@@ -10,6 +10,7 @@ import PortfolioSummaryModal, { type PortfolioSummaryData } from './PortfolioSum
 const TABS = [
   { href: '/dashboard/portfolio', label: 'Portfolio' },
   { href: '/dashboard/activity', label: 'Activity Feed' },
+  { href: '/dashboard/settings', label: 'Settings' },
 ]
 
 export default function DashboardLayoutClient({
