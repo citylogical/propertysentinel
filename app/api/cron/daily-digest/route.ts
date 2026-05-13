@@ -299,14 +299,14 @@ function renderSubject(events: DigestEvent[]): string {
   const permits = events.filter((e) => e.kind === 'permit').length
 
   if (stopWorks > 0) {
-    return `🚨 ${stopWorks} stop-work order${stopWorks === 1 ? '' : 's'} on your portfolio`
+    return `Daily Digest — 🚨 ${stopWorks} stop-work order${stopWorks === 1 ? '' : 's'}`
   }
 
   const parts: string[] = []
-  if (complaints > 0) parts.push(`${complaints} new complaint${complaints === 1 ? '' : 's'}`)
-  if (violations > 0) parts.push(`${violations} new violation${violations === 1 ? '' : 's'}`)
-  if (permits > 0) parts.push(`${permits} new permit${permits === 1 ? '' : 's'}`)
-  return parts.length > 0 ? `Property Sentinel — ${parts.join(', ')}` : 'Property Sentinel daily digest'
+  if (complaints > 0) parts.push(`${complaints} complaint${complaints === 1 ? '' : 's'}`)
+  if (violations > 0) parts.push(`${violations} violation${violations === 1 ? '' : 's'}`)
+  if (permits > 0) parts.push(`${permits} permit${permits === 1 ? '' : 's'}`)
+  return parts.length > 0 ? `Daily Digest — ${parts.join(', ')}` : 'Daily Digest — no new activity'
 }
 
 function escapeHtml(s: string): string {
@@ -335,6 +335,17 @@ function formatChicagoTime(iso: string): string {
   } catch {
     return iso
   }
+}
+
+function buildPreheader(events: DigestEvent[]): string {
+  const complaints = events.filter((e) => e.kind === 'complaint').length
+  const violations = events.filter((e) => e.kind === 'violation').length
+  const permits = events.filter((e) => e.kind === 'permit').length
+  const parts: string[] = []
+  if (complaints > 0) parts.push(`${complaints} complaint${complaints === 1 ? '' : 's'}`)
+  if (violations > 0) parts.push(`${violations} violation${violations === 1 ? '' : 's'}`)
+  if (permits > 0) parts.push(`${permits} permit${permits === 1 ? '' : 's'}`)
+  return parts.length > 0 ? parts.join(' · ') : 'No new activity today'
 }
 
 function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string): string {
@@ -405,6 +416,14 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
   <title>Property Sentinel daily digest</title>
 </head>
 <body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+  <!-- Preheader: invisible to readers, used by clients for preview text -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #faf8f3; opacity: 0;">
+    ${escapeHtml(buildPreheader(events))} — ${escapeHtml(new Date(digestDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }))}
+  </div>
+  <!-- Preheader blocker: zero-width chars to push trailing content out of preview -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
+    &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp;
+  </div>
   <table style="width: 100%; max-width: 600px; margin: 0 auto;">
     <tr>
       <td style="padding: 24px 0;">
