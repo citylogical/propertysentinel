@@ -400,8 +400,8 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="color-scheme" content="light only">
-  <meta name="supported-color-schemes" content="light only">
+  <meta name="format-detection" content="address=no,telephone=no,date=no,email=no">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Property Sentinel daily digest</title>
 </head>
 <body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
@@ -442,19 +442,17 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
         </div>
 
         <!-- Events by property -->
-        <div style="background: #ffffff; padding: 24px;">
-          <!-- Prominent dashboard link at top of events section -->
-          <div style="text-align: center; padding-bottom: 16px; border-bottom: 1px solid #ece8dd; margin-bottom: 20px;">
-            <a href="https://propertysentinel.io/dashboard/portfolio" style="color: #ffffff; background: #1e3a5f; text-decoration: none; padding: 10px 18px; border-radius: 4px; font-size: 13px; font-weight: 500; display: inline-block;">
+        <div style="background: #ffffff; padding: 24px; border-radius: 0 0 8px 8px;">
+          ${propertyBlocks}
+          <!-- Inline dashboard link at end of events -->
+          <div style="text-align: center; padding-top: 20px; margin-top: 12px; border-top: 1px solid #ece8dd;">
+            <a href="https://propertysentinel.io/dashboard/portfolio" style="color: #1e3a5f; text-decoration: none; font-size: 13px; font-weight: 500;">
               View full dashboard →
             </a>
+            <div style="font-size: 11px; color: #aaa; margin-top: 8px;">
+              Manage alert preferences in your <a href="https://propertysentinel.io/dashboard/settings" style="color: #888;">settings</a>
+            </div>
           </div>
-          ${propertyBlocks}
-        </div>
-
-        <!-- Footer -->
-        <div style="background: #ffffff; padding: 16px 24px 24px; text-align: center; font-size: 11px; color: #aaa; border-radius: 0 0 8px 8px;">
-          Manage alert preferences in your <a href="https://propertysentinel.io/dashboard/settings" style="color: #888;">settings</a>
         </div>
       </td>
     </tr>
