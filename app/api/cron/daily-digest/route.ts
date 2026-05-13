@@ -37,11 +37,24 @@ export async function GET(request: Request) {
   const startIso = new Date(startMs).toISOString()
   const digestDate = new Date(startMs).toISOString().slice(0, 10)
 
-  // Get all subscribers with email digest enabled
+  // Get all subscribers where:
+  //   1. Their subscribers.email_alerts is true (account-level master toggle)
+  //   2. Their alert_settings.email_digest_enabled is true (digest-specific toggle)
+  // Both must be true for an email to send.
   const { data: enabledSubs } = await supabase
     .from('alert_settings')
-    .select('subscriber_id, trigger_complaints, trigger_violations, trigger_permits, trigger_stop_work')
+    .select(
+      `
+      subscriber_id,
+      trigger_complaints,
+      trigger_violations,
+      trigger_permits,
+      trigger_stop_work,
+      subscribers!inner(email_alerts)
+    `
+    )
     .eq('email_digest_enabled', true)
+    .eq('subscribers.email_alerts', true)
 
   const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
 
@@ -51,6 +64,7 @@ export async function GET(request: Request) {
     trigger_violations: boolean
     trigger_permits: boolean
     trigger_stop_work: boolean
+    subscribers: { email_alerts: boolean }[]
   }>) {
     try {
       // Skip if already sent today (idempotency)
@@ -218,18 +232,8 @@ export async function GET(request: Request) {
         }
       }
 
-      // If no events, log and skip send
-      if (events.length === 0) {
-        await supabase.from('alert_digest_log').insert({
-          subscriber_id: setting.subscriber_id,
-          digest_date: digestDate,
-          recipients: emails,
-          events_count: 0,
-          status: 'skipped_no_events',
-        })
-        results.push({ subscriber_id: setting.subscriber_id, status: 'skipped_no_events', count: 0 })
-        continue
-      }
+      // Note: empty-event digests still send — Mark sees a daily "all quiet"
+      // confirmation that the system is actively monitoring.
 
       // Render email
       const orgName = organization || 'Your portfolio'
@@ -238,9 +242,12 @@ export async function GET(request: Request) {
 
       // Send via Resend
       const fromAddress = process.env.RESEND_FROM_EMAIL || 'Property Sentinel <noreply@updates.propertysentinel.io>'
+      // BCC delivery: each recipient sees the email as if they're the only one on it.
+      // "To" is set to a noreply sender address (most email clients flag empty-To as spam).
       const { error: sendError } = await resend.emails.send({
         from: fromAddress,
-        to: emails,
+        to: 'noreply@updates.propertysentinel.io',
+        bcc: emails,
         replyTo: 'jim@propertysentinel.io',
         subject,
         html,
@@ -294,19 +301,14 @@ export async function GET(request: Request) {
 
 function renderSubject(events: DigestEvent[]): string {
   const stopWorks = events.filter((e) => e.kind === 'violation' && e.label === 'STOP-WORK ORDER').length
-  const complaints = events.filter((e) => e.kind === 'complaint').length
-  const violations = events.filter((e) => e.kind === 'violation' && e.label !== 'STOP-WORK ORDER').length
-  const permits = events.filter((e) => e.kind === 'permit').length
 
   if (stopWorks > 0) {
-    return `Daily Digest — 🚨 ${stopWorks} stop-work order${stopWorks === 1 ? '' : 's'}`
+    return `Daily Digest — 🚨 Stop-Work Order Issued`
   }
-
-  const parts: string[] = []
-  if (complaints > 0) parts.push(`${complaints} complaint${complaints === 1 ? '' : 's'}`)
-  if (violations > 0) parts.push(`${violations} violation${violations === 1 ? '' : 's'}`)
-  if (permits > 0) parts.push(`${permits} permit${permits === 1 ? '' : 's'}`)
-  return parts.length > 0 ? `Daily Digest — ${parts.join(', ')}` : 'Daily Digest — no new activity'
+  if (events.length === 0) {
+    return 'Daily Digest — All Clear'
+  }
+  return 'Daily Digest — Activity Reported'
 }
 
 function escapeHtml(s: string): string {
@@ -345,7 +347,7 @@ function buildPreheader(events: DigestEvent[]): string {
   if (complaints > 0) parts.push(`${complaints} complaint${complaints === 1 ? '' : 's'}`)
   if (violations > 0) parts.push(`${violations} violation${violations === 1 ? '' : 's'}`)
   if (permits > 0) parts.push(`${permits} permit${permits === 1 ? '' : 's'}`)
-  return parts.length > 0 ? parts.join(' · ') : 'No new activity today'
+  return parts.length > 0 ? parts.join(' · ') : 'Your portfolio was monitored — nothing new to report'
 }
 
 function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string): string {
@@ -365,14 +367,26 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     byProperty.get(e.property_id)!.events.push(e)
   }
 
-  const propertyBlocks = Array.from(byProperty.values())
-    .sort((a, b) => b.events.length - a.events.length)
-    .map(({ display, events: propEvents }) => {
-      const eventRows = propEvents
-        .map((e) => {
-          const labelColor = e.label === 'STOP-WORK ORDER' ? '#b8302a' : '#1a1a1a'
-          const labelWeight = e.label === 'STOP-WORK ORDER' ? '700' : '500'
-          return `
+  const propertyBlocks =
+    events.length === 0
+      ? `
+    <div style="text-align: center; padding: 24px 12px;">
+      <div style="font-family: 'Merriweather', Georgia, serif; font-size: 16px; font-weight: 600; color: #3e7d4e; margin-bottom: 8px;">
+        ✓ All quiet today
+      </div>
+      <div style="font-size: 13px; color: #666; line-height: 1.5;">
+        Your portfolio was monitored — nothing new to report.
+      </div>
+    </div>
+  `
+      : Array.from(byProperty.values())
+          .sort((a, b) => b.events.length - a.events.length)
+          .map(({ display, events: propEvents }) => {
+            const eventRows = propEvents
+              .map((e) => {
+                const labelColor = e.label === 'STOP-WORK ORDER' ? '#b8302a' : '#1a1a1a'
+                const labelWeight = e.label === 'STOP-WORK ORDER' ? '700' : '500'
+                return `
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #f0ede5;">
                 <div style="font-size: 13px; color: ${labelColor}; font-weight: ${labelWeight};">
@@ -385,10 +399,10 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
               </td>
             </tr>
           `
-        })
-        .join('')
+              })
+              .join('')
 
-      return `
+            return `
         <div style="margin-bottom: 24px;">
           <div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
             ${escapeHtml(display)}
@@ -398,8 +412,8 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           </table>
         </div>
       `
-    })
-    .join('')
+          })
+          .join('')
 
   const totals = {
     complaints: events.filter((e) => e.kind === 'complaint').length,
@@ -417,12 +431,12 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 </head>
 <body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <!-- Preheader: invisible to readers, used by clients for preview text -->
-  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #faf8f3; opacity: 0;">
+  <div style="display: none !important; max-height: 0; overflow: hidden; mso-hide: all; visibility: hidden; font-size: 1px; line-height: 1px; color: transparent; opacity: 0; height: 0; width: 0;">
     ${escapeHtml(buildPreheader(events))} — ${escapeHtml(new Date(digestDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }))}
   </div>
-  <!-- Preheader blocker: zero-width chars to push trailing content out of preview -->
-  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
-    &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp; &#847; &zwnj; &nbsp; &#8204; &nbsp;
+  <!-- Preheader blocker: zero-width chars to push trailing content out of preview window -->
+  <div style="display: none !important; max-height: 0; overflow: hidden; mso-hide: all; visibility: hidden; font-size: 1px; line-height: 1px; color: transparent; opacity: 0; height: 0; width: 0;">
+    &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
   </div>
   <table style="width: 100%; max-width: 600px; margin: 0 auto;">
     <tr>
