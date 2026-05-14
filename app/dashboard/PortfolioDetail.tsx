@@ -25,8 +25,6 @@ type Props = {
   onUpgradePrompt?: () => void
   /** When true, surfaces tenant-PII fields (raw description, unit, complainant type, danger flag, owner notified/occupied). Defaults to false (public-safe). */
   isAdmin?: boolean
-  /** Display name of the current user — used to prefix the user-specific Units section header. */
-  ownerName?: string | null
   /** Called after a successful in-place edit so the parent can refresh portfolio data. */
   onPropertyUpdated?: () => void
 }
@@ -67,7 +65,6 @@ export default function PortfolioDetail({
   showItemDetails = false,
   onUpgradePrompt,
   isAdmin = false,
-  ownerName,
   onPropertyUpdated,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -379,7 +376,7 @@ export default function PortfolioDetail({
             </div>
             <div className="dashboard-dl-row">
               <span className="dashboard-dl-key" style={{ fontWeight: 700 }}>
-                {(ownerName ? `${ownerName.toUpperCase()} UNITS` : 'YOUR UNITS')} ({units.length})
+                Your units ({units.length})
               </span>
               <button
                 type="button"

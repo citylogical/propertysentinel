@@ -36,13 +36,24 @@ export async function GET(request: Request) {
   const startMs = now.getTime() - 25 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
-  // digest_date = today's Chicago calendar date (the day the email is being read)
+  // digest_date = today's Chicago calendar date — used for the idempotency
+  // guard (alert_digest_log unique index), so each calendar day sends once.
   const digestDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(now)
+
+  // activityDate = YESTERDAY's Chicago calendar date — the day the summarized
+  // activity actually happened. This is what shows in the email header.
+  const yesterdayMs = now.getTime() - 24 * 60 * 60 * 1000
+  const activityDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(yesterdayMs))
 
   // Get all subscribers where:
   //   1. Their subscribers.email_alerts is true (account-level master toggle)
@@ -264,7 +275,7 @@ export async function GET(request: Request) {
       // Render email
       const orgName = organization || 'Your portfolio'
       const subject = renderSubject(events)
-      const html = renderEmailHtml(orgName, events, digestDate)
+      const html = renderEmailHtml(orgName, events, digestDate, activityDate)
 
       // Send via Resend
       const fromAddress = process.env.RESEND_FROM_EMAIL || 'Property Sentinel <noreply@updates.propertysentinel.io>'
@@ -376,10 +387,11 @@ function buildPreheader(events: DigestEvent[]): string {
   return parts.length > 0 ? parts.join(' · ') : 'Your portfolio was monitored — nothing new to report'
 }
 
-function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string): string {
-  // digestDate is today's Chicago calendar date — the day the email is being read.
+function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string, activityDate: string): string {
+  // activityDate is yesterday's Chicago calendar date — the day the summarized
+  // activity happened. This is what the header displays.
   // Adding T12:00:00Z avoids timezone parsing edge cases at midnight.
-  const formattedDate = new Date(`${digestDate}T12:00:00.000Z`).toLocaleDateString('en-US', {
+  const formattedDate = new Date(`${activityDate}T12:00:00.000Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -460,7 +472,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 <body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <!-- Preheader: invisible to readers, used by clients for preview text -->
   <div style="display: none !important; max-height: 0; overflow: hidden; mso-hide: all; visibility: hidden; font-size: 1px; line-height: 1px; color: transparent; opacity: 0; height: 0; width: 0;">
-    ${escapeHtml(buildPreheader(events))} — ${escapeHtml(new Date(digestDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }))}
+    ${escapeHtml(buildPreheader(events))} — ${escapeHtml(new Date(`${activityDate}T12:00:00.000Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }))}
   </div>
   <!-- Preheader blocker: zero-width chars to push trailing content out of preview window -->
   <div style="display: none !important; max-height: 0; overflow: hidden; mso-hide: all; visibility: hidden; font-size: 1px; line-height: 1px; color: transparent; opacity: 0; height: 0; width: 0;">
@@ -484,17 +496,17 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 
         <!-- Stats bar -->
         <div style="background: #ffffff; padding: 16px 24px; border-bottom: 1px solid #ece8dd;">
-          <table style="width: 100%; border-collapse: collapse;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <tr>
-              <td style="text-align: center; padding: 8px;">
+              <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
                 <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.complaints}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">complaints</div>
               </td>
-              <td style="text-align: center; padding: 8px;">
+              <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
                 <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.violations}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">violations</div>
               </td>
-              <td style="text-align: center; padding: 8px;">
+              <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
                 <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.permits}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">permits</div>
               </td>

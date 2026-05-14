@@ -127,7 +127,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
   const urlParams = useSearchParams()
 
   const [properties, setProperties] = useState<PortfolioProperty[]>([])
-  const [ownerName, setOwnerName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -179,9 +178,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
       throw new Error(String(listData.error))
     }
     setProperties((listData.properties as PortfolioProperty[]) ?? [])
-    setOwnerName(
-      ((listData.subscriber as { organization?: string | null } | undefined)?.organization ?? null)
-    )
   }, [])
 
   useEffect(() => {
@@ -644,7 +640,6 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
             onClose={() => setSelectedId(null)}
             showItemDetails={true}
             isAdmin={isAdmin}
-            ownerName={ownerName}
             onPropertyUpdated={() => {
               void loadPortfolioList()
             }}
