@@ -53,6 +53,17 @@ export default function BuildingDetectionModal({
   const [street3, setStreet3] = useState('')
   const [street4, setStreet4] = useState('')
   const [needsSignIn, setNeedsSignIn] = useState(false)
+  // Hansen (buildingrecords.chicago.gov) lookup state
+  const [hansenLoading, setHansenLoading] = useState(false)
+  const [hansenError, setHansenError] = useState<string | null>(null)
+  const [hansenResult, setHansenResult] = useState<{
+    range_addresses: string[]
+    bldg_id: string | null
+    counts: { permits: number; enforcement_cases: number; inspections: number; violations: number }
+  } | null>(null)
+  // True once Hansen has been queried this session — keeps the Query button
+  // hidden even after the result card collapses into the manual fields.
+  const [hansenQueried, setHansenQueried] = useState(false)
 
   useEffect(() => {
     if (readDismissCookie()) setDismissed(true)
@@ -130,6 +141,55 @@ export default function BuildingDetectionModal({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleQueryHansen = async () => {
+    setHansenLoading(true)
+    setHansenError(null)
+    setHansenResult(null)
+    try {
+      const res = await fetch('/api/hansen/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: searchedAddress }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setHansenError(
+          res.status === 404
+            ? 'No building record found for this address on the city site.'
+            : data.error || 'The city records site could not be reached. Try again.'
+        )
+        return
+      }
+      setHansenResult({
+        range_addresses: Array.isArray(data.range_addresses) ? data.range_addresses : [],
+        bldg_id: data.bldg_id ?? null,
+        counts: data.counts ?? { permits: 0, enforcement_cases: 0, inspections: 0, violations: 0 },
+      })
+      setHansenQueried(true)
+    } catch {
+      setHansenError('The city records site could not be reached. Try again.')
+    } finally {
+      setHansenLoading(false)
+    }
+  }
+
+  // Strip the trailing ", CHICAGO IL #####" so the range matches the manual
+  // input format ("1501-1501 N LEAMINGTON AVE", not "...AVE CHICAGO IL 60651").
+  const cleanHansenRange = (raw: string): string =>
+    raw.replace(/\s+CHICAGO\s+IL\s+\d{5}\s*$/i, '').trim()
+
+  // Fill the manual street fields from the Hansen ranges, expand the form to
+  // match, then collapse the result card — the populated inputs are the
+  // confirmation now.
+  const useHansenRange = () => {
+    const ranges = (hansenResult?.range_addresses ?? []).map(cleanHansenRange)
+    if (ranges.length === 0) return
+    const setters = [setStreet1, setStreet2, setStreet3, setStreet4]
+    setters.forEach((set, i) => set(ranges[i] ?? ''))
+    setStreetCount(Math.min(Math.max(ranges.length, 1), 4))
+    setHansenResult(null)
   }
 
   const bldgSvg = (color: string) => (
@@ -219,6 +279,84 @@ export default function BuildingDetectionModal({
                     </div>
                     <div className="building-modal-subtitle">{isPartOfBuilding ? 'Think this is wrong? Submit a correction.' : 'Do you think it should?'}</div>
 
+                    {/* Hansen lookup — query the city's buildingrecords system directly */}
+                    <div className="hansen-lookup">
+                      {!hansenQueried && (
+                      <button
+                        type="button"
+                        className="hansen-lookup-btn"
+                        onClick={handleQueryHansen}
+                        disabled={hansenLoading}
+                      >
+                        {hansenLoading ? (
+                          <>
+                            <span className="hansen-spinner" aria-hidden />
+                            Checking city records…
+                          </>
+                        ) : (
+                          <>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <circle cx="11" cy="11" r="8" />
+                              <path d="m21 21-4.3-4.3" />
+                            </svg>
+                            Query Hansen
+                          </>
+                        )}
+                      </button>
+                      )}
+
+                      {hansenLoading && (
+                        <div className="hansen-lookup-note">
+                          Searching the city&apos;s building records — this can take a few seconds.
+                        </div>
+                      )}
+
+                      {hansenError && <div className="hansen-lookup-error">{hansenError}</div>}
+
+                      {hansenResult && (
+                        <div className="hansen-result">
+                          {hansenResult.range_addresses.length > 0 ? (
+                            <>
+                              <div className="hansen-result-label">
+                                City records found {hansenResult.range_addresses.length === 1
+                                  ? 'this range'
+                                  : `these ${hansenResult.range_addresses.length} ranges`}
+                              </div>
+                              <ul className="hansen-result-ranges">
+                                {hansenResult.range_addresses.map((r, i) => (
+                                  <li key={i} className="hansen-result-range">
+                                    {cleanHansenRange(r)}
+                                  </li>
+                                ))}
+                              </ul>
+                              {(hansenResult.counts.inspections > 0 ||
+                                hansenResult.counts.enforcement_cases > 0) && (
+                                <div className="hansen-result-meta">
+                                  also on file: {hansenResult.counts.inspections} inspection
+                                  {hansenResult.counts.inspections === 1 ? '' : 's'}
+                                  {hansenResult.counts.enforcement_cases > 0 &&
+                                    `, ${hansenResult.counts.enforcement_cases} enforcement case${
+                                      hansenResult.counts.enforcement_cases === 1 ? '' : 's'
+                                    }`}
+                                </div>
+                              )}
+                              <button type="button" className="hansen-result-use" onClick={useHansenRange}>
+                                {hansenResult.range_addresses.length === 1
+                                  ? 'Use this range'
+                                  : 'Use these ranges'}
+                              </button>
+                            </>
+                          ) : (
+                            <div className="hansen-result-label">
+                              The address resolved, but the city has no building record on file.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="hansen-divider"><span>or enter manually</span></div>
+
                     <div className="building-modal-field-label">Street 1 — address range</div>
                     <input
                       className="building-modal-input"
@@ -288,13 +426,13 @@ export default function BuildingDetectionModal({
 
                     {!needsSignIn && (
                       <button
-                        type="button"
-                        className="building-modal-btn building-modal-btn-navy building-modal-btn-full"
-                        onClick={handleSubmit}
-                        disabled={submitting || !street1.trim()}
-                      >
-                        {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
-                      </button>
+                      type="button"
+                      className="building-modal-btn building-modal-btn-green building-modal-btn-full"
+                      onClick={handleSubmit}
+                      disabled={submitting || !street1.trim()}
+                    >
+                      {submitting ? 'Submitting…' : isPartOfBuilding ? 'Submit a correction' : 'Submit building address range'}
+                    </button>
                     )}
                   </>
                 )}

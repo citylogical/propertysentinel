@@ -4605,6 +4605,84 @@ button.save-toggle-switch {
   50% { background: #fde68a; }
 }
 
+/* ── Hansen (city buildingrecords) lookup — inside the building modal ── */
+.hansen-lookup { margin: 4px 0 0; }
+
+.hansen-lookup-btn {
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 16px;
+  background: #0f2744; color: #fff;
+  border: 1px solid #0f2744; border-radius: 6px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.hansen-lookup-btn:hover:not(:disabled) { background: #1a3a5c; }
+.hansen-lookup-btn:active:not(:disabled) { transform: translateY(1px); }
+.hansen-lookup-btn:disabled { opacity: 0.7; cursor: default; }
+
+.hansen-spinner {
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff;
+  border-radius: 50%;
+  animation: hansen-spin 0.6s linear infinite;
+}
+@keyframes hansen-spin { to { transform: rotate(360deg); } }
+
+.hansen-lookup-note {
+  margin-top: 8px;
+  font-size: 11.5px; color: #6b7280; text-align: center; line-height: 1.45;
+}
+.hansen-lookup-error {
+  margin-top: 8px; padding: 8px 10px;
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px;
+  font-size: 12px; color: #b8302a; line-height: 1.45;
+}
+
+.hansen-result {
+  margin-top: 10px; padding: 12px 14px;
+  background: #f3f6fa; border: 1px solid #d6e0ea; border-radius: 6px;
+}
+.hansen-result-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: #5a6b7d; margin-bottom: 5px;
+}
+.hansen-result-range { font-size: 14px; font-weight: 600; color: #0f2744; line-height: 1.4; }
+.hansen-result-ranges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hansen-result-ranges .hansen-result-range {
+  padding: 2px 0;
+}
+.hansen-result-meta { margin-top: 5px; font-size: 11.5px; color: #6b7280; }
+.hansen-result-use {
+  margin-top: 10px; padding: 7px 14px;
+  background: #fff; color: #0f2744;
+  border: 1px solid #0f2744; border-radius: 5px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s ease;
+}
+.hansen-result-use:hover { background: #eef3f8; }
+
+.hansen-divider {
+  display: flex; align-items: center; text-align: center;
+  margin: 16px 0 4px; gap: 10px;
+}
+.hansen-divider::before, .hansen-divider::after {
+  content: ''; flex: 1; height: 1px; background: #e2e0d6;
+}
+.hansen-divider span {
+  font-size: 11px; color: #9aa1ab;
+  text-transform: lowercase; letter-spacing: 0.03em;
+}
+
 /* ── Blog (/blog, /blog/[slug]) — scoped under .blog-container so rules beat Tailwind preflight ── */
 
 .address-page .blog-container .blog-layout {
