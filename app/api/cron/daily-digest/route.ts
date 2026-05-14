@@ -28,14 +28,21 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // Yesterday's window: midnight Chicago time to midnight Chicago time
-  // Chicago is UTC-5 (CDT) or UTC-6 (CST). For simplicity, compute as last 24 hours
-  // from the cron's actual fire time — UTC-based.
+  // 25-hour lookback gives ~1hr buffer for Vercel cron variance.
+  // Slight overlap with previous day's window is fine — idempotency guard
+  // (alert_digest_log unique index) prevents double-sends.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 24 * 60 * 60 * 1000
+  const startMs = now.getTime() - 25 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
-  const digestDate = new Date(startMs).toISOString().slice(0, 10)
+
+  // digest_date = today's Chicago calendar date (the day the email is being read)
+  const digestDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now)
 
   // Get all subscribers where:
   //   1. Their subscribers.email_alerts is true (account-level master toggle)
@@ -265,7 +272,7 @@ export async function GET(request: Request) {
       // "To" is set to a noreply sender address (most email clients flag empty-To as spam).
       const { error: sendError } = await resend.emails.send({
         from: fromAddress,
-        to: 'noreply@updates.propertysentinel.io',
+        to: 'support@propertysentinel.io',
         bcc: emails,
         replyTo: 'jim@propertysentinel.io',
         subject,
@@ -370,7 +377,9 @@ function buildPreheader(events: DigestEvent[]): string {
 }
 
 function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: string): string {
-  const formattedDate = new Date(digestDate).toLocaleDateString('en-US', {
+  // digestDate is today's Chicago calendar date — the day the email is being read.
+  // Adding T12:00:00Z avoids timezone parsing edge cases at midnight.
+  const formattedDate = new Date(`${digestDate}T12:00:00.000Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -469,7 +478,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
             by Property Sentinel
           </div>
           <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 6px;">
-            ${escapeHtml(formattedDate)}
+            Yesterday's activity — ${escapeHtml(formattedDate)}
           </div>
         </div>
 
