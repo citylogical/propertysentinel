@@ -13,6 +13,7 @@ type WOLIStep = {
 export type ComplaintDetailRecord = {
   sr_number?: string | null
   sr_type?: string | null
+  sr_short_code?: string | null
   status?: string | null
   created_date?: string | null
   closed_date?: string | null
@@ -50,11 +51,18 @@ type OutcomeBucket = 'productive' | 'compliant' | 'no-finding' | 'admin' | 'juri
 function classifyOutcome(outcome: string | null | undefined): OutcomeBucket {
   const o = String(outcome ?? '').toLowerCase().trim()
   if (!o) return 'unknown'
-  if (/ticket|violation|enforcement|court|hearing|recommend|water restored|broken water main/.test(o)) return 'productive'
+  // "baited" / "services" / "treated" are SGA Rodent Baiting outcomes — the city
+  // did the requested work. Productive = work delivered. Observed values include
+  // "Alley Baited", "Backyard Services", "Backyard Inspected and Baited".
+  // "owner's responsibility" → productive (NOT jurisdiction) — for DWM codes
+  // (WM3, AAD) this means inspector visited and verdict is private-side repair.
+  // The city delivered the answer; that's productive work for Mark's purposes
+  // (the answer determines whether he's on the hook for the repair).
+  if (/ticket|violation|enforcement|court|hearing|recommend|water restored|broken water main|baited|backyard services|treated|burrows|owner.s responsibility/.test(o)) return 'productive'
   if (/pass|compliance|in compliance|no permit required/.test(o)) return 'compliant'
   if (/no cause|no problem|unfounded|no action|noise on service/.test(o)) return 'no-finding'
-  if (/duplicate|anonymous|insufficient|form not returned|cancelled by owner|out of business|no such address|address does not exist/.test(o)) return 'admin'
-  if (/no jurisdiction|not cdph|owner.s responsibility|transfer to/.test(o)) return 'jurisdiction'
+  if (/duplicate|anonymous|insufficient|form not returned|cancelled by owner|out of business|no such address|address does not exist|inaccessible|refused/.test(o)) return 'admin'
+  if (/no jurisdiction|not cdph|transfer to/.test(o)) return 'jurisdiction'
   return 'unknown'
 }
 const bucketColor: Record<OutcomeBucket, string> = {
@@ -99,6 +107,21 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
   }
   if (isAdmin && c.owner_notified) tags.push({ label: 'Owner notified', value: c.owner_notified })
   if (isAdmin && c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
+  // Categorical intake fields are public — they describe the complaint shape, not the
+  // complainant. For structured-intake SR types (e.g. SGA Rodent Baiting) these are
+  // the primary signal in the absence of a free-text description.
+  if (c.concern_category) tags.push({ label: 'Category', value: c.concern_category })
+  if (c.problem_category) tags.push({ label: 'Detail', value: c.problem_category })
+  // Owner-occupied "Yes" for EAF Vicious Animal means animal resides at address
+  // (tenant dog, landlord liability). The admin-only above renders for building-
+  // type SRs; this public version is for animal-residence cases only. Both
+  // branches can fire, since the underlying semantic is different per SR type.
+  if (
+    String(c.sr_short_code ?? '').toUpperCase() === 'EAF' &&
+    String(c.owner_occupied ?? '').trim().toLowerCase() === 'yes'
+  ) {
+    tags.push({ label: 'Animal resides at address', value: 'Yes' })
+  }
 
   return (
     <>
@@ -185,17 +208,37 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
       {venueName ? (
         <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a', marginBottom: 4 }}>{venueName}</div>
       ) : null}
-      <div
-        style={{
-          fontSize: 13,
-          color: desc ? '#1a1a1a' : '#888',
-          lineHeight: 1.4,
-          marginBottom: rawDesc && rawDesc !== desc ? 6 : 12,
-          fontStyle: desc ? 'normal' : 'italic',
-        }}
-      >
-        {desc || 'No description available'}
-      </div>
+      {/* Description block — hidden entirely for structured-intake SR types where
+          the intake captures categorical metadata (concern_category / problem_category /
+          final_outcome) rather than free-text submitter narrative. SGA Rodent Baiting
+          is the canonical example; future structured-intake types follow the same
+          pattern. The "No description available" placeholder would be misleading
+          there — there isn't a missing description, there's no description field by
+          design. */}
+      {desc ? (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#1a1a1a',
+            lineHeight: 1.4,
+            marginBottom: rawDesc && rawDesc !== desc ? 6 : 12,
+          }}
+        >
+          {desc}
+        </div>
+      ) : !c.concern_category && !c.problem_category && !c.final_outcome ? (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#888',
+            lineHeight: 1.4,
+            marginBottom: 12,
+            fontStyle: 'italic',
+          }}
+        >
+          No description available
+        </div>
+      ) : null}
       {isAdmin && rawDesc && rawDesc !== desc ? (
         <div
           style={{

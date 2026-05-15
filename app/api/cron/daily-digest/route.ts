@@ -12,6 +12,11 @@ type DigestEvent = {
   kind: 'complaint' | 'violation' | 'permit'
   label: string
   description: string | null
+  // Current city action on the work order (complaints only). For open cases:
+  // workflow_step ("Investigation/Inspection", "Dispatch Crew", "Perform Work").
+  // For closed cases: final_outcome ("Owner's Responsibility", "Alley Baited",
+  // "No Problem Found"). Null when enrichment hasn't populated either field.
+  woli_stage?: string | null
   date: string
   url_path?: string
 }
@@ -26,12 +31,12 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 25-hour lookback gives ~1hr buffer for Vercel cron variance.
+  // 26-hour lookback gives ~2hr buffer for Vercel cron variance.
   // Slight overlap with previous day's window is fine — idempotency guard
   // (alert_digest_log unique index) prevents double-sends.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 25 * 60 * 60 * 1000
+  const startMs = now.getTime() - 26 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
@@ -151,10 +156,16 @@ export async function GET(request: Request) {
       const events: DigestEvent[] = []
 
       if (setting.trigger_complaints) {
+        // Filter by DEFAULT_VISIBLE_CODES at the SQL layer — drops the JS
+        // post-filter that used to drop non-visible codes after the round trip.
+        // Now also selects concern_category, problem_category, status,
+        // final_outcome, and workflow_step so the rendered description can
+        // include structured intake metadata + the current WOLI stage.
         const { data: complaints } = await supabase
           .from('complaints_311')
-          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description')
+          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, concern_category, problem_category, status, final_outcome, workflow_step')
           .in('address_normalized', allAddresses)
+          .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
           .gte('created_date', startIso)
           .lt('created_date', endIso)
           .order('created_date', { ascending: false })
@@ -166,17 +177,47 @@ export async function GET(request: Request) {
           created_date: string | null
           address_normalized: string | null
           standard_description: string | null
+          concern_category: string | null
+          problem_category: string | null
+          status: string | null
+          final_outcome: string | null
+          workflow_step: string | null
         }>) {
-          if (!c.sr_short_code || !DEFAULT_VISIBLE_CODES.has(c.sr_short_code)) continue
           if (!c.address_normalized || !c.created_date) continue
           const meta = addressToProperty.get(c.address_normalized)
           if (!meta) continue
+
+          // Build description from standard_description + structured intake.
+          // For structured-intake codes (SGA, WM3, AAD, AAI) standard_description
+          // is null but concern_category/problem_category carry the signal.
+          // Join the two structured fields with " / " when both present.
+          const desc = c.standard_description?.trim() || null
+          const concern = c.concern_category?.trim() || null
+          const problem = c.problem_category?.trim() || null
+          const structured = concern && problem ? `${concern} / ${problem}` : (concern || problem)
+          let description: string | null = null
+          if (desc && structured) description = `${desc} — ${structured}`
+          else if (desc) description = desc
+          else if (structured) description = structured
+
+          // Surface WOLI state. For closed cases, final_outcome ("Owner's
+          // Responsibility", "Alley Baited", "No Problem Found") is the signal.
+          // For open cases — almost always the case in a 25-hour window —
+          // workflow_step shows the current city action ("Investigation/
+          // Inspection", "Dispatch Crew", "Perform Work").
+          const isClosed = String(c.status ?? '').toLowerCase() === 'completed' ||
+                           String(c.status ?? '').toLowerCase() === 'closed'
+          const woliStage = isClosed && c.final_outcome?.trim()
+            ? c.final_outcome.trim()
+            : (c.workflow_step?.trim() || null)
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
             kind: 'complaint',
             label: c.sr_type ?? 'Building Complaint',
-            description: c.standard_description?.trim() || null,
+            description,
+            woli_stage: woliStage,
             date: c.created_date,
           })
         }
@@ -421,16 +462,23 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           .sort((a, b) => b.events.length - a.events.length)
           .map(({ display, events: propEvents }) => {
             const eventRows = propEvents
-              .map((e) => {
+              .map((e, idx) => {
                 const labelColor = e.label === 'STOP-WORK ORDER' ? '#b8302a' : '#1a1a1a'
                 const labelWeight = e.label === 'STOP-WORK ORDER' ? '700' : '500'
+                // First row: no top padding. Last row: no bottom padding.
+                // Middle rows: 6px vertical gap between events (no hairline).
+                const isFirst = idx === 0
+                const isLast = idx === propEvents.length - 1
+                const paddingTop = isFirst ? 0 : 6
+                const paddingBottom = isLast ? 0 : 6
                 return `
             <tr>
-              <td style="padding: 8px 0; border-bottom: 1px solid #f0ede5;">
+              <td style="padding: ${paddingTop}px 0 ${paddingBottom}px 0;">
                 <div style="font-size: 13px; color: ${labelColor}; font-weight: ${labelWeight};">
                   ${escapeHtml(e.label)}
                 </div>
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
+                ${e.woli_stage ? `<div style="font-size: 11px; color: #888; margin-top: 3px; font-weight: 500;">${escapeHtml(e.woli_stage)}</div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
                   ${escapeHtml(formatChicagoTime(e.date))}
                 </div>
@@ -441,13 +489,15 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
               .join('')
 
             return `
-        <div style="margin-bottom: 24px;">
+        <div style="margin-bottom: 20px;">
           <div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
             ${escapeHtml(display)}
           </div>
-          <table style="width: 100%; border-collapse: collapse;">
-            ${eventRows}
-          </table>
+          <div style="padding-left: 12px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              ${eventRows}
+            </table>
+          </div>
         </div>
       `
           })
@@ -465,7 +515,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
   <meta charset="utf-8">
   <meta name="format-detection" content="address=no,telephone=no,date=no,email=no">
   <meta name="x-apple-disable-message-reformatting">
-  <title>Property Sentinel daily digest</title>
+  <title>Property Sentinel Daily Digest</title>
 </head>
 <body style="margin: 0; padding: 0; background: #faf8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <!-- Preheader: invisible to readers, used by clients for preview text -->
@@ -482,7 +532,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
         <!-- Header -->
         <div style="background: #243f5e; color: #ffffff; padding: 20px 24px; border-radius: 8px 8px 0 0;">
           <div style="font-family: 'Merriweather', Georgia, serif; font-size: 20px; font-weight: 600; line-height: 1.2; color: #ffffff;">
-            ${escapeHtml(orgName)} — Daily digest
+            ${escapeHtml(orgName)} — Daily Digest
           </div>
           <div style="font-family: 'Merriweather', Georgia, serif; font-size: 11px; font-style: italic; color: rgba(255,255,255,0.6); margin-top: 4px;">
             by Property Sentinel
