@@ -2,6 +2,68 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 /**
+ * Run a Supabase select-with-.in() in chunks and concatenate the results.
+ *
+ * The native PostgREST .in() filter encodes its values into the URL query
+ * string. After the Hansen backfill widened portfolio_properties address
+ * sets, a single .in('address_normalized', allAddresses) for a 351-row
+ * portfolio could produce a URL well over PostgREST's 8KB gateway limit,
+ * causing the underlying node-fetch to throw "TypeError: fetch failed".
+ *
+ * This helper splits the values array into chunks of `chunkSize`, runs each
+ * chunk in parallel via the buildQuery factory, concats results, and
+ * deduplicates by `dedupeKey`. Pass a builder factory (not a built query)
+ * because Supabase query builders mutate when chained — we need a fresh
+ * builder per chunk.
+ *
+ * `chunkSize` defaults to 200. Each normalized address averages ~25 chars
+ * which encodes to ~5KB per chunk URL, leaving ~3KB headroom under the 8KB
+ * gateway limit.
+ *
+ * TODO: Replace with Supabase stored functions (get_portfolio_complaints /
+ * _violations / _permits) that take addresses as a text[] parameter — those
+ * have fixed-size POST bodies and don't have this URL-length vulnerability.
+ * Tracked in the technical scope doc as an architectural follow-up.
+ */
+export async function chunkedIn<T extends Record<string, unknown>>(
+  values: string[],
+  chunkSize: number,
+  buildQuery: (chunk: string[]) => PromiseLike<{
+    data: unknown
+    error: { message: string } | null
+  }>,
+  dedupeKey?: (row: T) => string
+): Promise<{ data: T[]; error: string | null }> {
+  if (values.length === 0) return { data: [], error: null }
+
+  const chunks: string[][] = []
+  for (let i = 0; i < values.length; i += chunkSize) {
+    chunks.push(values.slice(i, i + chunkSize))
+  }
+
+  const results = await Promise.all(chunks.map(buildQuery))
+  const errored = results.find((r) => r.error)
+  if (errored?.error) return { data: [], error: errored.error.message }
+
+  const merged: T[] = []
+  for (const r of results) {
+    if (r.data) merged.push(...(r.data as T[]))
+  }
+
+  if (!dedupeKey) return { data: merged, error: null }
+
+  const seen = new Set<string>()
+  const deduped: T[] = []
+  for (const row of merged) {
+    const key = dedupeKey(row)
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(row)
+  }
+  return { data: deduped, error: null }
+}
+
+/**
  * Expand display-formatted address ranges into individual normalized addresses.
  * Handles em dashes, en dashes, and regular hyphens.
  */
@@ -147,8 +209,10 @@ export async function fetchPortfolioActivity(
   canonicalAddress: string,
   addressRange: string | null | undefined,
   additionalStreets: string[] | null | undefined,
-  pins?: string[] | null | undefined
+  pins?: string[] | null | undefined,
+  opts?: { skipStr?: boolean }
 ): Promise<PortfolioActivityDetail> {
+  const skipStr = opts?.skipStr === true
   const addresses = getAllAddresses(canonicalAddress, addressRange, additionalStreets)
   const twelveMonthsAgo = new Date(Date.now() - 365 * 86400000).toISOString()
 
@@ -212,25 +276,30 @@ export async function fetchPortfolioActivity(
             .then((r) => r.data ?? [])
         )
       ),
-      Promise.all(
-        addresses.map((addr) =>
-          supabase
-            .from('str_prohibited_buildings')
-            .select('application_id', { count: 'exact', head: true })
-            .eq('address_normalized', addr)
-            .then((r) => (r.count ?? 0) > 0)
-        )
-      ),
-      Promise.all(
-        addresses.map((addr) =>
-          supabase
-            .from('str_registrations')
-            .select('registration_number', { count: 'exact', head: true })
-            .eq('address_normalized', addr)
-            .then((r) => r.count ?? 0)
-        )
-      ),
+      skipStr
+        ? Promise.resolve([] as boolean[])
+        : Promise.all(
+            addresses.map((addr) =>
+              supabase
+                .from('str_prohibited_buildings')
+                .select('application_id', { count: 'exact', head: true })
+                .eq('address_normalized', addr)
+                .then((r) => (r.count ?? 0) > 0)
+            )
+          ),
+      skipStr
+        ? Promise.resolve([] as number[])
+        : Promise.all(
+            addresses.map((addr) =>
+              supabase
+                .from('str_registrations')
+                .select('registration_number', { count: 'exact', head: true })
+                .eq('address_normalized', addr)
+                .then((r) => r.count ?? 0)
+            )
+          ),
       (async () => {
+        if (skipStr) return false
         const precinctHits = await Promise.all(
           addresses.map((addr) =>
             supabase
@@ -257,6 +326,7 @@ export async function fetchPortfolioActivity(
         return false
       })(),
       (async () => {
+        if (skipStr) return 0
         // Use saved pins from portfolio_properties when available — skips the
         // broken address→properties.pin lookup that fails for condo buildings
         // where properties is keyed per-unit (e.g. "2413 W HADDON AVE 1") but
@@ -285,34 +355,44 @@ export async function fetchPortfolioActivity(
         }
         if (candidatePins.length === 0) return 0
 
-        // Find first PIN with valid coords. Filter NULL coords explicitly because
-        // some parcel_universe rows (airport catch-all etc) lack lat/lng.
-        for (const pin of candidatePins) {
-          const { data: parcel } = await supabase
-            .from('parcel_universe')
-            .select('lat, lng')
-            .eq('pin', pin)
-            .not('lat', 'is', null)
-            .not('lng', 'is', null)
-            .order('tax_year', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          const lat = parcel?.lat != null ? Number(parcel.lat) : NaN
-          const lng = parcel?.lng != null ? Number(parcel.lng) : NaN
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            const latDelta = 0.00135
-            const lngDelta = 0.00185
-            const { count } = await supabase
-              .from('airbnb_listings')
-              .select('id', { count: 'exact', head: true })
-              .gte('latitude', lat - latDelta)
-              .lte('latitude', lat + latDelta)
-              .gte('longitude', lng - lngDelta)
-              .lte('longitude', lng + lngDelta)
-            return count ?? 0
-          }
-        }
-        return 0
+        // Use ONLY the first PIN as the coordinate anchor for the nearby-listings
+        // bbox. Previously this iterated up to all PINs looking for one with
+        // valid coords — meaningful work on rows like 175 E DELAWARE PL (711 PINs)
+        // or 1720 S MICHIGAN AVE (965 PINs) where Hansen resolved a giant condo
+        // tower. For those rows we'd hit parcel_universe up to 711 times to
+        // anchor a single bbox query.
+        //
+        // pins[0] is almost always the building's primary parcel and almost
+        // always has lat/lng. Deliberate trade: rows whose first PIN happens to
+        // be coord-less (rare — airport catch-all and similar) return
+        // nearby_listings: 0. nearby_listings is a deliberately-cached STR
+        // metric refreshed only by import-rentroll/rederive-buildings, not the
+        // live route — so an occasional 0 on a coord-less primary parcel is a
+        // tolerable miss for the speed win on the hot path.
+        const primaryPin = candidatePins[0]
+        const { data: parcel } = await supabase
+          .from('parcel_universe')
+          .select('lat, lng')
+          .eq('pin', primaryPin)
+          .not('lat', 'is', null)
+          .not('lng', 'is', null)
+          .order('tax_year', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const lat = parcel?.lat != null ? Number(parcel.lat) : NaN
+        const lng = parcel?.lng != null ? Number(parcel.lng) : NaN
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 0
+
+        const latDelta = 0.00135
+        const lngDelta = 0.00185
+        const { count } = await supabase
+          .from('airbnb_listings')
+          .select('id', { count: 'exact', head: true })
+          .gte('latitude', lat - latDelta)
+          .lte('latitude', lat + latDelta)
+          .gte('longitude', lng - lngDelta)
+          .lte('longitude', lng + lngDelta)
+        return count ?? 0
       })(),
     ])
 

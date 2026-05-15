@@ -1,7 +1,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getAllAddresses } from '@/lib/portfolio-stats'
+import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export const runtime = 'nodejs'
@@ -165,93 +165,117 @@ export async function GET(request: Request) {
   const rangeCutoff = new Date(Date.now() - rangeDays * 86400000).toISOString()
 
   // ── Complaints ─────────────────────────────────────────────────────────
-  let complaintsQuery = supabase
-    .from('complaints_311')
-    .select(COMPLAINT_FIELDS)
-    .in('address_normalized', allAddresses)
-    .gte('created_date', rangeCutoff)
-    .order('created_date', { ascending: false })
-    .limit(500)
+  const { data: complaints, error: complaintsErr } = await chunkedIn<ComplaintRow>(
+    allAddresses,
+    200,
+    (chunk) => {
+      let q = supabase
+        .from('complaints_311')
+        .select(COMPLAINT_FIELDS)
+        .in('address_normalized', chunk)
+        .gte('created_date', rangeCutoff)
+        .order('created_date', { ascending: false })
+        .limit(500)
 
-  if (categoryParam !== 'all' && categoryParam !== '311') {
-    complaintsQuery = complaintsQuery.eq('sr_short_code', '__NONE__')
-  }
-  if (buildingFilter === 'building') {
-    complaintsQuery = complaintsQuery.in('sr_short_code', BUILDING_SR_CODES)
-  } else if (buildingFilter === 'other') {
-    complaintsQuery = complaintsQuery.not(
-      'sr_short_code',
-      'in',
-      `(${BUILDING_SR_CODES.map((c) => `"${c}"`).join(',')})`
-    )
-  }
-  if (statusFilter === 'open') {
-    complaintsQuery = complaintsQuery.ilike('status', 'open')
-  } else if (statusFilter === 'closed') {
-    complaintsQuery = complaintsQuery.not('status', 'ilike', 'open')
-  }
-  if (searchQuery) {
-    complaintsQuery = complaintsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
-  }
+      if (categoryParam !== 'all' && categoryParam !== '311') {
+        q = q.eq('sr_short_code', '__NONE__')
+      }
+      if (buildingFilter === 'building') {
+        q = q.in('sr_short_code', BUILDING_SR_CODES)
+      } else if (buildingFilter === 'other') {
+        q = q.not(
+          'sr_short_code',
+          'in',
+          `(${BUILDING_SR_CODES.map((c) => `"${c}"`).join(',')})`
+        )
+      }
+      if (statusFilter === 'open') {
+        q = q.ilike('status', 'open')
+      } else if (statusFilter === 'closed') {
+        q = q.not('status', 'ilike', 'open')
+      }
+      if (searchQuery) {
+        q = q.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+      }
 
-  const { data: complaints, error: complaintsErr } = await complaintsQuery
+      return q
+    },
+    (row) => String(row.sr_number ?? '')
+  )
 
   if (complaintsErr) {
-    return NextResponse.json({ error: complaintsErr.message }, { status: 500 })
+    return NextResponse.json({ error: complaintsErr }, { status: 500 })
   }
 
   // ── Violations ─────────────────────────────────────────────────────────
-  let violationsQuery = supabase
-    .from('violations')
-    .select(VIOLATION_FIELDS)
-    .in('address_normalized', allAddresses)
-    .gte('violation_date', rangeCutoff)
-    .order('violation_date', { ascending: false })
-    .limit(500)
+  const { data: violations, error: violationsErr } = await chunkedIn<ViolationRow>(
+    allAddresses,
+    200,
+    (chunk) => {
+      let q = supabase
+        .from('violations')
+        .select(VIOLATION_FIELDS)
+        .in('address_normalized', chunk)
+        .gte('violation_date', rangeCutoff)
+        .order('violation_date', { ascending: false })
+        .limit(500)
 
-  if (categoryParam !== 'all' && categoryParam !== 'violation') {
-    violationsQuery = violationsQuery.eq('violation_id', '__NONE__')
-  }
-  if (statusFilter === 'open') {
-    violationsQuery = violationsQuery.or(
-      'violation_status.ilike.open,violation_status.ilike.failed,inspection_status.ilike.open,inspection_status.ilike.failed'
-    )
-  } else if (statusFilter === 'closed') {
-    violationsQuery = violationsQuery.not('violation_status', 'ilike', 'open').not('violation_status', 'ilike', 'failed')
-  }
-  if (searchQuery) {
-    violationsQuery = violationsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
-  }
+      if (categoryParam !== 'all' && categoryParam !== 'violation') {
+        q = q.eq('violation_id', '__NONE__')
+      }
+      if (statusFilter === 'open') {
+        q = q.or(
+          'violation_status.ilike.open,violation_status.ilike.failed,inspection_status.ilike.open,inspection_status.ilike.failed'
+        )
+      } else if (statusFilter === 'closed') {
+        q = q.not('violation_status', 'ilike', 'open').not('violation_status', 'ilike', 'failed')
+      }
+      if (searchQuery) {
+        q = q.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+      }
 
-  const { data: violations, error: violationsErr } = await violationsQuery
+      return q
+    },
+    // Violations use inspection_number as a grouping key downstream; for chunk
+    // dedupe use violation_id (the primary key) since the same violation row
+    // can't appear in two chunks (chunks partition the address set).
+    (row) => String(row.violation_id ?? '')
+  )
 
   if (violationsErr) {
-    return NextResponse.json({ error: violationsErr.message }, { status: 500 })
+    return NextResponse.json({ error: violationsErr }, { status: 500 })
   }
 
   // ── Permits ────────────────────────────────────────────────────────────
-  let permitsQuery = supabase
-    .from('permits')
-    .select(PERMIT_FIELDS)
-    .in('address_normalized', allAddresses)
-    .gte('issue_date', rangeCutoff)
-    .order('issue_date', { ascending: false })
-    .limit(500)
+  const { data: permits, error: permitsErr } = await chunkedIn<PermitRow>(
+    allAddresses,
+    200,
+    (chunk) => {
+      let q = supabase
+        .from('permits')
+        .select(PERMIT_FIELDS)
+        .in('address_normalized', chunk)
+        .gte('issue_date', rangeCutoff)
+        .order('issue_date', { ascending: false })
+        .limit(500)
 
-  if (categoryParam !== 'all' && categoryParam !== 'permit') {
-    permitsQuery = permitsQuery.eq('permit_number', '__NONE__')
-  }
-  if (statusFilter !== 'all') {
-    permitsQuery = permitsQuery.eq('permit_number', '__NONE__')
-  }
-  if (searchQuery) {
-    permitsQuery = permitsQuery.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
-  }
+      if (categoryParam !== 'all' && categoryParam !== 'permit') {
+        q = q.eq('permit_number', '__NONE__')
+      }
+      if (statusFilter !== 'all') {
+        q = q.eq('permit_number', '__NONE__')
+      }
+      if (searchQuery) {
+        q = q.ilike('address_normalized', `%${searchQuery.toUpperCase()}%`)
+      }
 
-  const { data: permits, error: permitsErr } = await permitsQuery
+      return q
+    },
+    (row) => String(row.permit_number ?? '')
+  )
 
   if (permitsErr) {
-    return NextResponse.json({ error: permitsErr.message }, { status: 500 })
+    return NextResponse.json({ error: permitsErr }, { status: 500 })
   }
 
   // ── Normalize complaints ───────────────────────────────────────────────

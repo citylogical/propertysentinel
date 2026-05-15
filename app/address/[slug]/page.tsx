@@ -114,46 +114,50 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
       ? String(property.pin).trim()
       : null
 
-  let siblingAddresses: string[] = [normalizedAddress]
-  let siblingPinsForPortfolio: string[] = []
-  let addressRange: string | null = null
-
-  if (!pin) {
-    const userRange = await findApprovedUserRange(normalizedAddress)
-    if (userRange) {
-      siblingAddresses = userRange.allAddresses
-      addressRange = buildAddressRange(userRange.allAddresses)
-      siblingPinsForPortfolio = await collectPinsForUserRangeAddresses(userRange.allAddresses)
-    }
-  }
-
-  const hasDirectPropertyMatch = !!property
-
-  let normalizedDataPin: string | null = null
-  if (pin) {
-    const np = normalizePin(pin)
-    if (np) normalizedDataPin = np
-  } else if (siblingPinsForPortfolio.length > 0) {
-    const np = normalizePin(String(siblingPinsForPortfolio[0]))
-    if (np) normalizedDataPin = np
-  }
-
-  if (normalizedDataPin) {
-    const normalizedPin = normalizedDataPin
-    const siblings = hasDirectPropertyMatch
-      ? await fetchSiblingPins(normalizedPin, normalizedAddress)
-      : {
-          siblingPins: siblingPinsForPortfolio,
-          siblingAddresses,
-          addressRange,
-          resolvedVia: 'user_range' as const,
+      let siblingAddresses: string[] = [normalizedAddress]
+      let siblingPinsForPortfolio: string[] = []
+      let addressRange: string | null = null
+    
+      // Check for an approved user_building_ranges entry UNCONDITIONALLY (used to
+      // only run when !pin, which meant the property page never consulted user
+      // ranges for unit-suffixed addresses like "916 W SUNNYSIDE AVE 1C" — those
+      // resolve to a real PIN via fetchProperty and would otherwise fall through
+      // to fetchSiblingPins Path C, surfacing the building-detection "suggest"
+      // modal instead of expanding straight to building view).
+      const userRange = await findApprovedUserRange(normalizedAddress)
+      const hasUserRange = !!userRange
+    
+      if (hasUserRange) {
+        siblingAddresses = userRange.allAddresses
+        addressRange = buildAddressRange(userRange.allAddresses)
+        siblingPinsForPortfolio = await collectPinsForUserRangeAddresses(userRange.allAddresses)
+      }
+    
+      const hasDirectPropertyMatch = !!property
+    
+      let normalizedDataPin: string | null = null
+      if (pin) {
+        const np = normalizePin(pin)
+        if (np) normalizedDataPin = np
+      } else if (siblingPinsForPortfolio.length > 0) {
+        const np = normalizePin(String(siblingPinsForPortfolio[0]))
+        if (np) normalizedDataPin = np
+      }
+    
+      if (normalizedDataPin) {
+        const normalizedPin = normalizedDataPin
+        // When an approved user_building_range covered this address, it is the
+        // definitive source — skip fetchSiblingPins entirely. The user-range
+        // values (addressRange / siblingAddresses / siblingPinsForPortfolio) set
+        // above are kept as-is. Path C's heuristic sibling resolution is only
+        // consulted when no user-range exists.
+        if (hasDirectPropertyMatch && !hasUserRange) {
+          const siblings = await fetchSiblingPins(normalizedPin, normalizedAddress)
+          addressRange = siblings.addressRange
+          siblingAddresses = siblings.siblingAddresses
+          siblingPinsForPortfolio = siblings.siblingPins
         }
-    if (hasDirectPropertyMatch) {
-      addressRange = siblings.addressRange
-      siblingAddresses = siblings.siblingAddresses
-      siblingPinsForPortfolio = siblings.siblingPins
-    }
-  }
+      }
 
   const displayZip =
     property?.zip != null && String(property.zip).trim() !== ''

@@ -143,6 +143,9 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     message?: string
   } | null>(null)
 
+  // Rows whose live stats just came back changed — drives the cell flash.
+  const [flashedIds, setFlashedIds] = useState<Set<string>>(new Set())
+
   // ─── URL-synced state ─────────────────────────────────────────────────
   const searchQuery = urlParams.get('search') ?? ''
   const sortField = (urlParams.get('sort_field') as SortField | null) ?? null
@@ -364,6 +367,98 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
       setUrlParams({ page: String(safePage) })
     }
   }, [page, safePage, setUrlParams])
+
+  // Live-recompute activity stats for the rows currently on screen.
+  // Fires whenever the visible slice changes (page / sort / filter / page size).
+  // Cached column values render instantly; this swaps in fresh numbers a beat
+  // later and flashes any cell that changed.
+  useEffect(() => {
+    const visibleIds = paginated.map((p) => p.id)
+    if (visibleIds.length === 0) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/dashboard/list-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propertyIds: visibleIds }),
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as {
+          stats?: Record<
+            string,
+            Partial<PortfolioProperty> & { total_permits_12mo?: number }
+          >
+        }
+        if (cancelled || !data.stats) return
+
+        const changed = new Set<string>()
+        setProperties((prev) =>
+          prev.map((p) => {
+            const live = data.stats?.[p.id]
+            if (!live) return p
+            // Did anything actually change? (drives the flash)
+            const didChange =
+              p.open_complaints !== live.open_complaints ||
+              p.total_complaints_12mo !== live.total_complaints_12mo ||
+              p.open_building_complaints !== live.open_building_complaints ||
+              p.total_building_complaints_12mo !== live.total_building_complaints_12mo ||
+              p.latest_building_complaint_date !== live.latest_building_complaint_date ||
+              p.open_violations !== live.open_violations ||
+              p.total_violations_12mo !== live.total_violations_12mo ||
+              p.total_permits !== live.total_permits_12mo ||
+              p.shvr_count !== live.shvr_count ||
+              p.has_stop_work !== live.has_stop_work
+            if (didChange) changed.add(p.id)
+            return {
+              ...p,
+              open_complaints: live.open_complaints ?? p.open_complaints,
+              total_complaints_12mo: live.total_complaints_12mo ?? p.total_complaints_12mo,
+              open_building_complaints:
+                live.open_building_complaints ?? p.open_building_complaints,
+              total_building_complaints_12mo:
+                live.total_building_complaints_12mo ?? p.total_building_complaints_12mo,
+              latest_building_complaint_date:
+                live.latest_building_complaint_date ?? p.latest_building_complaint_date,
+              open_violations: live.open_violations ?? p.open_violations,
+              total_violations_12mo: live.total_violations_12mo ?? p.total_violations_12mo,
+              total_permits: live.total_permits_12mo ?? p.total_permits,
+              shvr_count: live.shvr_count ?? p.shvr_count,
+              has_stop_work: live.has_stop_work ?? p.has_stop_work,
+            }
+          })
+        )
+        if (changed.size > 0) {
+          setFlashedIds(changed)
+          globalThis.setTimeout(() => {
+            if (!cancelled) setFlashedIds(new Set())
+          }, 1600)
+        }
+
+        // Signal the layout to re-pull the portfolio-summary aggregate.
+        // list-activity has already persisted fresh values back to
+        // portfolio_properties, so a plain re-fetch picks them up. The
+        // listener in DashboardLayoutClient debounces this.
+        window.dispatchEvent(new CustomEvent('ps:portfolio-stats-updated'))
+      } catch {
+        // Network failure — cached values stay on screen, no-op.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    safePage,
+    sortField,
+    sortDir,
+    pageSize,
+    searchQuery,
+    filterTag,
+    filterStatus,
+    properties.length,
+  ])
 
   // ─── Toolbar action handlers (all reset page=1) ───────────────────────
   const handleSearchChange = (val: string) => {
@@ -861,7 +956,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                   return (
                     <tr
                       key={p.id}
-                      className={`${selectedId === p.id ? 'selected' : ''} ${selectedIds.has(p.id) ? 'checked' : ''}`}
+                      className={`${selectedId === p.id ? 'selected' : ''} ${selectedIds.has(p.id) ? 'checked' : ''} ${flashedIds.has(p.id) ? 'row-stats-flash' : ''}`}
                       onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
                     >
                       {isAdmin ? (

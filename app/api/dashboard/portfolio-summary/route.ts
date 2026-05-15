@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getAllAddresses } from '@/lib/portfolio-stats'
+import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { SR_CODES } from '@/lib/sr-codes'
 
 const BUILDING_SR_CODES = SR_CODES.filter((e) => e.category === 'building').map((e) => e.code)
@@ -120,25 +120,58 @@ export async function GET() {
 
     if (allAddresses.length > 0) {
       const [complaintsRes, violationsRes, permitsRes] = await Promise.all([
-        supabase
-          .from('complaints_311')
-          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description')
-          .in('address_normalized', allAddresses)
-          .gte('created_date', weekCutoff)
-          .order('created_date', { ascending: false })
-          .limit(500),
-        supabase
-          .from('violations')
-          .select('inspection_number, violation_status, inspection_status, violation_date, is_stop_work_order, address_normalized')
-          .in('address_normalized', allAddresses)
-          .gte('violation_date', weekCutoff)
-          .limit(500),
-        supabase
-          .from('permits')
-          .select('permit_number, issue_date, address_normalized')
-          .in('address_normalized', allAddresses)
-          .gte('issue_date', weekCutoff)
-          .limit(500),
+        chunkedIn<{
+          sr_type: string | null
+          sr_short_code: string | null
+          created_date: string | null
+          address_normalized: string | null
+          standard_description: string | null
+        }>(
+          allAddresses,
+          200,
+          (chunk) =>
+            supabase
+              .from('complaints_311')
+              .select('sr_type, sr_short_code, created_date, address_normalized, standard_description')
+              .in('address_normalized', chunk)
+              .gte('created_date', weekCutoff)
+              .order('created_date', { ascending: false })
+              .limit(500),
+          // sr_number isn't in the SELECT here, but the route only counts —
+          // dedupe by a synthetic composite key.
+          (row) => `${row.address_normalized}|${row.created_date}|${row.sr_short_code}`
+        ),
+        chunkedIn<{
+          inspection_number: string | null
+          violation_status: string | null
+          inspection_status: string | null
+          violation_date: string | null
+          is_stop_work_order: boolean | null
+          address_normalized: string | null
+        }>(
+          allAddresses,
+          200,
+          (chunk) =>
+            supabase
+              .from('violations')
+              .select('inspection_number, violation_status, inspection_status, violation_date, is_stop_work_order, address_normalized')
+              .in('address_normalized', chunk)
+              .gte('violation_date', weekCutoff)
+              .limit(500),
+          (row) => `${row.inspection_number ?? ''}|${row.address_normalized}|${row.violation_date}`
+        ),
+        chunkedIn<{ permit_number: string | null; issue_date: string | null; address_normalized: string | null }>(
+          allAddresses,
+          200,
+          (chunk) =>
+            supabase
+              .from('permits')
+              .select('permit_number, issue_date, address_normalized')
+              .in('address_normalized', chunk)
+              .gte('issue_date', weekCutoff)
+              .limit(500),
+          (row) => `${row.permit_number ?? ''}|${row.address_normalized}|${row.issue_date}`
+        ),
       ])
 
       for (const c of (complaintsRes.data ?? []) as Array<{

@@ -269,15 +269,31 @@ function parseBuildingAttributes(
   const $cells = $row.length > 0 ? $row.find('td') : $()
   const attrBldgId = $cells.length > 0 ? clean($cells.eq(0).text()) : null
 
-  // Fallback path: no Building Attributes table (or no BLDG ID in it), but the
-  // page still has inspection links carrying an addr= key. Synthesize a minimal
-  // building keyed on the prefixed addr= id so the child tables (permits,
-  // inspections, etc.) still have a parent to attach to. Attribute fields are
-  // null because the city genuinely didn't supply them.
+  // Fallback ladder for pages with no Building Attributes table. We still want
+  // a stable bldg_id so the child tables (permits, inspections, etc.) have a
+  // parent to attach to — otherwise that data is silently dropped.
+  //
+  //   rung 1 (above): real Building Attributes table → its own BLDG ID
+  //   rung 2: no attributes, but inspection links carry an addr= key
+  //           → "addr:" + detailAddrId
+  //   rung 3: no attributes AND no inspection links, but the page DID resolve
+  //           to a range address → "range:" + normalized range line. This is
+  //           the "old permits only" case: a building Hansen knows by address
+  //           but has no internal building record and no inspection history
+  //           for (e.g. 1505 N MAPLEWOOD AVE — 3 permits, nothing else).
+  //   none of the above → null (truly no usable key)
+  //
+  // Attribute fields are null in rungs 2 and 3 — the city genuinely didn't
+  // supply them.
   if (!attrBldgId) {
-    if (!detailAddrId) return null  // no attributes AND no addr= → truly no key
+    const fallbackKey = detailAddrId
+      ? `addr:${detailAddrId}`
+      : rangeAddress
+        ? `range:${rangeAddress.toUpperCase().replace(/\s+/g, ' ').trim()}`
+        : null
+    if (!fallbackKey) return null  // no attributes, no addr=, no range → no key
     return {
-      bldg_id: `addr:${detailAddrId}`,
+      bldg_id: fallbackKey,
       input_address: inputAddress,
       range_address: rangeAddress,
       detail_addr_id: detailAddrId,
@@ -512,18 +528,28 @@ export function parseHansenResults(html: string): HansenParseResult {
     $('#resultstable_violations').length > 0 ||
     $('#resultstable_permits').length > 0
 
-  if (!looksLikeResultsPage) {
-    // Distinguish "wrong page" from "right page, no data". The results page
-    // always renders the "Range address" block even when every table is empty;
-    // if we don't even have that, we were handed something else entirely.
-    const rangeLines = sectionLines($, 'Range address')
-    if (rangeLines.length === 0) {
-      throw new Error(
-        'Hansen parse: HTML does not look like a doSearch results page ' +
-          '(no section tables, no "Range address" block)'
-      )
+    if (!looksLikeResultsPage) {
+      // Distinguish "wrong page" from "right page, no data".
+      //
+      // Two signals that this IS a genuine results page, just an empty one:
+      //   (a) a "Range address" block, OR
+      //   (b) an "Input Address" block.
+      // The Input Address block is the MORE reliable of the two — it renders on
+      // EVERY valid doSearch response, including the "valid address, zero DOB
+      // records" case (e.g. 10638 S PEORIA ST), where the city emits the input
+      // address and then a run of empty section comments with no Range block at
+      // all. The earlier version keyed only on "Range address" and so threw on
+      // those genuinely-empty pages, surfacing them as errors instead of as the
+      // legitimate is_empty outcome.
+      const rangeLines = sectionLines($, 'Range address')
+      const inputAddr = sectionLine($, 'Input Address')
+      if (rangeLines.length === 0 && !inputAddr) {
+        throw new Error(
+          'Hansen parse: HTML does not look like a doSearch results page ' +
+            '(no section tables, no "Range address" block, no "Input Address" block)'
+        )
+      }
     }
-  }
 
   const inputAddress = sectionLine($, 'Input Address')
   const rangeAddresses = sectionLines($, 'Range address')

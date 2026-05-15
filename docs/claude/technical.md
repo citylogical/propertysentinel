@@ -15,6 +15,7 @@ keyset pagination, inline resume via MAX(), upsert_with_retry(retries=3, delay=1
 - Socrata timestamps: slice to 19 chars before parsing
 - properties table: column is zip not zip_code, no ward column
 - Never run migrations against production without explicit instruction
+- **Deferred:** Portfolio-wide activity/summary queries fan out with `.in('address_normalized', …)`. Large address sets can exceed PostgREST URL limits; `chunkedIn` in `lib/portfolio-stats.ts` batches those `.in()` calls. Long-term, replace with three stored functions (`get_portfolio_complaints`, `get_portfolio_violations`, `get_portfolio_permits`) taking `text[]` and invoked via `supabase.rpc` for fixed-size request bodies.
 
 ## Address Resolution
 - /api/resolve-address queries parcel_universe.address_normalized

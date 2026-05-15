@@ -706,9 +706,10 @@ export async function fetchProperty(normalizedAddress: string): Promise<{
     // even though the PIN exists.
     {
       const STREET_ALIASES: Array<[RegExp, string[]]> = [
-        [/ S KING DR$/, [' S S PARK AVE', ' S DR MARTIN LUTHER KING JR DR']],
-        [/ S S PARK AVE$/, [' S KING DR']],
-        [/ S DR MARTIN LUTHER KING JR DR$/, [' S KING DR', ' S S PARK AVE']],
+        [/ S KING DR$/, [' S S PARK AVE', ' S DR MARTIN LUTHER KING JR DR', ' S DR MARTIN L KING JR DR']],
+        [/ S S PARK AVE$/, [' S KING DR', ' S DR MARTIN LUTHER KING JR DR', ' S DR MARTIN L KING JR DR']],
+        [/ S DR MARTIN LUTHER KING JR DR$/, [' S KING DR', ' S S PARK AVE', ' S DR MARTIN L KING JR DR']],
+        [/ S DR MARTIN L KING JR DR$/, [' S KING DR', ' S S PARK AVE', ' S DR MARTIN LUTHER KING JR DR']],
       ]
       for (const [pattern, replacements] of STREET_ALIASES) {
         if (pattern.test(normalizedAddress)) {

@@ -3097,6 +3097,14 @@ button.save-toggle-switch {
   background: #faf8f3;
 }
 
+@keyframes rowStatsFlash {
+  0% { background: #fef9e7; }
+  100% { background: transparent; }
+}
+.dashboard-table tbody tr.row-stats-flash {
+  animation: rowStatsFlash 1.5s ease-out;
+}
+
 .dashboard-addr {
   font-weight: 500;
   color: #1a1a1a;
@@ -4477,6 +4485,15 @@ button.save-toggle-switch {
 
 .building-modal-btn-navy:hover:not(:disabled) {
   background: #1a3a5c;
+}
+
+.building-modal-btn-green {
+  background: #166534;
+  color: #fff;
+}
+
+.building-modal-btn-green:hover:not(:disabled) {
+  background: #14532d;
 }
 
 .building-modal-btn-full {

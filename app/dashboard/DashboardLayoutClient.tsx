@@ -3,7 +3,7 @@
 import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import PortfolioSummaryBanner from './PortfolioSummaryBanner'
 import PortfolioSummaryModal, { type PortfolioSummaryData } from './PortfolioSummaryModal'
 
@@ -28,9 +28,28 @@ export default function DashboardLayoutClient({
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [summaryOpen, setSummaryOpen] = useState(false)
 
-  // Fetch summary data once Clerk knows whether the user is signed in.
-  // Re-fires on sign-in transition so the modal can open after auth
-  // flow completes without a hard refresh.
+  // Fetch the portfolio-summary aggregate. Extracted into a callback so it can
+  // run both on the initial sign-in effect AND when PortfolioTable signals that
+  // it has persisted fresh per-row stats back to portfolio_properties.
+  // `showLoading` is false for background re-pulls so the banner doesn't flicker
+  // back to its "—" loading state on every refresh.
+  const fetchSummary = useCallback(
+    async (showLoading: boolean) => {
+      if (showLoading) setSummaryLoading(true)
+      try {
+        const res = await fetch('/api/dashboard/portfolio-summary')
+        const data = (await res.json()) as PortfolioSummaryData & { error?: string }
+        if (!data.error) setSummaryData(data)
+      } catch {
+        // leave existing summaryData in place
+      } finally {
+        if (showLoading) setSummaryLoading(false)
+      }
+    },
+    []
+  )
+
+  // Initial load — once Clerk knows whether the user is signed in.
   useEffect(() => {
     if (!clerkLoaded) return
     if (!isSignedIn) {
@@ -38,23 +57,27 @@ export default function DashboardLayoutClient({
       setSummaryLoading(false)
       return
     }
-    let cancelled = false
-    setSummaryLoading(true)
-    fetch('/api/dashboard/portfolio-summary')
-      .then((r) => r.json())
-      .then((data: PortfolioSummaryData & { error?: string }) => {
-        if (cancelled) return
-        if (!data.error) setSummaryData(data)
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setSummaryLoading(false)
-      })
+    void fetchSummary(true)
+  }, [clerkLoaded, isSignedIn, fetchSummary])
 
-    return () => {
-      cancelled = true
+  // Re-pull the summary when PortfolioTable persists fresh per-row stats.
+  // Debounced ~1.5s so rapid sort/filter/page clicks (each of which fires
+  // list-activity → this event) collapse into a single re-fetch.
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onStatsUpdated = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        void fetchSummary(false)
+      }, 1500)
     }
-  }, [clerkLoaded, isSignedIn])
+    window.addEventListener('ps:portfolio-stats-updated', onStatsUpdated)
+    return () => {
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('ps:portfolio-stats-updated', onStatsUpdated)
+    }
+  }, [clerkLoaded, isSignedIn, fetchSummary])
 
   // Decide whether to auto-open the modal once summary data loads.
   // Three guards:
