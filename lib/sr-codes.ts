@@ -62,12 +62,12 @@ export const SR_CODES: SRCodeEntry[] = [
   
 
   // ── OTHER — selected codes included in default view ────────────────────────
-  { code: 'EAB',     label: 'Nuisance Animal Complaint',                   category: 'other',              defaultVisible: true },
-  { code: 'EAE',     label: 'Stray Animal Complaint',                      category: 'other',              defaultVisible: true },
+  { code: 'EAB',     label: 'Nuisance Animal Complaint',                   category: 'other',              defaultVisible: false },
+  { code: 'EAE',     label: 'Stray Animal Complaint',                      category: 'other',              defaultVisible: false },
   { code: 'EAF',     label: 'Vicious Animal Complaint',                    category: 'other',              defaultVisible: true },
-  { code: 'EAQ',     label: 'Report an Injured Animal',                    category: 'other',              defaultVisible: true },
+  { code: 'EAQ',     label: 'Report an Injured Animal',                    category: 'other',              defaultVisible: false },
   { code: 'EBD',     label: 'Animal In Trap Complaint',                    category: 'other',              defaultVisible: true },
-  { code: 'CIAC',    label: 'Coyote Interaction Complaint',                category: 'other',              defaultVisible: true },
+  { code: 'CIAC',    label: 'Coyote Interaction Complaint',                category: 'other',              defaultVisible: false },
   { code: 'SCT',     label: 'Clean Vacant Lot Request',                    category: 'other',              defaultVisible: true },
   { code: 'SCX',     label: 'Recycling Inspection Request',                category: 'other',              defaultVisible: true },
   { code: 'PET',     label: 'Pet Wellness Check Request',                  category: 'other',              defaultVisible: true },
