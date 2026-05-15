@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
-import { SR_CODES } from '@/lib/sr-codes'
-
-const BUILDING_SR_CODES = new Set(SR_CODES.filter((e) => e.category === 'building').map((e) => e.code))
+import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export const maxDuration = 300 // 5 min for Vercel Pro / Hobby Pro
 
@@ -169,7 +167,7 @@ export async function GET(request: Request) {
           address_normalized: string | null
           standard_description: string | null
         }>) {
-          if (!c.sr_short_code || !BUILDING_SR_CODES.has(c.sr_short_code)) continue
+          if (!c.sr_short_code || !DEFAULT_VISIBLE_CODES.has(c.sr_short_code)) continue
           if (!c.address_normalized || !c.created_date) continue
           const meta = addressToProperty.get(c.address_normalized)
           if (!meta) continue
