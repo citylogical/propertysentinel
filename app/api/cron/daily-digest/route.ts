@@ -18,6 +18,12 @@ type DigestEvent = {
   // "No Problem Found"). Null when enrichment hasn't populated either field.
   woli_stage?: string | null
   date: string
+  // True when the city-recorded date is older than the digest's "yesterday" —
+  // i.e., the row is appearing in this digest because it just landed in our
+  // ingest pipe (created_at within window), not because the event happened
+  // yesterday. Drives the asterisk + footnote disclosure on the rendered row.
+  // Only set on violation/permit rows; complaints never trip this flag.
+  is_backdated?: boolean
   url_path?: string
 }
 
@@ -26,6 +32,22 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Test mode: redirect all sends to a single override email and (optionally)
+  // process only one specific subscriber. Skips both the idempotency check
+  // and the alert_digest_log write, so a real cron run later in the day is
+  // not blocked. Still gated behind CRON_SECRET — only callable by anyone
+  // who already has the production cron token.
+  const url = new URL(request.url)
+  const testMode = url.searchParams.get('test') === '1'
+  const testEmail = url.searchParams.get('test_email')
+  const testSubscriberId = url.searchParams.get('test_subscriber_id')
+  if (testMode && !testEmail) {
+    return NextResponse.json(
+      { error: 'test=1 requires test_email to prevent accidental sends to real recipients' },
+      { status: 400 }
+    )
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY)
@@ -62,7 +84,7 @@ export async function GET(request: Request) {
   //   1. Their subscribers.email_alerts is true (account-level master toggle)
   //   2. Their alert_settings.email_digest_enabled is true (digest-specific toggle)
   // Both must be true for an email to send.
-  const { data: enabledSubs } = await supabase
+  let enabledSubsQuery = supabase
     .from('alert_settings')
     .select(
       `
@@ -78,6 +100,13 @@ export async function GET(request: Request) {
     .eq('email_digest_enabled', true)
     .eq('subscribers.email_alerts', true)
 
+  // Test mode subscriber filter: process only the named subscriber if given.
+  if (testMode && testSubscriberId) {
+    enabledSubsQuery = enabledSubsQuery.eq('subscriber_id', testSubscriberId)
+  }
+
+  const { data: enabledSubs } = await enabledSubsQuery
+
   const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
 
   for (const setting of (enabledSubs ?? []) as unknown as Array<{
@@ -90,17 +119,20 @@ export async function GET(request: Request) {
     subscribers?: { email_alerts: boolean }
   }>) {
     try {
-      // Skip if already sent today (idempotency)
-      const { data: alreadySent } = await supabase
-        .from('alert_digest_log')
-        .select('id')
-        .eq('subscriber_id', setting.subscriber_id)
-        .eq('digest_date', digestDate)
-        .eq('status', 'sent')
-        .maybeSingle()
-      if (alreadySent) {
-        results.push({ subscriber_id: setting.subscriber_id, status: 'already_sent', count: 0 })
-        continue
+      // Skip if already sent today (idempotency).
+      // Bypassed in test mode so the test can be re-run any number of times.
+      if (!testMode) {
+        const { data: alreadySent } = await supabase
+          .from('alert_digest_log')
+          .select('id')
+          .eq('subscriber_id', setting.subscriber_id)
+          .eq('digest_date', digestDate)
+          .eq('status', 'sent')
+          .maybeSingle()
+        if (alreadySent) {
+          results.push({ subscriber_id: setting.subscriber_id, status: 'already_sent', count: 0 })
+          continue
+        }
       }
 
       // Get subscriber's clerk_id and email recipients
@@ -119,7 +151,12 @@ export async function GET(request: Request) {
         .eq('channel', 'email')
         .order('position', { ascending: true })
 
-      const emails = (recipients ?? []).map((r) => (r as { address: string }).address).filter(Boolean)
+      // In test mode every send is redirected to the test_email regardless of
+      // the subscriber's configured recipients. testEmail is guaranteed
+      // non-null here by the 400-guard at the top of GET.
+      const emails = testMode
+        ? [testEmail as string]
+        : (recipients ?? []).map((r) => (r as { address: string }).address).filter(Boolean)
       if (emails.length === 0) {
         results.push({ subscriber_id: setting.subscriber_id, status: 'no_recipients', count: 0 })
         continue
@@ -223,15 +260,25 @@ export async function GET(request: Request) {
         }
       }
 
-      // Query violations if either trigger_violations OR trigger_stop_work is on
+      // Query violations if either trigger_violations OR trigger_stop_work is on.
+      //
+      // FILTER NOTE (changed May 17): we filter by `created_at` (our ingestion
+      // timestamp), NOT by `violation_date` (the city's official record date).
+      // Per the May 17 lag analysis, 95%+ of violations land in Chicago's
+      // Socrata feed 3-7+ days after the city-recorded date — filtering on
+      // violation_date inside a 26h window produced a near-zero capture rate.
+      // Filtering on created_at delivers rows the day after our Worker B daily
+      // ingest pulled them. is_backdated flags rows whose violation_date is
+      // older than the digest's "yesterday" so the email can surface an
+      // asterisk + footnote disclosure.
       if (setting.trigger_violations || setting.trigger_stop_work) {
         const { data: violations } = await supabase
           .from('violations')
-          .select('violation_description, violation_date, address_normalized, is_stop_work_order, inspection_number')
+          .select('violation_description, violation_date, address_normalized, is_stop_work_order, inspection_number, created_at')
           .in('address_normalized', allAddresses)
-          .gte('violation_date', startIso)
-          .lt('violation_date', endIso)
-          .order('violation_date', { ascending: false })
+          .gte('created_at', startIso)
+          .lt('created_at', endIso)
+          .order('created_at', { ascending: false })
           .limit(500)
 
         const seenInspections = new Set<string>()
@@ -241,6 +288,7 @@ export async function GET(request: Request) {
           address_normalized: string | null
           is_stop_work_order: boolean | null
           inspection_number: string | null
+          created_at: string | null
         }>) {
           if (v.inspection_number && seenInspections.has(v.inspection_number)) continue
           if (v.inspection_number) seenInspections.add(v.inspection_number)
@@ -253,6 +301,11 @@ export async function GET(request: Request) {
           if (isStopWork && !setting.trigger_stop_work) continue
           if (!isStopWork && !setting.trigger_violations) continue
 
+          // Slice the leading 10 chars to compare YYYY-MM-DD against activityDate.
+          // Works for DATE columns and TIMESTAMPTZ; sidesteps the Socrata
+          // Chicago-local-stored-as-UTC offset issue documented in v13.
+          const isBackdated = v.violation_date.slice(0, 10) !== activityDate
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
@@ -260,18 +313,24 @@ export async function GET(request: Request) {
             label: isStopWork ? 'STOP-WORK ORDER' : 'Violation',
             description: v.violation_description?.trim() || null,
             date: v.violation_date,
+            is_backdated: isBackdated,
           })
         }
       }
 
+      // Filter permits by `created_at` (our ingestion timestamp), NOT by
+      // `issue_date`. Same rationale as violations above — ~89% of permits
+      // publish 3-7+ days backdated relative to the city's recorded issue date.
+      // is_backdated flags rows whose issue_date is older than the digest's
+      // "yesterday".
       if (setting.trigger_permits) {
         const { data: permits } = await supabase
           .from('permits')
-          .select('permit_type, work_description, issue_date, address_normalized, permit_number')
+          .select('permit_type, work_description, issue_date, address_normalized, permit_number, created_at')
           .in('address_normalized', allAddresses)
-          .gte('issue_date', startIso)
-          .lt('issue_date', endIso)
-          .order('issue_date', { ascending: false })
+          .gte('created_at', startIso)
+          .lt('created_at', endIso)
+          .order('created_at', { ascending: false })
           .limit(500)
 
         const seenPermits = new Set<string>()
@@ -281,12 +340,16 @@ export async function GET(request: Request) {
           issue_date: string | null
           address_normalized: string | null
           permit_number: string | null
+          created_at: string | null
         }>) {
           if (p.permit_number && seenPermits.has(p.permit_number)) continue
           if (p.permit_number) seenPermits.add(p.permit_number)
           if (!p.address_normalized || !p.issue_date) continue
           const meta = addressToProperty.get(p.address_normalized)
           if (!meta) continue
+
+          const isBackdated = p.issue_date.slice(0, 10) !== activityDate
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
@@ -294,12 +357,15 @@ export async function GET(request: Request) {
             label: p.permit_type ?? 'Permit',
             description: p.work_description?.trim() || null,
             date: p.issue_date,
+            is_backdated: isBackdated,
           })
         }
       }
 
-      // Empty-event digests: skip if user has opted out
-      if (events.length === 0 && !setting.email_digest_send_when_empty) {
+      // Empty-event digests: skip if user has opted out.
+      // In test mode we always send through so the test can verify the
+      // empty-state render path too — and we never write to the log.
+      if (events.length === 0 && !setting.email_digest_send_when_empty && !testMode) {
         await supabase.from('alert_digest_log').insert({
           subscriber_id: setting.subscriber_id,
           digest_date: digestDate,
@@ -330,38 +396,47 @@ export async function GET(request: Request) {
       })
 
       if (sendError) {
-        await supabase.from('alert_digest_log').insert({
-          subscriber_id: setting.subscriber_id,
-          digest_date: digestDate,
-          recipients: emails,
-          events_count: events.length,
-          status: 'failed',
-          error_message: sendError.message,
-        })
+        if (!testMode) {
+          await supabase.from('alert_digest_log').insert({
+            subscriber_id: setting.subscriber_id,
+            digest_date: digestDate,
+            recipients: emails,
+            events_count: events.length,
+            status: 'failed',
+            error_message: sendError.message,
+          })
+        }
         results.push({
           subscriber_id: setting.subscriber_id,
-          status: 'failed',
+          status: testMode ? 'test_failed' : 'failed',
           count: events.length,
           error: sendError.message,
         })
         continue
       }
 
-      // Log success
+      // Log success — skipped in test mode so the real cron later today
+      // (if any) still has a clean idempotency slate for this subscriber.
       const summary = {
         complaints: events.filter((e) => e.kind === 'complaint').length,
         violations: events.filter((e) => e.kind === 'violation').length,
         permits: events.filter((e) => e.kind === 'permit').length,
       }
-      await supabase.from('alert_digest_log').insert({
+      if (!testMode) {
+        await supabase.from('alert_digest_log').insert({
+          subscriber_id: setting.subscriber_id,
+          digest_date: digestDate,
+          recipients: emails,
+          events_count: events.length,
+          event_summary: summary,
+          status: 'sent',
+        })
+      }
+      results.push({
         subscriber_id: setting.subscriber_id,
-        digest_date: digestDate,
-        recipients: emails,
-        events_count: events.length,
-        event_summary: summary,
-        status: 'sent',
+        status: testMode ? 'test_sent' : 'sent',
+        count: events.length,
       })
-      results.push({ subscriber_id: setting.subscriber_id, status: 'sent', count: events.length })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       results.push({ subscriber_id: setting.subscriber_id, status: 'error', count: 0, error: msg })
@@ -480,7 +555,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
                 ${e.woli_stage ? `<div style="font-size: 11px; color: #888; margin-top: 3px; font-weight: 500;">${escapeHtml(e.woli_stage)}</div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
-                  ${escapeHtml(formatChicagoTime(e.date))}
+                  ${escapeHtml(formatChicagoTime(e.date))}${e.is_backdated ? '*' : ''}
                 </div>
               </td>
             </tr>
@@ -508,6 +583,19 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     violations: events.filter((e) => e.kind === 'violation').length,
     permits: events.filter((e) => e.kind === 'permit').length,
   }
+
+  // Backdating disclosure: rendered only when at least one violation or permit
+  // row has a city-recorded date older than the digest's "yesterday". Quiet
+  // days (no events) and same-day-only days emit nothing.
+  const hasBackdated = events.some((e) => e.is_backdated === true)
+  const backdatedFootnote = hasBackdated
+    ? `
+          <div style="padding-top: 14px; margin-top: 6px;">
+            <div style="font-size: 11px; color: #888; line-height: 1.5; font-style: italic;">
+              * Starred dates reflect Chicago&rsquo;s official record. Violations and permits typically publish to the city&rsquo;s open data feed 3&ndash;7 days after the recorded date; we deliver them the day after ingest.
+            </div>
+          </div>`
+    : ''
 
   return `<!DOCTYPE html>
 <html>
@@ -565,6 +653,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
         <!-- Events by property -->
         <div style="background: #ffffff; padding: 24px; border-radius: 0 0 8px 8px;">
           ${propertyBlocks}
+          ${backdatedFootnote}
           <!-- Inline dashboard link at end of events -->
           <div style="text-align: center; padding-top: 20px; margin-top: 12px; border-top: 1px solid #ece8dd;">
             <a href="https://propertysentinel.io/dashboard/portfolio" style="color: #1e3a5f; text-decoration: none; font-size: 13px; font-weight: 500;">

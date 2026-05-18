@@ -141,6 +141,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
     failed: number
     status: 'pending' | 'running' | 'done' | 'idle' | 'error'
     message?: string
+    kind?: 'enrich' | 'woli'
   } | null>(null)
 
   // Rows whose live stats just came back changed — drives the cell flash.
@@ -229,26 +230,28 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
           return
         }
         if (data.status === 'done') {
-          setBackfillJob({
+          setBackfillJob((prev) => ({
             job_id: data.job_id,
             total: data.total,
             processed: data.processed,
             failed: data.failed,
             status: 'done',
-          })
+            kind: prev?.kind,
+          }))
           await loadPortfolioList()
           globalThis.setTimeout(() => {
             if (!cancelled) setBackfillJob(null)
           }, 4000)
           return
         }
-        setBackfillJob({
+        setBackfillJob((prev) => ({
           job_id: data.job_id,
           total: data.total,
           processed: data.processed,
           failed: data.failed,
           status: 'running',
-        })
+          kind: prev?.kind,
+        }))
       } catch (err) {
         if (cancelled) return
         setBackfillJob((prev) =>
@@ -522,7 +525,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
 
   const handleStartBackfill = async () => {
     if (selectedIds.size === 0) return
-    setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'pending' })
+    setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'pending', kind: 'enrich' })
     try {
       const res = await fetch('/api/dashboard/backfill/start', {
         method: 'POST',
@@ -539,7 +542,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
         error?: string
       }
       if (data.error) {
-        setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'error', message: data.error })
+        setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'error', message: data.error, kind: 'enrich' })
         return
       }
       if (data.status === 'done' || data.total === 0) {
@@ -550,6 +553,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
           failed: data.failed,
           status: 'done',
           message: data.message ?? 'No unenriched complaints found.',
+          kind: 'enrich',
         })
         globalThis.setTimeout(() => setBackfillJob(null), 3000)
         return
@@ -560,6 +564,7 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
         processed: data.processed,
         failed: data.failed,
         status: 'running',
+        kind: 'enrich',
       })
     } catch (err) {
       setBackfillJob({
@@ -569,6 +574,63 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
         failed: 0,
         status: 'error',
         message: err instanceof Error ? err.message : 'Backfill failed to start',
+        kind: 'enrich',
+      })
+    }
+  }
+
+  const handleStartRefreshWoli = async () => {
+    if (selectedIds.size === 0) return
+    setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'pending', kind: 'woli' })
+    try {
+      const res = await fetch('/api/dashboard/refresh-woli/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_ids: Array.from(selectedIds) }),
+      })
+      const data = (await res.json()) as {
+        job_id: string | null
+        total: number
+        processed: number
+        failed: number
+        status: 'pending' | 'running' | 'done' | 'error'
+        message?: string
+        error?: string
+      }
+      if (data.error) {
+        setBackfillJob({ job_id: null, total: 0, processed: 0, failed: 0, status: 'error', message: data.error, kind: 'woli' })
+        return
+      }
+      if (data.status === 'done' || data.total === 0) {
+        setBackfillJob({
+          job_id: null,
+          total: data.total,
+          processed: data.processed,
+          failed: data.failed,
+          status: 'done',
+          message: data.message ?? 'No open enriched complaints found to refresh.',
+          kind: 'woli',
+        })
+        globalThis.setTimeout(() => setBackfillJob(null), 3000)
+        return
+      }
+      setBackfillJob({
+        job_id: data.job_id,
+        total: data.total,
+        processed: data.processed,
+        failed: data.failed,
+        status: 'running',
+        kind: 'woli',
+      })
+    } catch (err) {
+      setBackfillJob({
+        job_id: null,
+        total: 0,
+        processed: 0,
+        failed: 0,
+        status: 'error',
+        message: err instanceof Error ? err.message : 'WOLI refresh failed to start',
+        kind: 'woli',
       })
     }
   }
@@ -699,7 +761,19 @@ export default function PortfolioTable({ isAdmin = false }: Props) {
                 onClick={() => void handleStartBackfill()}
                 disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
               >
-                {backfillJob && backfillJob.status === 'running' ? 'Enriching…' : 'Enrich 311 history'}
+                {backfillJob && backfillJob.status === 'running' && backfillJob.kind === 'enrich'
+                  ? 'Enriching…'
+                  : 'Enrich 311 history'}
+              </button>
+              <button
+                type="button"
+                className="dashboard-sel-btn dashboard-sel-btn-backfill"
+                onClick={() => void handleStartRefreshWoli()}
+                disabled={!!backfillJob && (backfillJob.status === 'running' || backfillJob.status === 'pending')}
+              >
+                {backfillJob && backfillJob.status === 'running' && backfillJob.kind === 'woli'
+                  ? 'Refreshing…'
+                  : 'Refresh WOLI'}
               </button>
               <button
                 type="button"
