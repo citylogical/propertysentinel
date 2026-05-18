@@ -264,6 +264,12 @@ export default function PortfolioDetail({
   const nearbyListings = detailData?.nearby_listings ?? p.nearby_listings ?? 0
 
   const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
+  // Dashboard navigation always lands on the building-range view to suppress
+  // the BuildingDetectionModal interstitial. The slug remains canonical
+  // (unit-level); the address page reads ?building=true, looks up the
+  // approved user_building_ranges entry via findApprovedUserRange, and
+  // expands automatically. No-op when no user range exists.
+  const propertyHref = `/address/${encodeURIComponent(slug)}?building=true`
   const classDescription = getClassDescription(p.property_class)
 
   const showDetailPanel = showItemDetails && !detailLoading && activity.length > 0
@@ -439,7 +445,7 @@ export default function PortfolioDetail({
           </div>
 
           <div className="dashboard-dl-spacer" />
-          <a href={`/address/${encodeURIComponent(slug)}`} className="dashboard-bar-link dashboard-bar-navy">
+          <a href={propertyHref} className="dashboard-bar-link dashboard-bar-navy">
             Full property page →
           </a>
         </div>
@@ -593,7 +599,7 @@ export default function PortfolioDetail({
             </div>
           </div>
           {showHistoricalActivityBar ? (
-            <a href={`/address/${encodeURIComponent(slug)}`} className="dashboard-bar-link dashboard-bar-light">
+            <a href={propertyHref} className="dashboard-bar-link dashboard-bar-light">
               See all historical activity →
             </a>
           ) : null}

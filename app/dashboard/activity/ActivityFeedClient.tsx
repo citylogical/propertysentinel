@@ -340,8 +340,12 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               const key = rowKey(row)
               const isSelected = key === selectedKey
               const sk = statusKindFor(row)
+              // ?building=true bypasses the BuildingDetectionModal on arrival.
+              // The address page handles the case where no approved user
+              // building range exists for this address (renders single-address
+              // view normally; the query param is a no-op).
               const propertyHref = row.property_slug
-                ? `/address/${encodeURIComponent(row.property_slug)}`
+                ? `/address/${encodeURIComponent(row.property_slug)}?building=true`
                 : null
               return (
                 <div
@@ -541,7 +545,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               </div>
               {selectedRow.property_slug ? (
                 <Link
-                  href={`/address/${encodeURIComponent(selectedRow.property_slug)}`}
+                  href={`/address/${encodeURIComponent(selectedRow.property_slug)}?building=true`}
                   style={{
                     display: 'block',
                     fontSize: 12,

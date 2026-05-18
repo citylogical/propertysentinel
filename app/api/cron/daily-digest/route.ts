@@ -9,6 +9,7 @@ export const maxDuration = 300 // 5 min for Vercel Pro / Hobby Pro
 type DigestEvent = {
   property_display: string
   property_id: string
+  property_slug: string | null
   kind: 'complaint' | 'violation' | 'permit'
   label: string
   description: string | null
@@ -53,14 +54,19 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // TEMPORARY 50-HOUR LOOKBACK — TEST/QA ONLY.
-  // Reverted to 30h after the mixed-kind digest visual review completes.
-  // Must flip back before the next 09:00 UTC cron fires or real
-  // subscribers will receive a digest containing duplicate rows from
-  // the previous day. (See production-default 30h block in git history.)
+  // 30-hour lookback (widened from 26h on May 17). Worker B writes
+  // violations and permits around 07:00-07:30 UTC, and the digest fires
+  // at 09:00 UTC — so the ingest landing zone sits within the 2h overlap
+  // a 26h window provides, which is fragile against Vercel's documented
+  // ~46m cron drift (a row ingested at 07:10 UTC nearly fell out of
+  // tomorrow's window on May 17). 30h provides a 6h buffer. Cross-day
+  // duplicate exposure grows from 2h to 6h overlap; idempotency guard
+  // (alert_digest_log unique index) prevents same-day double-sends,
+  // and a digested_at column on violations/permits is the proper
+  // long-term fix for cross-day dedup.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 50 * 60 * 60 * 1000
+  const startMs = now.getTime() - 30 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
@@ -164,10 +170,13 @@ export async function GET(request: Request) {
         continue
       }
 
-      // Get subscriber's portfolio
+      // Get subscriber's portfolio. slug is selected so the rendered digest
+      // can link each property heading to its address page with the
+      // ?building=true expansion flag (mirrors the dashboard navigation
+      // pattern — see PortfolioDetail.tsx).
       const { data: props } = await supabase
         .from('portfolio_properties')
-        .select('id, canonical_address, address_range, additional_streets, display_name')
+        .select('id, canonical_address, address_range, additional_streets, display_name, slug')
         .eq('user_id', clerk_id)
 
       if (!props || props.length === 0) {
@@ -176,17 +185,19 @@ export async function GET(request: Request) {
       }
 
       // Build address → property mapping
-      const addressToProperty = new Map<string, { id: string; display: string }>()
+      const addressToProperty = new Map<string, { id: string; display: string; slug: string | null }>()
       for (const p of props as Array<{
         id: string
         canonical_address: string
         address_range: string | null
         additional_streets: string[] | null
         display_name: string | null
+        slug: string | null
       }>) {
         const display = p.display_name || p.canonical_address
+        const slug = p.slug?.trim() || null
         for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {
-          addressToProperty.set(addr, { id: p.id, display })
+          addressToProperty.set(addr, { id: p.id, display, slug })
         }
       }
       const allAddresses = Array.from(addressToProperty.keys())
@@ -253,6 +264,7 @@ export async function GET(request: Request) {
           events.push({
             property_display: meta.display,
             property_id: meta.id,
+            property_slug: meta.slug,
             kind: 'complaint',
             label: c.sr_type ?? 'Building Complaint',
             description,
@@ -352,6 +364,7 @@ export async function GET(request: Request) {
           events.push({
             property_display: meta.display,
             property_id: meta.id,
+            property_slug: meta.slug,
             kind: 'violation',
             label,
             description,
@@ -396,6 +409,7 @@ export async function GET(request: Request) {
           events.push({
             property_display: meta.display,
             property_id: meta.id,
+            property_slug: meta.slug,
             kind: 'permit',
             label: p.permit_type ?? 'Permit',
             description: p.work_description?.trim() || null,
@@ -588,11 +602,13 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     year: 'numeric',
   })
 
-  // Group events by property
-  const byProperty = new Map<string, { display: string; events: DigestEvent[] }>()
+  // Group events by property. slug is captured from whichever event landed
+  // first for each property (all events on the same property share the same
+  // slug via the addressToProperty map, so any event suffices).
+  const byProperty = new Map<string, { display: string; slug: string | null; events: DigestEvent[] }>()
   for (const e of events) {
     if (!byProperty.has(e.property_id)) {
-      byProperty.set(e.property_id, { display: e.property_display, events: [] })
+      byProperty.set(e.property_id, { display: e.property_display, slug: e.property_slug, events: [] })
     }
     byProperty.get(e.property_id)!.events.push(e)
   }
@@ -611,7 +627,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
   `
       : Array.from(byProperty.values())
           .sort((a, b) => b.events.length - a.events.length)
-          .map(({ display, events: propEvents }) => {
+          .map(({ display, slug, events: propEvents }) => {
             const eventRows = propEvents
               .map((e, idx) => {
               const isStopWorkRow = e.label === 'STOP-WORK ORDER'
@@ -658,12 +674,21 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
               })
               .join('')
 
+            // Property heading: real <a> link when slug is available, plain
+            // text fallback otherwise. ?building=true expands the address
+            // page directly to the full building range, suppressing the
+            // BuildingDetectionModal interstitial (same pattern as the
+            // dashboard "Full property page →" link). Navy + underline gives
+            // an unambiguous link affordance that survives iOS Mail's
+            // auto-linking quirks, which were the original motivation for
+            // the (now removed) format-detection meta tag.
+            const propertyHeading = slug
+              ? `<a href="https://propertysentinel.io/address/${encodeURIComponent(slug)}?building=true" style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1e3a5f; text-decoration: underline; margin-bottom: 8px; display: inline-block;">${escapeHtml(display)}</a>`
+              : `<div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">${escapeHtml(display)}</div>`
             return `
         <div style="margin-bottom: 20px;">
-          <div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
-            ${escapeHtml(display)}
-          </div>
-          <div style="padding-left: 12px;">
+          ${propertyHeading}
+          <div style="padding-left: 12px; margin-top: 8px;">
             <table style="width: 100%; border-collapse: collapse;">
               ${eventRows}
             </table>
@@ -696,7 +721,6 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="format-detection" content="address=no,telephone=no,date=no,email=no">
   <meta name="x-apple-disable-message-reformatting">
   <title>Property Sentinel Daily Digest</title>
 </head>
