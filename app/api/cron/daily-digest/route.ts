@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
+import { getPortfolioBuildingSlug } from '@/lib/portfolio-address-expansion'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export const maxDuration = 300 // 5 min for Vercel Pro / Hobby Pro
@@ -189,7 +190,12 @@ export async function GET(request: Request) {
         slug: string | null
       }>) {
         const display = p.display_name || p.canonical_address
-        const slug = p.slug?.trim() || null
+        // Building-range-anchored slug — see getPortfolioBuildingSlug docs.
+        // Email property headings link to the full building view via
+        // ?building=true; the helper guarantees the underlying address
+        // is in user_building_ranges so the page expands correctly
+        // (same fix as PortfolioDetail.tsx and the activity API route).
+        const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug)
         for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {
           addressToProperty.set(addr, { id: p.id, display, slug })
         }
