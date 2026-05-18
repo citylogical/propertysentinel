@@ -2,6 +2,7 @@ import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
+import { getPortfolioBuildingSlug } from '@/lib/portfolio-address-expansion'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
 
 export const runtime = 'nodejs'
@@ -149,7 +150,10 @@ export async function GET(request: Request) {
     const meta = {
       id: p.id,
       address: p.display_name || p.canonical_address,
-      slug: p.slug,
+      // Building-range-anchored slug — see getPortfolioBuildingSlug docs.
+      // Server-side computation means ActivityFeedClient's existing
+      // ?building=true wrapping (already deployed) just works.
+      slug: getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug),
       community_area: p.community_area,
     }
     for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {

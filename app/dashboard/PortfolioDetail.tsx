@@ -9,6 +9,7 @@ import PermitDetail, { type PermitDetailRecord } from './details/PermitDetail'
 import { StatusPill, formatDate, type StatusKind } from './details/_shared'
 import type { PortfolioProperty, PortfolioUnit } from './types'
 import { getClassDescription } from '@/lib/class-codes'
+import { getPortfolioBuildingSlug } from '@/lib/portfolio-address-expansion'
 import UnitsModal from './UnitsModal'
 import EditBuildingModal from './EditBuildingModal'
 
@@ -263,12 +264,13 @@ export default function PortfolioDetail({
     detailData?.str_registrations ?? p.str_registrations ?? 0
   const nearbyListings = detailData?.nearby_listings ?? p.nearby_listings ?? 0
 
-  const slug = p.slug || p.canonical_address.replace(/\s+/g, '-')
-  // Dashboard navigation always lands on the building-range view to suppress
-  // the BuildingDetectionModal interstitial. The slug remains canonical
-  // (unit-level); the address page reads ?building=true, looks up the
-  // approved user_building_ranges entry via findApprovedUserRange, and
-  // expands automatically. No-op when no user range exists.
+  // Use a building-range-anchored slug instead of the stored unit-level slug.
+  // The stored slug decodes to e.g. "739 W CORNELIA AVE N-1" which is not in
+  // user_building_ranges, so findApprovedUserRange misses and the page falls
+  // back to single-address view despite ?building=true. getPortfolioBuildingSlug
+  // derives a slug from the first expanded address of address_range, which IS
+  // in the set — lookup succeeds, page expands.
+  const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug)
   const propertyHref = `/address/${encodeURIComponent(slug)}?building=true`
   const classDescription = getClassDescription(p.property_class)
 
