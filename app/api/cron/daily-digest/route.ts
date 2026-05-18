@@ -53,12 +53,19 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 26-hour lookback gives ~2hr buffer for Vercel cron variance.
-  // Slight overlap with previous day's window is fine — idempotency guard
-  // (alert_digest_log unique index) prevents double-sends.
+  // 30-hour lookback (widened from 26h on May 17). Worker B writes
+  // violations and permits around 07:00-07:30 UTC, and the digest fires
+  // at 09:00 UTC — so the ingest landing zone sits within the 2h overlap
+  // a 26h window provides, which is fragile against Vercel's documented
+  // ~46m cron drift (a row ingested at 07:10 UTC nearly fell out of
+  // tomorrow's window on May 17). 30h provides a 6h buffer. Cross-day
+  // duplicate exposure grows from 2h to 6h overlap; idempotency guard
+  // (alert_digest_log unique index) prevents same-day double-sends,
+  // and a digested_at column on violations/permits is the proper
+  // long-term fix for cross-day dedup.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 26 * 60 * 60 * 1000
+  const startMs = now.getTime() - 30 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
@@ -266,53 +273,95 @@ export async function GET(request: Request) {
       // timestamp), NOT by `violation_date` (the city's official record date).
       // Per the May 17 lag analysis, 95%+ of violations land in Chicago's
       // Socrata feed 3-7+ days after the city-recorded date — filtering on
-      // violation_date inside a 26h window produced a near-zero capture rate.
-      // Filtering on created_at delivers rows the day after our Worker B daily
-      // ingest pulled them. is_backdated flags rows whose violation_date is
-      // older than the digest's "yesterday" so the email can surface an
-      // asterisk + footnote disclosure.
+      // violation_date inside the lookback window produced a near-zero
+      // capture rate. is_backdated flags rows whose violation_date is older
+      // than the digest's "yesterday" so the email can surface an asterisk
+      // + footnote disclosure.
+      //
+      // GROUPING NOTE (added May 17): rows are grouped by inspection_number
+      // into a single digest event per inspection, mirroring the dashboard's
+      // activity feed treatment. Label uses category · bureau · count;
+      // description lists the individual violation codes.
       if (setting.trigger_violations || setting.trigger_stop_work) {
         const { data: violations } = await supabase
           .from('violations')
-          .select('violation_description, violation_date, address_normalized, is_stop_work_order, inspection_number, created_at')
+          .select('violation_description, violation_date, address_normalized, is_stop_work_order, inspection_number, inspection_category, department_bureau, created_at')
           .in('address_normalized', allAddresses)
           .gte('created_at', startIso)
           .lt('created_at', endIso)
           .order('created_at', { ascending: false })
           .limit(500)
 
-        const seenInspections = new Set<string>()
-        for (const v of (violations ?? []) as Array<{
+        type ViolationRow = {
           violation_description: string | null
           violation_date: string | null
           address_normalized: string | null
           is_stop_work_order: boolean | null
           inspection_number: string | null
+          inspection_category: string | null
+          department_bureau: string | null
           created_at: string | null
-        }>) {
-          if (v.inspection_number && seenInspections.has(v.inspection_number)) continue
-          if (v.inspection_number) seenInspections.add(v.inspection_number)
-          if (!v.address_normalized || !v.violation_date) continue
-          const meta = addressToProperty.get(v.address_normalized)
+        }
+
+        // Group by inspection_number. Rows missing it get a synthetic
+        // unique key (preserves the prior null-inspection per-row behavior).
+        const violationGroups = new Map<string, ViolationRow[]>()
+        let _orphanCounter = 0
+        for (const v of (violations ?? []) as ViolationRow[]) {
+          const key = v.inspection_number || `__orphan_${++_orphanCounter}`
+          const arr = violationGroups.get(key)
+          if (arr) arr.push(v)
+          else violationGroups.set(key, [v])
+        }
+
+        for (const [, rows] of violationGroups) {
+          const first = rows[0]
+          if (!first.address_normalized || !first.violation_date) continue
+          const meta = addressToProperty.get(first.address_normalized)
           if (!meta) continue
 
-          const isStopWork = Boolean(v.is_stop_work_order)
-          // Gate by the appropriate trigger
+          // Stop-work fires per-inspection if any row in the group has it set.
+          const isStopWork = rows.some((r) => Boolean(r.is_stop_work_order))
           if (isStopWork && !setting.trigger_stop_work) continue
           if (!isStopWork && !setting.trigger_violations) continue
 
-          // Slice the leading 10 chars to compare YYYY-MM-DD against activityDate.
-          // Works for DATE columns and TIMESTAMPTZ; sidesteps the Socrata
-          // Chicago-local-stored-as-UTC offset issue documented in v13.
-          const isBackdated = v.violation_date.slice(0, 10) !== activityDate
+          // Compare YYYY-MM-DD prefix against activityDate (yesterday-CT).
+          const isBackdated = first.violation_date.slice(0, 10) !== activityDate
+
+          // Label: "Complaint · Conservation · 10 violations" style.
+          // Stop-work keeps its existing prominent label override so the
+          // subject-line detector (renderSubject) continues to work.
+          let label: string
+          if (isStopWork) {
+            label = 'STOP-WORK ORDER'
+          } else {
+            const category = toTitleCase((first.inspection_category || 'Violation').trim())
+            const bureau = first.department_bureau?.trim()
+              ? toTitleCase(first.department_bureau.trim())
+              : null
+            const count = rows.length
+            const countSuffix = `${count} violation${count === 1 ? '' : 's'}`
+            const parts: string[] = [category]
+            if (bureau) parts.push(bureau)
+            parts.push(countSuffix)
+            label = parts.join(' · ')
+          }
+
+          // Description: just the inspection number. The label already carries
+          // category/bureau/count; the individual violation code list (10 codes
+          // in the Washtenaw case) is too noisy for digest density. Users can
+          // click through to the dashboard for the full breakdown.
+          const description = first.inspection_number
+            ? `Inspection #${first.inspection_number}`
+            : null
 
           events.push({
             property_display: meta.display,
             property_id: meta.id,
             kind: 'violation',
-            label: isStopWork ? 'STOP-WORK ORDER' : 'Violation',
-            description: v.violation_description?.trim() || null,
-            date: v.violation_date,
+            label,
+            description,
+            date: first.violation_date,
             is_backdated: isBackdated,
           })
         }
@@ -490,6 +539,39 @@ function formatChicagoTime(iso: string): string {
   }
 }
 
+// Date-only formatter for Postgres DATE columns (violation_date, issue_date).
+// JS parses 'YYYY-MM-DD' as UTC midnight, which becomes the previous day in
+// Chicago (UTC-5/-6). Pinning to noon UTC sidesteps the timezone-shift bug
+// that surfaced May 17 with the Washtenaw violation showing as May 13 7pm
+// instead of May 14.
+function formatChicagoDateOnly(dateStr: string): string {
+  try {
+    const iso = `${dateStr.slice(0, 10)}T12:00:00.000Z`
+    return new Date(iso).toLocaleDateString('en-US', {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+// Pick the right date formatter per event kind: complaints carry real
+// timestamps on created_date; violations/permits carry DATE columns and
+// must skip TZ-conversion of the implicit midnight.
+function formatEventDate(e: DigestEvent): string {
+  if (e.kind === 'complaint') return formatChicagoTime(e.date)
+  return formatChicagoDateOnly(e.date)
+}
+
+// Title-case the city's all-caps source data. "COMPLAINT" → "Complaint",
+// "BUILDING ENFORCEMENT" → "Building Enforcement", "STOP-WORK" → "Stop-Work".
+function toTitleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 function buildPreheader(events: DigestEvent[]): string {
   const complaints = events.filter((e) => e.kind === 'complaint').length
   const violations = events.filter((e) => e.kind === 'violation').length
@@ -555,7 +637,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
                 ${e.woli_stage ? `<div style="font-size: 11px; color: #888; margin-top: 3px; font-weight: 500;">${escapeHtml(e.woli_stage)}</div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
-                  ${escapeHtml(formatChicagoTime(e.date))}${e.is_backdated ? '*' : ''}
+                  ${e.is_backdated ? '*' : ''}${escapeHtml(formatEventDate(e))}
                 </div>
               </td>
             </tr>
@@ -592,7 +674,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     ? `
           <div style="padding-top: 14px; margin-top: 6px;">
             <div style="font-size: 11px; color: #888; line-height: 1.5; font-style: italic;">
-              * Starred dates reflect Chicago&rsquo;s official record. Violations and permits typically publish to the city&rsquo;s open data feed 3&ndash;7 days after the recorded date; we deliver them the day after ingest.
+              Reflects the city&rsquo;s official record; violations and permits are typically published to Chicago&rsquo;s open data feed 3-7 days after the recorded date.
             </div>
           </div>`
     : ''
