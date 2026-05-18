@@ -55,13 +55,19 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // TEMPORARY 50-HOUR LOOKBACK — TEST/QA ONLY.
-  // Must revert to 30h before the next 09:00 UTC cron fires or real
-  // subscribers will receive a digest containing duplicate rows from
-  // the previous day. (See production-default 30h block in git history.)
+  // 30-hour lookback (widened from 26h on May 17). Worker B writes
+  // violations and permits around 07:00-07:30 UTC, and the digest fires
+  // at 09:00 UTC — so the ingest landing zone sits within the 2h overlap
+  // a 26h window provides, which is fragile against Vercel's documented
+  // ~46m cron drift (a row ingested at 07:10 UTC nearly fell out of
+  // tomorrow's window on May 17). 30h provides a 6h buffer. Cross-day
+  // duplicate exposure grows from 2h to 6h overlap; idempotency guard
+  // (alert_digest_log unique index) prevents same-day double-sends,
+  // and a digested_at column on violations/permits is the proper
+  // long-term fix for cross-day dedup.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 50 * 60 * 60 * 1000
+  const startMs = now.getTime() - 30 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
