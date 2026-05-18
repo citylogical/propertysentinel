@@ -53,19 +53,14 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 30-hour lookback (widened from 26h on May 17). Worker B writes
-  // violations and permits around 07:00-07:30 UTC, and the digest fires
-  // at 09:00 UTC — so the ingest landing zone sits within the 2h overlap
-  // a 26h window provides, which is fragile against Vercel's documented
-  // ~46m cron drift (a row ingested at 07:10 UTC nearly fell out of
-  // tomorrow's window on May 17). 30h provides a 6h buffer. Cross-day
-  // duplicate exposure grows from 2h to 6h overlap; idempotency guard
-  // (alert_digest_log unique index) prevents same-day double-sends,
-  // and a digested_at column on violations/permits is the proper
-  // long-term fix for cross-day dedup.
+  // TEMPORARY 50-HOUR LOOKBACK — TEST/QA ONLY.
+  // Reverted to 30h after the mixed-kind digest visual review completes.
+  // Must flip back before the next 09:00 UTC cron fires or real
+  // subscribers will receive a digest containing duplicate rows from
+  // the previous day. (See production-default 30h block in git history.)
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 30 * 60 * 60 * 1000
+  const startMs = now.getTime() - 50 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
@@ -328,32 +323,31 @@ export async function GET(request: Request) {
           // Compare YYYY-MM-DD prefix against activityDate (yesterday-CT).
           const isBackdated = first.violation_date.slice(0, 10) !== activityDate
 
-          // Label: "Complaint · Conservation · 10 violations" style.
-          // Stop-work keeps its existing prominent label override so the
-          // subject-line detector (renderSubject) continues to work.
+          // Label carries the inspection identifier (or STOP-WORK ORDER
+          // override). Render-time logic in renderEmailHtml prepends the
+          // "Violation" kind word in red for non-stop-work rows.
           let label: string
           if (isStopWork) {
             label = 'STOP-WORK ORDER'
           } else {
-            const category = toTitleCase((first.inspection_category || 'Violation').trim())
-            const bureau = first.department_bureau?.trim()
-              ? toTitleCase(first.department_bureau.trim())
-              : null
-            const count = rows.length
-            const countSuffix = `${count} violation${count === 1 ? '' : 's'}`
-            const parts: string[] = [category]
-            if (bureau) parts.push(bureau)
-            parts.push(countSuffix)
-            label = parts.join(' · ')
+            label = first.inspection_number
+              ? `Inspection #${first.inspection_number}`
+              : 'Violation'
           }
 
-          // Description: just the inspection number. The label already carries
-          // category/bureau/count; the individual violation code list (10 codes
-          // in the Washtenaw case) is too noisy for digest density. Users can
-          // click through to the dashboard for the full breakdown.
-          const description = first.inspection_number
-            ? `Inspection #${first.inspection_number}`
+          // Description: "Complaint - Conservation • 10 violations".
+          // Hyphen pairs the compound title (category + bureau, treated as
+          // one field). Bullet separates that title from the violation
+          // count (a distinct field). Stop-work skips the description —
+          // the label already conveys what happened.
+          const category = toTitleCase((first.inspection_category || 'Violation').trim())
+          const bureau = first.department_bureau?.trim()
+            ? toTitleCase(first.department_bureau.trim())
             : null
+          const count = rows.length
+          const countSuffix = `${count} violation${count === 1 ? '' : 's'}`
+          const compoundTitle = bureau ? `${category} - ${bureau}` : category
+          const description = isStopWork ? null : `${compoundTitle} • ${countSuffix}`
 
           events.push({
             property_display: meta.display,
@@ -620,8 +614,27 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           .map(({ display, events: propEvents }) => {
             const eventRows = propEvents
               .map((e, idx) => {
-                const labelColor = e.label === 'STOP-WORK ORDER' ? '#b8302a' : '#1a1a1a'
-                const labelWeight = e.label === 'STOP-WORK ORDER' ? '700' : '500'
+              const isStopWorkRow = e.label === 'STOP-WORK ORDER'
+              // Kind prefix: "Violation" in red for non-stop-work violation
+              // rows, paired with a gray bullet separator before the
+              // inspection-number label. Stop-work skips the prefix since
+              // the label already dominates. Complaints don't get a prefix —
+              // their sr_type ("Sanitation Code Violation", "Plumbing
+              // Violation", etc.) carries the kind signal directly, so the
+              // color is applied to the label itself.
+              const kindPrefix = (e.kind === 'violation' && !isStopWorkRow)
+                ? `<span style="color: #b8302a; font-weight: 600;">Violation</span> <span style="color: #999;">&bull;</span> `
+                : ''
+              // Label color by kind:
+              //   stop-work        → red (#b8302a) — kind word IS the label
+              //   violation        → black (#1a1a1a) — kind word lives on the prefix
+              //   complaint        → blue (#1e3a5f) — sr_type itself is the kind
+              //   permit (default) → black for now
+              let labelColor: string
+              if (isStopWorkRow) labelColor = '#b8302a'
+              else if (e.kind === 'complaint') labelColor = '#1e3a5f'
+              else labelColor = '#1a1a1a'
+              const labelWeight = isStopWorkRow ? '700' : '500'
                 // First row: no top padding. Last row: no bottom padding.
                 // Middle rows: 6px vertical gap between events (no hairline).
                 const isFirst = idx === 0
@@ -632,12 +645,12 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
             <tr>
               <td style="padding: ${paddingTop}px 0 ${paddingBottom}px 0;">
                 <div style="font-size: 13px; color: ${labelColor}; font-weight: ${labelWeight};">
-                  ${escapeHtml(e.label)}
+                  ${kindPrefix}${escapeHtml(e.label)}
                 </div>
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
                 ${e.woli_stage ? `<div style="font-size: 11px; color: #888; margin-top: 3px; font-weight: 500;">${escapeHtml(e.woli_stage)}</div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
-                  ${e.is_backdated ? '*' : ''}${escapeHtml(formatEventDate(e))}
+                  ${e.is_backdated ? '<sup style="font-size: 10px; line-height: 0;">*</sup>' : ''}${escapeHtml(formatEventDate(e))}
                 </div>
               </td>
             </tr>
@@ -674,7 +687,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     ? `
           <div style="padding-top: 14px; margin-top: 6px;">
             <div style="font-size: 11px; color: #888; line-height: 1.5; font-style: italic;">
-              Reflects the city&rsquo;s official record; violations and permits are typically published to Chicago&rsquo;s open data feed 3-7 days after the recorded date.
+              *Reflects the city&rsquo;s official record; violations and permits are typically published to Chicago&rsquo;s open data feed 3-7 days after the recorded date.
             </div>
           </div>`
     : ''
@@ -717,15 +730,15 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <tr>
               <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
-                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.complaints}</div>
+                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1e3a5f;">${totals.complaints}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">complaints</div>
               </td>
               <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
-                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.violations}</div>
+                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #b8302a;">${totals.violations}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">violations</div>
               </td>
               <td style="width: 33.33%; text-align: center; padding: 8px; vertical-align: top;">
-                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #1a1a1a;">${totals.permits}</div>
+                <div style="font-family: monospace; font-size: 24px; font-weight: 700; color: #166534;">${totals.permits}</div>
                 <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">permits</div>
               </td>
             </tr>
