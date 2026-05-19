@@ -214,7 +214,7 @@ export async function GET(request: Request) {
         // include structured intake metadata + the current WOLI stage.
         const { data: complaints } = await supabase
           .from('complaints_311')
-          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, final_outcome, workflow_step')
+          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, work_order_status, final_outcome, workflow_step')
           .in('address_normalized', allAddresses)
           .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
           .gte('created_date', startIso)
@@ -232,6 +232,7 @@ export async function GET(request: Request) {
           concern_category: string | null
           problem_category: string | null
           status: string | null
+          work_order_status: string | null
           final_outcome: string | null
           workflow_step: string | null
         }>) {
@@ -266,15 +267,19 @@ export async function GET(request: Request) {
             description = structured
           }
 
-          // Surface WOLI state. For closed cases, final_outcome ("Owner's
-          // Responsibility", "Alley Baited", "No Problem Found") is the signal.
-          // For open cases — almost always the case in a 25-hour window —
-          // workflow_step shows the current city action ("Investigation/
-          // Inspection", "Dispatch Crew", "Perform Work").
-          const isClosed = String(c.status ?? '').toLowerCase() === 'completed' ||
-                           String(c.status ?? '').toLowerCase() === 'closed'
-          const woliStage = isClosed && c.final_outcome?.trim()
-            ? c.final_outcome.trim()
+          // Surface WOLI state. Prefer final_outcome whenever the Aura work
+          // order is closed and an outcome is populated — that's the city's
+          // actual disposition ("EMERGENCY RELIEVED", "Need COMED", "Alley
+          // Baited", "No Problem Found"). Worker A's incremental cursor lags
+          // on closing parent SRs, so complaints_311.status often still reads
+          // Open after the city has finished work; work_order_status is the
+          // authoritative signal. Fall through to workflow_step ("Dispatch
+          // Crew", "Investigation/Inspection") only when no outcome is recorded.
+          const isWorkOrderClosed =
+            String(c.work_order_status ?? '').toLowerCase() === 'closed'
+          const outcome = c.final_outcome?.trim() || null
+          const woliStage = isWorkOrderClosed && outcome
+            ? outcome
             : (c.workflow_step?.trim() || null)
 
           events.push({
@@ -644,7 +649,16 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
       : Array.from(byProperty.values())
           .sort((a, b) => b.events.length - a.events.length)
           .map(({ display, slug, events: propEvents }) => {
-            const eventRows = propEvents
+            // Within a property, render chronologically (earliest first). The fetch
+            // queries order by created_date DESC for pagination, but reading a
+            // digest in event order makes more intuitive sense.
+            const propEventsSorted = [...propEvents].sort((a, b) => {
+              const ta = new Date(a.date).getTime()
+              const tb = new Date(b.date).getTime()
+              return ta - tb
+            })
+
+            const eventRows = propEventsSorted
               .map((e, idx) => {
               const isStopWorkRow = e.label === 'STOP-WORK ORDER'
               // Kind prefix: "Violation" in red for non-stop-work violation
