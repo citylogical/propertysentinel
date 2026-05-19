@@ -55,19 +55,14 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 30-hour lookback (widened from 26h on May 17). Worker B writes
-  // violations and permits around 07:00-07:30 UTC, and the digest fires
-  // at 09:00 UTC — so the ingest landing zone sits within the 2h overlap
-  // a 26h window provides, which is fragile against Vercel's documented
-  // ~46m cron drift (a row ingested at 07:10 UTC nearly fell out of
-  // tomorrow's window on May 17). 30h provides a 6h buffer. Cross-day
-  // duplicate exposure grows from 2h to 6h overlap; idempotency guard
-  // (alert_digest_log unique index) prevents same-day double-sends,
-  // and a digested_at column on violations/permits is the proper
-  // long-term fix for cross-day dedup.
+  // 26-hour lookback. Absorbs Vercel's documented cron-scheduler drift
+  // (~46m max observed) on top of a 24h calendar day. Idempotency guard
+  // (alert_digest_log unique partial index on subscriber_id + digest_date
+  // WHERE status='sent') prevents same-day double-sends from the 2h
+  // overlap.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 30 * 60 * 60 * 1000
+  const startMs = now.getTime() - 26 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
@@ -219,7 +214,7 @@ export async function GET(request: Request) {
         // include structured intake metadata + the current WOLI stage.
         const { data: complaints } = await supabase
           .from('complaints_311')
-          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, concern_category, problem_category, status, final_outcome, workflow_step')
+          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, final_outcome, workflow_step')
           .in('address_normalized', allAddresses)
           .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
           .gte('created_date', startIso)
@@ -233,6 +228,7 @@ export async function GET(request: Request) {
           created_date: string | null
           address_normalized: string | null
           standard_description: string | null
+          complaint_description: string | null
           concern_category: string | null
           problem_category: string | null
           status: string | null
@@ -247,14 +243,28 @@ export async function GET(request: Request) {
           // For structured-intake codes (SGA, WM3, AAD, AAI) standard_description
           // is null but concern_category/problem_category carry the signal.
           // Join the two structured fields with " / " when both present.
+          //
+          // SEC (Tree Emergency) is an exception: the picklist fields are
+          // restatements of the freeform complaint_description, not adding
+          // signal. For SEC, prefer the freeform field directly so the
+          // digest reads "Limb hanging on power lines. blocking the alley"
+          // instead of "Power line / Alley".
+          const isSecCode = String(c.sr_short_code ?? '').toUpperCase() === 'SEC'
           const desc = c.standard_description?.trim() || null
           const concern = c.concern_category?.trim() || null
           const problem = c.problem_category?.trim() || null
           const structured = concern && problem ? `${concern} / ${problem}` : (concern || problem)
+          const rawDesc = c.complaint_description?.trim() || null
           let description: string | null = null
-          if (desc && structured) description = `${desc} — ${structured}`
-          else if (desc) description = desc
-          else if (structured) description = structured
+          if (isSecCode && rawDesc) {
+            description = rawDesc
+          } else if (desc && structured) {
+            description = `${desc} — ${structured}`
+          } else if (desc) {
+            description = desc
+          } else if (structured) {
+            description = structured
+          }
 
           // Surface WOLI state. For closed cases, final_outcome ("Owner's
           // Responsibility", "Alley Baited", "No Problem Found") is the signal.

@@ -109,9 +109,13 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
   if (isAdmin && c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
   // Categorical intake fields are public — they describe the complaint shape, not the
   // complainant. For structured-intake SR types (e.g. SGA Rodent Baiting) these are
-  // the primary signal in the absence of a free-text description.
-  if (c.concern_category) tags.push({ label: 'Category', value: c.concern_category })
-  if (c.problem_category) tags.push({ label: 'Detail', value: c.problem_category })
+  // the primary signal in the absence of a free-text description. For SEC (Tree
+  // Emergency) the picklists are restatements of the freeform complaint_description
+  // ("Power line" / "Alley" when the description already says "Limb hanging on power
+  // lines. blocking the alley") — suppress them for SEC and rely on the description.
+  const isSecCode = String(c.sr_short_code ?? '').toUpperCase() === 'SEC'
+  if (!isSecCode && c.concern_category) tags.push({ label: 'Category', value: c.concern_category })
+  if (!isSecCode && c.problem_category) tags.push({ label: 'Detail', value: c.problem_category })
   // Owner-occupied "Yes" for EAF Vicious Animal means animal resides at address
   // (tenant dog, landlord liability). The admin-only above renders for building-
   // type SRs; this public version is for animal-residence cases only. Both
@@ -226,6 +230,17 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
         >
           {desc}
         </div>
+      ) : isSecCode && rawDesc ? (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#1a1a1a',
+            lineHeight: 1.4,
+            marginBottom: 12,
+          }}
+        >
+          {rawDesc}
+        </div>
       ) : !c.concern_category && !c.problem_category && !c.final_outcome ? (
         <div
           style={{
@@ -239,7 +254,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
           No description available
         </div>
       ) : null}
-      {isAdmin && rawDesc && rawDesc !== desc ? (
+      {!isSecCode && isAdmin && rawDesc && rawDesc !== desc ? (
         <div
           style={{
             fontSize: 11,
