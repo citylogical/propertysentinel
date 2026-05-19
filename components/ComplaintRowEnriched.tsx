@@ -37,6 +37,7 @@ const ENRICHABLE_SR_SHORT_CODES = new Set([
   'BPI',
   'HDF',
   'SCB',
+  'SEC',
   'HFB',
   'RBL',
   'CAFE',

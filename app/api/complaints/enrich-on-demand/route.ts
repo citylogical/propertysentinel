@@ -31,6 +31,9 @@ const SKIP_IDS = new Set([
   'a1Yt0000000Lj2HEAS',
   'a1Yt0000000LiJeEAK',
   'a1Y8z0000000ZLUEA2',
+  // SEC (Tree Emergency) — picklists with no column mapping
+  'a1Yt0000000LiJ8EAK',  // SEC "Is the street blocked?" — Y/N, redundant
+  'a1Yt0000000LiaQEAS',  // SEC "What part of the tree is down?" — Limb/Split/Uprooted, no column
 ])
 
 /** SR short codes eligible for Aura flex enrichment (mirrors Worker ENRICH_CODES). */
@@ -177,6 +180,16 @@ const QUESTION_MAP: Record<string, Record<string, string>> = {
   },
   '08qt0000000CaZ9AAK': {
     description: 'a1Yt0000000LfS9EAK',
+  },
+  // SEC — Tree Emergency (S&S Bureau of Forestry, 1d SLA, 0d mean)
+  // Most resolve same-day with "EMERGENCY RELIEVED" outcome. Killer signal is
+  // the "Is anything obstructed?" picklist (House/Power line/Vehicle/Garage =
+  // private impact vs Street/Sidewalk/Parkway/Alley = public infra).
+  // Two other picklists (street blocked, tree part down) live in SKIP_IDS.
+  '08qt0000000CadSAAS': {
+    concern_category: 'a1Yt0000000LiaTEAS',
+    problem_category: 'a1Yt0000000LfQ3EAK',
+    description:      'a1Yt0000000LivfEAC',
   },
 }
 
