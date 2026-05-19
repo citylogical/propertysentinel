@@ -19,6 +19,11 @@ type DigestEvent = {
   // For closed cases: final_outcome ("Owner's Responsibility", "Alley Baited",
   // "No Problem Found"). Null when enrichment hasn't populated either field.
   woli_stage?: string | null
+  // True when the underlying work order is closed in Aura (work_order_status
+  // = 'Closed'). Drives the bold "CLOSED" prefix on the rendered stage line —
+  // distinguishes "city is working on it" (Dispatch Crew) from "city has
+  // disposed of it" (EMERGENCY RELIEVED, Need COMED). Complaints only.
+  woli_is_closed?: boolean
   date: string
   // True when the city-recorded date is older than the digest's "yesterday" —
   // i.e., the row is appearing in this digest because it just landed in our
@@ -281,6 +286,7 @@ export async function GET(request: Request) {
           const woliStage = isWorkOrderClosed && outcome
             ? outcome
             : (c.workflow_step?.trim() || null)
+          const woliIsClosed = isWorkOrderClosed && Boolean(outcome)
 
           events.push({
             property_display: meta.display,
@@ -290,6 +296,7 @@ export async function GET(request: Request) {
             label: c.sr_type ?? 'Building Complaint',
             description,
             woli_stage: woliStage,
+            woli_is_closed: woliIsClosed,
             date: c.created_date,
           })
         }
@@ -647,16 +654,21 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     </div>
   `
       : Array.from(byProperty.values())
-          .sort((a, b) => b.events.length - a.events.length)
-          .map(({ display, slug, events: propEvents }) => {
-            // Within a property, render chronologically (earliest first). The fetch
-            // queries order by created_date DESC for pagination, but reading a
-            // digest in event order makes more intuitive sense.
-            const propEventsSorted = [...propEvents].sort((a, b) => {
+          .map((p) => {
+            // Sort events within this property: earliest first.
+            const propEventsSorted = [...p.events].sort((a, b) => {
               const ta = new Date(a.date).getTime()
               const tb = new Date(b.date).getTime()
               return ta - tb
             })
+            // Compute the earliest event timestamp for cross-property sorting.
+            const earliestMs = propEventsSorted.length > 0
+              ? new Date(propEventsSorted[0].date).getTime()
+              : Number.MAX_SAFE_INTEGER
+            return { ...p, propEventsSorted, earliestMs }
+          })
+          .sort((a, b) => a.earliestMs - b.earliestMs)
+          .map(({ display, slug, propEventsSorted }) => {
 
             const eventRows = propEventsSorted
               .map((e, idx) => {
@@ -684,7 +696,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
                 // First row: no top padding. Last row: no bottom padding.
                 // Middle rows: 6px vertical gap between events (no hairline).
                 const isFirst = idx === 0
-                const isLast = idx === propEvents.length - 1
+                const isLast = idx === propEventsSorted.length - 1
                 const paddingTop = isFirst ? 0 : 6
                 const paddingBottom = isLast ? 0 : 6
                 return `
@@ -694,7 +706,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
                   ${kindPrefix}${escapeHtml(e.label)}
                 </div>
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
-                ${e.woli_stage ? `<div style="font-size: 11px; color: #888; margin-top: 3px; font-weight: 500;">${escapeHtml(e.woli_stage)}</div>` : ''}
+                ${e.woli_stage ? `<div style="font-size: 11px; margin-top: 3px;"><span style="color: #4a4a4a; font-weight: 700;">${e.woli_is_closed ? 'CLOSED' : 'OPEN'}</span> <span style="color: #888; font-weight: 500;">— ${escapeHtml(e.woli_stage)}</span></div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
                   ${e.is_backdated ? '<sup style="font-size: 10px; line-height: 0;">*</sup>' : ''}${escapeHtml(formatEventDate(e))}
                 </div>
@@ -713,12 +725,12 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
             // auto-linking quirks, which were the original motivation for
             // the (now removed) format-detection meta tag.
             const propertyHeading = slug
-              ? `<a href="https://propertysentinel.io/address/${encodeURIComponent(slug)}?building=true" style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1e3a5f; text-decoration: underline; margin-bottom: 8px; display: inline-block;">${escapeHtml(display)}</a>`
-              : `<div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">${escapeHtml(display)}</div>`
+              ? `<a href="https://propertysentinel.io/address/${encodeURIComponent(slug)}?building=true" style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1e3a5f; text-decoration: underline; margin-bottom: 0; display: inline-block;">${escapeHtml(display)}</a>`
+              : `<div style="font-family: 'Merriweather', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 0;">${escapeHtml(display)}</div>`
             return `
-        <div style="margin-bottom: 20px;">
+        <div style="margin-bottom: 14px;">
           ${propertyHeading}
-          <div style="padding-left: 12px; margin-top: 8px;">
+          <div style="padding-left: 12px; margin-top: 2px;">
             <table style="width: 100%; border-collapse: collapse;">
               ${eventRows}
             </table>
