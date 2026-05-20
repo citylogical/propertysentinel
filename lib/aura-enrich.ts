@@ -4,9 +4,18 @@
  * Reusable CHI311 Salesforce Aura fetch logic.
  * Returns enrichment data without writing to the DB — callers handle persistence.
  *
- * Used by /api/portfolio/backfill/process. The /api/complaints/enrich-on-demand
- * route currently has its own copy (kept separate for minimal regression risk).
+ * Used by /api/portfolio/backfill/process for bulk enrichment. The on-demand
+ * route /api/complaints/enrich-on-demand has its own request pipeline but
+ * shares QUESTION_MAP and ENRICHABLE_CODES via the imports below.
  */
+
+import { QUESTION_MAP, SKIP_IDS } from './aura-question-map'
+import { ENRICHABLE_CODES } from './sr-codes'
+
+/** Re-export so existing imports of ENRICHABLE_SR_CODES from this module
+ *  continue working without churn. New code should import ENRICHABLE_CODES
+ *  directly from sr-codes. */
+export const ENRICHABLE_SR_CODES = Array.from(ENRICHABLE_CODES)
 
 const AURA_CONTEXT = JSON.stringify({
   mode: 'PROD',
@@ -27,141 +36,6 @@ const AURA_BASE = 'https://311.chicago.gov/s/sfsites/aura'
 const URL_SR_SEARCH = `${AURA_BASE}?r=2&other.CommunityUtility.getAllServiceRequestResults=1`
 const URL_GET_SERVICE_REQUEST = `${AURA_BASE}?r=2&other.CommunityUtility.getServiceRequest=1`
 const URL_FLEX_ANSWERS = `${AURA_BASE}?r=81&aura.ApexAction.execute=1`
-
-const SKIP_IDS = new Set([
-  'a1Yt0000000Lg6SEAS',
-  'a1Yt0000000Lg7HEAS',
-  'a1Yt0000000Lg4YEAS',
-  'a1Yt0000000Lg5pEAC',
-  'a1Yt0000000Lj2HEAS',
-  'a1Yt0000000LiJeEAK',
-  'a1Y8z0000000ZLUEA2',
-])
-
-const QUESTION_MAP: Record<string, Record<string, string>> = {
-  '08qt0000000CabpAAC': {
-    description: 'a1Yt0000000LfxuEAC',
-    complainant_type: 'a1Yt0000000Lg7FEAS',
-    unit_number: 'a1Yt0000000Lg6cEAC',
-    danger_reported: 'a1Yt0000000Lg6uEAC',
-    owner_notified: 'a1Yt0000000Lg72EAC',
-    owner_occupied: 'a1Yt0000000Lg73EAC',
-  },
-  '08qt0000000CabrAAC': {
-    description: 'a1Yt0000000LjBVEA0',
-  },
-  '08qt0000000CacJAAS': {
-    description: 'a1Yt0000000Lg7IEAS',
-    concern_category: 'a1Yt0000000Lg7iEAC',
-    unit_number: 'a1Yt0000000Lg7JEAS',
-  },
-  '08qt0000000CacgAAC': {
-    description: 'a1Yt0000000Lg4aEAC',
-  },
-  '08qt0000000CacoAAC': {
-    description: 'a1Yt0000000Lg9sEAC',
-    complainant_type: 'a1Yt0000000LgA6EAK',
-    owner_notified: 'a1Yt0000000Lg9xEAC',
-  },
-  '08qt0000000CaYeAAK': {
-    description: 'a1Yt0000000Lj2IEAS',
-  },
-  '08qt0000000CacaAAC': {
-    description: 'a1Yt0000000LirDEAS',
-    concern_category: 'a1Yt0000000LfjBEAS',
-  },
-  '08qt0000000CaYiAAK': {
-    restaurant_name: 'a1Yt0000000Lj1JEAS',
-    description: 'a1Yt0000000Lj1IEAS',
-    problem_category: 'a1Yt0000000LimCEAS',
-    unit_number: 'a1Yt0000000Lj1HEAS',
-  },
-  '08qt0000000CacSAAS': {
-    business_name: 'a1Yt0000000cCDfEAM',
-    description: 'a1Y8z0000006zcCEAQ',
-    concern_category: 'a1Y8z0000006xYHEAY',
-  },
-  '08qt0000000CadBAAS': {
-    business_name: 'a1Yt0000000cCDpEAM',
-    concern_category: 'a1Y8z00000075hxEAA',
-    description: 'a1Y8z00000075i7EAA',
-  },
-  '08qt0000000CadIAAS': {
-    business_name: 'a1Yt0000000Lj4dEAC',
-    description: 'a1Yt0000000Lj4cEAC',
-    unit_number: 'a1Yt0000000Lj4bEAC',
-  },
-  '08qt0000000CaexAAC': {
-    complainant_type: 'a1Yt0000000LihQEAS',
-    concern_category: 'a1Yt0000000LihREAS',
-    description: 'a1Yt0000000LiubEAC',
-  },
-  '08qt0000000CadNAAS': {
-    concern_category: 'a1Yt0000000LiSJEA0',
-    description: 'a1Yt0000000Lj2AEAS',
-  },
-  '08qt0000000CaeeAAC': {
-    business_name: 'a1Yt0000000cCDVEA2',
-    concern_category: 'a1Yt0000000LiY6EAK',
-    description: 'a1Yt0000000Lj8XEAS',
-  },
-  '08qt0000000Cac2AAC': {
-    business_name: 'a1Yt0000000LjCkEAK',
-    concern_category: 'a1Yt0000000LifFEAS',
-    description: 'a1Yt0000000LjCmEAK',
-  },
-  '08qt0000000Cab5AAC': {
-    business_name: 'a1Yt0000000LjCgEAK',
-    description: 'a1Yt0000000LjCjEAK',
-  },
-  '08qt0000000CaXQAA0': {
-    business_name: 'a1Yt0000000cCDaEAM',
-    concern_category: 'a1Yt0000000LiRsEAK',
-    description: 'a1Yt0000000LjBxEAK',
-  },
-  '08qt0000000CaaoAAC': {
-    business_name: 'a1Yt0000000cCDkEAM',
-    concern_category: 'a1Yt0000000LiNKEA0',
-    description: 'a1Yt0000000Lix4EAC',
-  },
-  '08qt0000000CaaLAAS': {
-    business_name: 'a1Ycs000002sErFEAU',
-  },
-  '08qt0000000CabOAAS': {
-    concern_category: 'a1Yt0000000LiYfEAK',
-    problem_category: 'a1Yt0000000Li1dEAC',
-    description: 'a1Yt0000000LjFoEAK',
-  },
-  '08q8z0000000LkrAAE': {
-    description: 'a1Y8z0000000ZLKEA2',
-    concern_category: 'a1Y8z0000000ZL5EAM',
-    problem_category: 'a1Y8z0000000ZLPEA2',
-    owner_notified: 'a1Y8z0000000ZLFEA2',
-  },
-  '08qt0000000CaYtAAK': {
-    concern_category: 'a1Yt0000000LiIyEAK',
-    problem_category: 'a1Yt0000000LiCMEA0',
-  },
-  '08qt0000000CaaFAAS': {
-    description: 'a1Yt0000000Lit1EAC',
-    concern_category: 'a1Yt0000000Lit2EAC',
-    problem_category: 'a1Yt0000000LiANEA0',
-  },
-  '08qt0000000CaXPAA0': {
-    concern_category: 'a1Yt0000003OLaCEAW',
-    problem_category: 'a1Yt0000003OLaMEAW',
-  },
-  '08qt0000000CaZ9AAK': {
-    description: 'a1Yt0000000LfS9EAK',
-  },
-}
-
-export const ENRICHABLE_SR_CODES = [
-  'BBA', 'BBC', 'BBD', 'BBK', 'BPI', 'HDF', 'SCB',
-  'HFB', 'RBL', 'CAFE', 'CORNVEND', 'SHVR',
-  'CSF', 'CST', 'BAG', 'BAM', 'FPC', 'ODM', 'MWC',
-  'AAF', 'NAC', 'WBJ', 'WBK', 'FAC', 'WCA',
-] as const
 
 export interface AuraEnrichmentResult {
   caseId: string | null

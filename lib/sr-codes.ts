@@ -15,45 +15,51 @@ export interface SRCodeEntry {
   label: string
   category: SRCategory
   defaultVisible: boolean
+  /** True when this code has a QUESTION_MAP entry in
+   *  `app/api/complaints/enrich-on-demand/route.ts` AND in
+   *  `property-sentinel-workers/enrich_complaints.py`. Single source of
+   *  truth — `ENRICHABLE_SR_SHORT_CODES` in `ComplaintRowEnriched.tsx`
+   *  derives from this. */
+  enrichable?: boolean
 }
 
 export const SR_CODES: SRCodeEntry[] = [
 
   // ── BUILDING — property condition, safety, compliance ──────────────────────
-  { code: 'BBA',     label: 'Building Violation',                          category: 'building',           defaultVisible: true },
-  { code: 'BBC',     label: 'Buildings - Plumbing Violation',              category: 'building',           defaultVisible: true },
-  { code: 'BBD',     label: 'No Building Permit and Construction Violation', category: 'building',         defaultVisible: true },
-  { code: 'BBK',     label: 'Vacant/Abandoned Building Complaint',         category: 'building',           defaultVisible: true },
-  { code: 'BPI',     label: 'Porch Inspection Request',                    category: 'building',           defaultVisible: true },
-  { code: 'FAC',     label: 'Commercial Fire Safety Inspection Request',   category: 'building',           defaultVisible: true },
-  { code: 'HDF',     label: 'Lead Inspection Request',                     category: 'building',           defaultVisible: true },
-  { code: 'SCB',     label: 'Sanitation Code Violation',                   category: 'building',           defaultVisible: true },
-  { code: 'SHVR',    label: 'Shared Housing/Vacation Rental Complaint',    category: 'building',           defaultVisible: true },
-  { code: 'NAC',     label: 'No Air Conditioning',                         category: 'building',           defaultVisible: true },
-  { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'building',           defaultVisible: true },
+  { code: 'BBA',     label: 'Building Violation',                          category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'BBC',     label: 'Buildings - Plumbing Violation',              category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'BBD',     label: 'No Building Permit and Construction Violation', category: 'building',         defaultVisible: true,  enrichable: true },
+  { code: 'BBK',     label: 'Vacant/Abandoned Building Complaint',         category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'BPI',     label: 'Porch Inspection Request',                    category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'FAC',     label: 'Commercial Fire Safety Inspection Request',   category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'HDF',     label: 'Lead Inspection Request',                     category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'SCB',     label: 'Sanitation Code Violation',                   category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'SHVR',    label: 'Shared Housing/Vacation Rental Complaint',    category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'NAC',     label: 'No Air Conditioning',                         category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'AAF',     label: 'Water in Basement Complaint',                 category: 'building',           defaultVisible: true,  enrichable: true },
   { code: 'WCA2',    label: 'Water Lead Test Kit Request',                 category: 'building',           defaultVisible: true },
   { code: 'WCA3',    label: 'Water Lead Test Visit Request',               category: 'building',           defaultVisible: true },
-  { code: 'WM3',     label: 'Check for Leak',                              category: 'building',           defaultVisible: true },
-  { code: 'WBJ',     label: 'No Water Complaint',                          category: 'building',           defaultVisible: true },
-  { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'building',           defaultVisible: true },
+  { code: 'WM3',     label: 'Check for Leak',                              category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'WBJ',     label: 'No Water Complaint',                          category: 'building',           defaultVisible: true,  enrichable: true },
+  { code: 'WBK',     label: 'Low Water Pressure Complaint',                category: 'building',           defaultVisible: true,  enrichable: true },
   { code: 'PETCO',   label: 'Petcoke Dust Complaint',                      category: 'building',           defaultVisible: true },
-  { code: 'WCA',     label: 'Water Quality Concern',                       category: 'building',           defaultVisible: true },
+  { code: 'WCA',     label: 'Water Quality Concern',                       category: 'building',           defaultVisible: true,  enrichable: true },
 
 
   // ── BUSINESS / CONSUMER ────────────────────────────────────────────────────
-  { code: 'HFB',     label: 'Restaurant Complaint',                        category: 'business',           defaultVisible: true },
-  { code: 'RBL',     label: 'Business Complaints',                         category: 'business',           defaultVisible: true },
-  { code: 'BAG',     label: 'Tobacco - General Complaint',                 category: 'business',           defaultVisible: true },
-  { code: 'BAM',     label: 'Tobacco - Sale to Minors Complaint',          category: 'business',           defaultVisible: true },
+  { code: 'HFB',     label: 'Restaurant Complaint',                        category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'RBL',     label: 'Business Complaints',                         category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'BAG',     label: 'Tobacco - General Complaint',                 category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'BAM',     label: 'Tobacco - Sale to Minors Complaint',          category: 'business',           defaultVisible: true,  enrichable: true },
   { code: 'LIQUORCO',label: 'Liquor Establishment Complaint',              category: 'business',           defaultVisible: true },
-  { code: 'CSF',     label: 'Consumer Fraud Complaint',                    category: 'business',           defaultVisible: true },
-  { code: 'CST',     label: 'Consumer Retail Business Complaint',          category: 'business',           defaultVisible: true },
-  { code: 'CAFE',    label: 'Sidewalk Café/Outdoor Dining Complaint',      category: 'business',           defaultVisible: true },
-  { code: 'CORNVEND',label: 'Pushcart Food Vendor Complaint',              category: 'business',           defaultVisible: true },
-  { code: 'FPC',     label: 'Inaccurate Fuel Pump Complaint',              category: 'business',           defaultVisible: true },
+  { code: 'CSF',     label: 'Consumer Fraud Complaint',                    category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'CST',     label: 'Consumer Retail Business Complaint',          category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'CAFE',    label: 'Sidewalk Café/Outdoor Dining Complaint',      category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'CORNVEND',label: 'Pushcart Food Vendor Complaint',              category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'FPC',     label: 'Inaccurate Fuel Pump Complaint',              category: 'business',           defaultVisible: true,  enrichable: true },
   { code: 'INR',     label: 'Inaccurate Retail Scales Complaint',          category: 'business',           defaultVisible: true },
-  { code: 'ODM',     label: 'Outdated Merchandise Complaint',              category: 'business',           defaultVisible: true },
-  { code: 'MWC',     label: 'Wage Complaint',                              category: 'business',           defaultVisible: true },
+  { code: 'ODM',     label: 'Outdated Merchandise Complaint',              category: 'business',           defaultVisible: true,  enrichable: true },
+  { code: 'MWC',     label: 'Wage Complaint',                              category: 'business',           defaultVisible: true,  enrichable: true },
   { code: 'PSL',     label: 'Paid Sick Leave Violation',                   category: 'business',           defaultVisible: true },
   { code: 'NOSOLCPP',label: 'No Solicitation Complaint',                   category: 'business',           defaultVisible: true },
   { code: 'HFF',     label: 'Smokeless Tobacco at Sports Event Complaint', category: 'business',           defaultVisible: true },
@@ -64,7 +70,7 @@ export const SR_CODES: SRCodeEntry[] = [
   // ── OTHER — selected codes included in default view ────────────────────────
   { code: 'EAB',     label: 'Nuisance Animal Complaint',                   category: 'other',              defaultVisible: false },
   { code: 'EAE',     label: 'Stray Animal Complaint',                      category: 'other',              defaultVisible: false },
-  { code: 'EAF',     label: 'Vicious Animal Complaint',                    category: 'other',              defaultVisible: true },
+  { code: 'EAF',     label: 'Vicious Animal Complaint',                    category: 'other',              defaultVisible: true,  enrichable: true },
   { code: 'EAQ',     label: 'Report an Injured Animal',                    category: 'other',              defaultVisible: false },
   { code: 'EBD',     label: 'Animal In Trap Complaint',                    category: 'other',              defaultVisible: false },
   { code: 'CIAC',    label: 'Coyote Interaction Complaint',                category: 'other',              defaultVisible: false },
@@ -72,7 +78,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'SCX',     label: 'Recycling Inspection Request',                category: 'other',              defaultVisible: true },
   { code: 'PET',     label: 'Pet Wellness Check Request',                  category: 'other',              defaultVisible: false },
   { code: 'BUNGALOW',label: 'Bungalow/Vintage Home Information Request',   category: 'other',              defaultVisible: false },
-  { code: 'SGA',     label: 'Rodent Baiting/Rat Complaint',                category: 'other',              defaultVisible: true },
+  { code: 'SGA',     label: 'Rodent Baiting/Rat Complaint',                category: 'other',              defaultVisible: true,  enrichable: true },
 
   // ── STREET NUISANCE — hidden by default (graffiti, parking, waste) ─────────
   { code: 'GRAF',    label: 'Graffiti Removal Request',                    category: 'street_nuisance',    defaultVisible: true },
@@ -102,9 +108,9 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'PCL3',    label: 'E-Scooter',                                   category: 'street_nuisance',    defaultVisible: false },
 
   // ── STREET INFRASTRUCTURE — hidden by default ──────────────────────────────
-  { code: 'AAD',     label: 'Sewer Cave-In Inspection Request',            category: 'street_infrastructure', defaultVisible: true },
+  { code: 'AAD',     label: 'Sewer Cave-In Inspection Request',            category: 'street_infrastructure', defaultVisible: true,  enrichable: true },
   { code: 'AAE',     label: 'Water On Street Complaint',                   category: 'street_infrastructure', defaultVisible: false },
-  { code: 'AAI',     label: 'Alley Sewer Inspection Request',              category: 'street_infrastructure', defaultVisible: true },
+  { code: 'AAI',     label: 'Alley Sewer Inspection Request',              category: 'street_infrastructure', defaultVisible: true,  enrichable: true },
   { code: 'PHB',     label: 'Alley Pothole Complaint',                     category: 'street_infrastructure', defaultVisible: false },
   { code: 'PHF',     label: 'Pothole in Street Complaint',                 category: 'street_infrastructure', defaultVisible: false },
   { code: 'PBD',     label: 'Inspect Public Way Request',                  category: 'street_infrastructure', defaultVisible: false },
@@ -129,7 +135,7 @@ export const SR_CODES: SRCodeEntry[] = [
   { code: 'PCD',     label: 'Sign Repair Request - Do Not Enter Sign',     category: 'street_infrastructure', defaultVisible: false },
   { code: 'PCE',     label: 'Sign Repair Request - All Other Signs',       category: 'street_infrastructure', defaultVisible: false },
   { code: 'WBT',     label: 'Open Fire Hydrant Complaint',                 category: 'street_infrastructure', defaultVisible: false },
-  { code: 'SEC',     label: 'Tree Emergency',                              category: 'street_infrastructure', defaultVisible: true },
+  { code: 'SEC',     label: 'Tree Emergency',                              category: 'street_infrastructure', defaultVisible: true,  enrichable: true },
   { code: 'SED',     label: 'Tree Planting Request',                       category: 'street_infrastructure', defaultVisible: false },
   { code: 'SEE',     label: 'Tree Removal Inspection',                     category: 'street_infrastructure', defaultVisible: true },
   { code: 'SEF',     label: 'Tree Trim Request (NO LONGER BEING ACCEPTED)', category: 'street_infrastructure', defaultVisible: false },
@@ -152,6 +158,16 @@ export const SR_CODE_MAP: Record<string, SRCodeEntry> = Object.fromEntries(
 // Set of codes visible by default — used to filter PropertyFeed
 export const DEFAULT_VISIBLE_CODES = new Set(
   SR_CODES.filter(e => e.defaultVisible).map(e => e.code)
+)
+
+// Set of codes with Aura enrichment support — used to gate the admin
+// enrichment chevron and the on-demand enrich endpoint's eligibility check.
+// Must stay in sync with QUESTION_MAP in
+// `app/api/complaints/enrich-on-demand/route.ts` and `ENRICH_CODES` in
+// `property-sentinel-workers/enrich_complaints.py`. When adding a new
+// enrichable code, update both of those AND flip `enrichable: true` here.
+export const ENRICHABLE_CODES = new Set(
+  SR_CODES.filter(e => e.enrichable).map(e => e.code)
 )
 
 // Returns true if a complaint should show in default "Only Building Complaints" view

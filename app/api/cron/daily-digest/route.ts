@@ -214,9 +214,14 @@ export async function GET(request: Request) {
       if (setting.trigger_complaints) {
         // Filter by DEFAULT_VISIBLE_CODES at the SQL layer — drops the JS
         // post-filter that used to drop non-visible codes after the round trip.
-        // Now also selects concern_category, problem_category, status,
-        // final_outcome, and workflow_step so the rendered description can
-        // include structured intake metadata + the current WOLI stage.
+        // Selects concern_category, problem_category, status, final_outcome,
+        // workflow_step for description+WOLI rendering.
+        //
+        // Exclude duplicate complaints. Salesforce auto-couples duplicates by
+        // address+type; the parent SR carries the workflow, the child adds
+        // noise without information for the digest reader. Surface them in
+        // the dashboard (with badge) but skip in the email entirely.
+        // .or() form keeps legacy null rows (pre-duplicate-column ingest).
         const { data: complaints } = await supabase
           .from('complaints_311')
           .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, work_order_status, final_outcome, workflow_step')
@@ -224,6 +229,7 @@ export async function GET(request: Request) {
           .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
           .gte('created_date', startIso)
           .lt('created_date', endIso)
+          .or('duplicate.is.null,duplicate.is.false')
           .order('created_date', { ascending: false })
           .limit(500)
 

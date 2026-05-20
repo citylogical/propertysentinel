@@ -158,7 +158,11 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
             Open*
           </span>
         ) : isOpen ? (
-          <StatusPill kind="open" />
+          (c as { duplicate?: boolean | null }).duplicate === true ? (
+            <StatusPill kind="duplicate" />
+          ) : (
+            <StatusPill kind="open" />
+          )
         ) : isCanceled ? (
           <span
             style={{
@@ -207,6 +211,17 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
           }}
         >
           #{c.sr_number}
+        </div>
+      ) : null}
+      {(c as { duplicate?: boolean | null }).duplicate === true &&
+       (c as { parent_sr_number?: string | null }).parent_sr_number ? (
+        <div style={{
+          fontSize: 12,
+          color: '#6a6258',
+          fontStyle: 'italic',
+          marginTop: 4,
+        }}>
+          Duplicate of {(c as { parent_sr_number?: string | null }).parent_sr_number}
         </div>
       ) : null}
       {venueName ? (

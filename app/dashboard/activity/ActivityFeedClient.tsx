@@ -51,6 +51,13 @@ function rowKey(row: ActivityRow): string {
 }
 
 function statusKindFor(row: ActivityRow): StatusKind | null {
+  // Duplicate complaints take precedence over open/closed — the row's "status"
+  // field still says Open because Socrata never closes coupled duplicates,
+  // but for UX they're not real workflow rows.
+  if (row.category === 'complaint') {
+    const c = row.complaint as { duplicate?: boolean | null } | undefined
+    if (c?.duplicate === true) return 'duplicate'
+  }
   if (row.category === 'permit') return 'active' // detail panel computes precise expiry
   if (row.status === 'open') return 'open'
   if (row.status === 'closed') return 'closed'

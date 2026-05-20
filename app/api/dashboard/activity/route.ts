@@ -15,7 +15,8 @@ const COMPLAINT_FIELDS =
   'danger_reported, owner_notified, owner_occupied, ' +
   'concern_category, problem_category, restaurant_name, business_name, ' +
   'sla_target_days, actual_mean_days, estimated_completion, ' +
-  'work_order_status, workflow_step, work_order_steps, final_outcome'
+  'work_order_status, workflow_step, work_order_steps, final_outcome, ' +
+  'duplicate, parent_sr_number'
 
 const VIOLATION_FIELDS =
   'violation_id, violation_code, violation_description, violation_inspector_comments, ' +

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-export type StatusKind = 'open' | 'closed' | 'expired' | 'active'
+export type StatusKind = 'open' | 'closed' | 'expired' | 'active' | 'duplicate'
 
 export const monoLabel: CSSProperties = {
   fontFamily: 'var(--font-mono, ui-monospace, monospace)',
@@ -15,6 +15,7 @@ export function StatusPill({ kind }: { kind: StatusKind }) {
     open: { bg: '#fce8e8', color: '#a82020', label: 'Open' },
     closed: { bg: '#ede9e0', color: '#888', label: 'Closed' },
     expired: { bg: '#ede9e0', color: '#888', label: 'Expired' },
+    duplicate: { bg: '#e8e6e0', color: '#6a6258', label: 'Duplicate' },
     active: { bg: '#d4edd0', color: '#166534', label: 'Active' },
   }
   const v = variants[kind]

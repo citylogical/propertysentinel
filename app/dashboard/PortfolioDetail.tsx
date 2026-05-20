@@ -502,8 +502,11 @@ export default function PortfolioDetail({
                     a.type === 'Violation' ? 'VIOL' : a.type === 'Permit' ? 'PERMIT' : '311'
                   const typeColor =
                     a.type === 'Violation' ? '#c8102e' : a.type === 'Permit' ? '#166534' : '#1e3a5f'
-                  const statusKind: StatusKind =
-                    a.type === 'Permit'
+                  const isDuplicateComplaint = a.type === '311'
+                    && (a.complaint as { duplicate?: boolean | null } | undefined)?.duplicate === true
+                  const statusKind: StatusKind = isDuplicateComplaint
+                    ? 'duplicate'
+                    : a.type === 'Permit'
                       ? 'active'
                       : String(a.status ?? '').toLowerCase() === 'open'
                         ? 'open'

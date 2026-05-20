@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import type { ComplaintRow } from '@/lib/supabase-search'
+import { ENRICHABLE_CODES as ENRICHABLE_SR_SHORT_CODES } from '@/lib/sr-codes'
 
 export type EnrichedComplaint = {
   sr_number: string
@@ -27,36 +28,6 @@ export type EnrichedComplaint = {
   workflow_step: string | null
   enriched_at: string | null
 }
-
-/** Aligns with WorkType → QUESTION_MAP in the on-demand enrichment API. */
-const ENRICHABLE_SR_SHORT_CODES = new Set([
-  'BBA',
-  'BBC',
-  'BBD',
-  'BBK',
-  'BPI',
-  'HDF',
-  'SCB',
-  'SEC',
-  'HFB',
-  'RBL',
-  'CAFE',
-  'CORNVEND',
-  'SHVR',
-  'CSF',
-  'CST',
-  'BAG',
-  'BAM',
-  'FPC',
-  'ODM',
-  'MWC',
-  'AAF',
-  'NAC',
-  'WBJ',
-  'WBK',
-  'FAC',
-  'WCA',
-])
 
 function isEnrichableComplaint(srShort: string | null): boolean {
   if (!srShort) return false
@@ -488,6 +459,12 @@ export default function ComplaintRowEnriched({
     color: '#155724',
     borderColor: '#c3e6cb',
   }
+  const badgeDuplicate: CSSProperties = {
+    ...badgeBase,
+    background: '#e8e6e0',
+    color: '#6a6258',
+    borderColor: '#d4d0c8',
+  }
 
   const rightPanelOpen = isEnrichable && hasEnrich && expanded
 
@@ -558,7 +535,11 @@ export default function ComplaintRowEnriched({
             marginLeft: 12,
           }}
         >
-          <span style={open ? badgeOpen : badgeDone}>{open ? 'Open' : 'Completed'}</span>
+          {(c as { duplicate?: boolean | null }).duplicate === true ? (
+            <span style={badgeDuplicate}>Duplicate</span>
+          ) : (
+            <span style={open ? badgeOpen : badgeDone}>{open ? 'Open' : 'Completed'}</span>
+          )}
           {includeChevron ? (
             <ChevronToggleButton
               expanded={expanded}

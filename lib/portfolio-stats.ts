@@ -230,7 +230,7 @@ export async function fetchPortfolioActivity(
         addresses.map((addr) =>
           supabase
             .from('complaints_311')
-            .select('sr_number, sr_type, sr_short_code, status, created_date, closed_date, address_normalized, standard_description, trade_category, urgency_tier, sla_target_days, actual_mean_days, workflow_step, complaint_description, complainant_type, unit_number, danger_reported, owner_notified, owner_occupied, concern_category, problem_category, restaurant_name, business_name, work_order_steps, final_outcome, work_order_status')
+            .select('sr_number, sr_type, sr_short_code, status, created_date, closed_date, address_normalized, standard_description, trade_category, urgency_tier, sla_target_days, actual_mean_days, workflow_step, complaint_description, complainant_type, unit_number, danger_reported, owner_notified, owner_occupied, concern_category, problem_category, restaurant_name, business_name, work_order_steps, final_outcome, work_order_status, duplicate, parent_sr_number')
             .eq('address_normalized', addr)
             .gte('created_date', twelveMonthsAgo)
             .order('created_date', { ascending: false })
@@ -429,17 +429,24 @@ export async function fetchPortfolioActivity(
   const isPbl = pblResults.some((found) => found)
   const strRegistrations = strRegResults.reduce((sum, count) => sum + count, 0)
 
+  // Duplicate complaints (Salesforce auto-couples by address+type) inflate the
+  // open count — Mark sees 4 open when really it's 3 distinct issues. Exclude
+  // duplicate=true rows from open counts; total counts keep them since the
+  // city's data shows them as distinct rows.
+  const isOpenAndNotDuplicate = (c: unknown): boolean => {
+    const row = c as { status?: string | null; duplicate?: boolean | null }
+    if (String(row.status ?? '').toLowerCase() !== 'open') return false
+    if (row.duplicate === true) return false
+    return true
+  }
+
   // allComplaints is already filtered to DEFAULT_VISIBLE_CODES (building/business/etc)
-  const openBuildingComplaints = allComplaints.filter(
-    (c) => String((c as { status?: string }).status ?? '').toLowerCase() === 'open'
-  ).length
+  const openBuildingComplaints = allComplaints.filter(isOpenAndNotDuplicate).length
   const totalBuildingComplaints12mo = allComplaints.length
 
   // Total count: all complaints regardless of code
   const allComplaintsUnfiltered = allComplaintsRaw
-  const openComplaints = allComplaintsUnfiltered.filter(
-    (c) => String((c as { status?: string }).status ?? '').toLowerCase() === 'open'
-  ).length
+  const openComplaints = allComplaintsUnfiltered.filter(isOpenAndNotDuplicate).length
   const shvrCount = allComplaints.filter((c) => {
     const row = c as { sr_type?: string | null; sr_short_code?: string | null }
     const t = (row.sr_type ?? '').toUpperCase()
