@@ -201,7 +201,7 @@ export async function GET(request: Request) {
         // ?building=true; the helper guarantees the underlying address
         // is in user_building_ranges so the page expands correctly
         // (same fix as PortfolioDetail.tsx and the activity API route).
-        const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug)
+        const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name)
         for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {
           addressToProperty.set(addr, { id: p.id, display, slug })
         }

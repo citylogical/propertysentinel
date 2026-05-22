@@ -87,51 +87,73 @@ export function additionalStreetSegmentsForPortfolio(
 
 /**
  * Build the slug to use when navigating to a portfolio property's address
- * page from a dashboard context (Portfolio detail panel, Activity Feed).
+ * page from a dashboard context (Portfolio detail panel, Activity Feed,
+ * daily digest email).
  *
- * When address_range is non-null, the returned slug is derived from the first
- * expanded address (e.g., "737 W CORNELIA AVE" from range "737-747 W CORNELIA
- * AVE"). That address is guaranteed to appear in user_building_ranges, so the
- * address page's findApprovedUserRange lookup succeeds and ?building=true
- * expands to the full range immediately — no BuildingDetectionModal modal.
+ * Priority order:
+ *   1. display_name — authoritative source for the BUILDING's address.
+ *      Always cleaned up at save-time (no unit suffix). For
+ *      "2724 W Warren Blvd 1W" the canonical is the unit, but the building
+ *      display_name is "2724 W Warren Blvd" — that's what we want for the
+ *      address page lookup.
+ *   2. address_range first-expanded segment when canonical is covered by
+ *      the range — covers range-anchored buildings where display_name is
+ *      missing.
+ *   3. Canonical address (last resort).
  *
- * The stored portfolio_properties.slug is unsuitable when the canonical
- * address carries a unit suffix (e.g., "739 W CORNELIA AVE N-1") that is
- * not in the expanded range — the lookup misses and the page falls back to
- * single-address view despite ?building=true. This helper fixes that
- * mismatch. Falls back to the stored slug when no range exists.
+ * The zip is extracted from storedSlug when display_name is used, since
+ * display_name doesn't carry a zip. Falls back to no zip if storedSlug
+ * isn't parseable.
+ *
+ * Past failure modes this guards against:
+ *   - Unit-suffix canonical addresses (2724 W Warren Blvd 1W, 1505 N
+ *     Maplewood Ave 1, 331 S Peoria St 101) — stored slug encodes the
+ *     unit, links route to a unit page that has 0 complaints since
+ *     activity is filed at the base address.
+ *   - Cross-street range/canonical mismatches (600 N Lake Shore Dr
+ *     canonical + 460-460 E Ohio St range) — deriving from range would
+ *     route to wrong street.
  */
 export function getPortfolioBuildingSlug(
   canonicalAddress: string,
   addressRange: string | null,
-  storedSlug: string | null
+  storedSlug: string | null,
+  displayName: string | null = null
 ): string {
-  // Default range anchor is the canonical-address slug. We override only when the
-  // canonical address appears inside one of the address_range segments — confirms
-  // the range and canonical are on the same street, so deriving from the range
-  // is safe and gets findApprovedUserRange's lookup right.
-  //
-  // 600 N LAKE SHORE DR (canonical) + 460-460 E OHIO ST (range, different street)
-  // would previously route the user to 460 E Ohio St — wrong page. Now we check
-  // whether canonical is actually covered by the range; if not, use canonical.
   const canonicalNormalized = canonicalAddress.toUpperCase().replace(/\s+/g, ' ').trim()
 
+  // 1. Prefer display_name when present — authoritative source for the
+  //    building's address. Combine with zip extracted from storedSlug.
+  if (displayName && displayName.trim() !== '') {
+    const zipMatch = storedSlug?.match(/-(\d{5})$/)
+    const zip = zipMatch?.[1] ?? null
+    const baseSlug = addressToSlug(formatAddressForDisplay(displayName.trim()))
+    // addressToSlug produces "2724-W-Warren-Blvd" from "2724 W Warren Blvd".
+    // If storedSlug had a zip, append it as "-Chicago-60612" to match the
+    // canonical slug format expected by the address page.
+    if (zip) {
+      return baseSlug.includes(`-${zip}`) ? baseSlug : `${baseSlug}-Chicago-${zip}`
+    }
+    return baseSlug
+  }
+
+  // 2. Range-anchored: when canonical is covered by an address_range
+  //    segment, use the first expanded address. Validates that range
+  //    and canonical are on the same street (prevents the Lake Shore Dr
+  //    → Ohio St misroute).
   if (addressRange?.trim()) {
     const segments = addressRange.split('&').map((s) => s.trim()).filter(Boolean)
     for (const segment of segments) {
       const expanded = expandAddressRange(segment)
       if (expanded.includes(canonicalNormalized)) {
-        // Canonical is in this segment — safe to use range anchor.
         if (expanded[0]) {
           return addressToSlug(formatAddressForDisplay(expanded[0]))
         }
       }
     }
-    // No segment covers the canonical — fall through to canonical/stored slug
-    // since deriving from range would land on the wrong street.
   }
 
-  // Prefer canonical-derived slug over storedSlug since storedSlug can carry
-  // bad data (wrong zip from a Palatine-vs-Chicago Google geocoding miss).
+  // 3. Last resort: canonical-derived slug. Carries unit suffix when the
+  //    canonical does — but at this point we've exhausted cleaner sources.
   return addressToSlug(formatAddressForDisplay(canonicalNormalized))
 }

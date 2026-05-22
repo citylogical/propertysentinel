@@ -154,7 +154,7 @@ export async function GET(request: Request) {
       // Building-range-anchored slug — see getPortfolioBuildingSlug docs.
       // Server-side computation means ActivityFeedClient's existing
       // ?building=true wrapping (already deployed) just works.
-      slug: getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug),
+      slug: getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name),
       community_area: p.community_area,
     }
     for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {

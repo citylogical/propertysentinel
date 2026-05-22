@@ -270,7 +270,7 @@ export default function PortfolioDetail({
   // back to single-address view despite ?building=true. getPortfolioBuildingSlug
   // derives a slug from the first expanded address of address_range, which IS
   // in the set — lookup succeeds, page expands.
-  const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug)
+  const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name)
   const propertyHref = `/address/${encodeURIComponent(slug)}?building=true`
   const classDescription = getClassDescription(p.property_class)
 
