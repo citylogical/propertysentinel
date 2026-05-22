@@ -180,6 +180,8 @@ export default function BuildingCompositionCard({ composition, totalPins }: Prop
     yearBuilt,
     stories,
     floorArea,
+    commercialBuildingSqft,
+    commercialLandSqft,
     lotDims,
     lotAreaFallback,
     constrType,
@@ -206,6 +208,8 @@ export default function BuildingCompositionCard({ composition, totalPins }: Prop
     yearBuilt == null &&
     stories == null &&
     floorArea == null &&
+    commercialBuildingSqft == null &&
+    commercialLandSqft == null &&
     lotDims == null &&
     lotAreaFallback == null &&
     constrType == null &&
@@ -273,20 +277,28 @@ export default function BuildingCompositionCard({ composition, totalPins }: Prop
         </div>
       )}
 
-      {(floorArea != null || stories != null) && (
-        <div className="detail-row">
-          <span className="detail-key">
-            {floorArea != null ? 'Floor area' : 'Stories'}
-          </span>
-          <span className="detail-val">
-            {floorArea != null && stories != null
-              ? `${floorArea.toLocaleString('en-US')} sqft / ${stories} ${stories === 1 ? 'story' : 'stories'}`
-              : floorArea != null
-                ? `${floorArea.toLocaleString('en-US')} sqft`
-                : `${stories} ${stories === 1 ? 'story' : 'stories'}`}
-          </span>
-        </div>
-      )}
+      {(() => {
+        // Floor area precedence: Hansen floorArea (most current, surveyed)
+        // → commercialBuildingSqft (assessor, may be a couple years stale).
+        // Stories comes from Hansen only — assessor doesn't store a clean
+        // integer stories field.
+        const effectiveFloorArea = floorArea ?? commercialBuildingSqft
+        if (effectiveFloorArea == null && stories == null) return null
+        return (
+          <div className="detail-row">
+            <span className="detail-key">
+              {effectiveFloorArea != null ? 'Floor area' : 'Stories'}
+            </span>
+            <span className="detail-val">
+              {effectiveFloorArea != null && stories != null
+                ? `${effectiveFloorArea.toLocaleString('en-US')} sqft / ${stories} ${stories === 1 ? 'story' : 'stories'}`
+                : effectiveFloorArea != null
+                  ? `${effectiveFloorArea.toLocaleString('en-US')} sqft`
+                  : `${stories} ${stories === 1 ? 'story' : 'stories'}`}
+            </span>
+          </div>
+        )
+      })()}
 
       {lotDims != null && (
         <div className="detail-row">
@@ -306,6 +318,16 @@ export default function BuildingCompositionCard({ composition, totalPins }: Prop
           <span className="detail-val">{lotAreaFallback.toLocaleString('en-US')} sqft</span>
         </div>
       )}
+
+      {lotDims == null &&
+        (lotAreaFallback == null || lotAreaFallback === 0) &&
+        commercialLandSqft != null &&
+        commercialLandSqft > 0 && (
+          <div className="detail-row">
+            <span className="detail-key">Lot size</span>
+            <span className="detail-val">{commercialLandSqft.toLocaleString('en-US')} sqft</span>
+          </div>
+        )}
 
       {constrType != null && (
         <div className="detail-row">

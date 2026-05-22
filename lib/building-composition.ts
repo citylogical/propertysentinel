@@ -51,6 +51,16 @@ export type BuildingComposition = {
   /** From hansen_buildings; null when not populated or 0. */
   stories: number | null
   floorArea: number | null
+  /** Building square footage from property_chars_commercial with prior-year
+   *  fallback per keypin (commercial PINs frequently leave the current
+   *  tax_year row blank but populate the same field in an older row).
+   *  Multi-PIN aggregation case: sums across keypins. Hansen floor_area still
+   *  wins display priority when present (set on floorArea above). */
+  commercialBuildingSqft: number | null
+  /** Land square footage from property_chars_commercial with prior-year
+   *  fallback per keypin. Sums across keypins in the multi-PIN case.
+   *  Hansen lot dims still win display priority when present. */
+  commercialLandSqft: number | null
   /** Lot dimensions in feet from hansen_buildings (lot_width × lot_length).
    *  Stored separately rather than computed area since the raw dimensions
    *  preserve shape (square vs long-and-narrow) and Hansen's bounding-box
@@ -106,9 +116,13 @@ type CommercialRow = {
   tax_year: number | null
   property_type_use: string | null
   building_sqft: number | null
+  land_sqft: number | null
   adj_rent_sf: number | null
   class: string | null
   year_built: number | null
+  /** Comma-separated PIN list (e.g. "14-05-410-014-0000, 14-05-410-015-0000")
+   *  for keypins that group multiple parcels under a single assessor row. */
+  pins: string | null
 }
 
 type HansenRow = {
@@ -182,47 +196,139 @@ export async function fetchBuildingComposition(params: {
       }
     }
 
-    // ── Commercial aggregation: latest tax_year per keypin only ──
-    // One bucket per class, one use entry per parcel. Reclassifications between years
-    // (Storage→Retail-Single Tenant) defer to the assessor's most recent classification.
-    const latestByKeypin = new Map<string, CommercialRow>()
+    // ── Commercial aggregation ──
+    //
+    // Two competing concerns the original "latest-by-keypin" approach got wrong:
+    //
+    //   1. PIN counting. A keypin can group multiple parcels into one assessor
+    //      row (5630 N Sheridan: keypin 14054100140000 covers both PINs ending
+    //      014 and 015). Counting +1 per row undercounts. The `pins` text
+    //      column stores the comma-separated list — parse it to get the real
+    //      count, falling back to 1 when the column is null.
+    //
+    //   2. Field-level prior-year fallback. The latest tax_year row often
+    //      leaves building_sqft / land_sqft NULL even when an earlier year has
+    //      the value populated (5630 N Sheridan 2024 row is sqft-blank, 2021
+    //      has building_sqft=249,516). For each keypin, walk newest→oldest
+    //      and take the first non-null value per field.
+    //
+    // Aggregation: one bucket per class. Same display behavior as before for
+    // property_type_use and rent_psf (latest non-null wins). class collisions
+    // across years on the same keypin are rare; defer to the latest known
+    // classification, matching the prior "Storage → Retail-Single Tenant"
+    // policy.
     let commercialYearBuilt: number | null = null
 
+    const byKeypin = new Map<string, CommercialRow[]>()
     for (const row of commercialResults) {
       if (!row.keypin) continue
-      const ty = row.tax_year ?? 0
-      const existing = latestByKeypin.get(row.keypin)
-      if (!existing || ty > (existing.tax_year ?? 0)) {
-        latestByKeypin.set(row.keypin, row)
-      }
-      if (commercialYearBuilt == null && row.year_built != null) {
+      const arr = byKeypin.get(row.keypin) ?? []
+      arr.push(row)
+      byKeypin.set(row.keypin, arr)
+      // Earliest year_built wins across all keypins (per product spec — older
+      // structure on the parcel takes precedence over later reconstructions).
+      if (row.year_built != null) {
         const y = Number(row.year_built)
-        if (Number.isFinite(y) && y > 1800) commercialYearBuilt = y
+        if (Number.isFinite(y) && y > 1800) {
+          if (commercialYearBuilt == null || y < commercialYearBuilt) {
+            commercialYearBuilt = y
+          }
+        }
       }
+    }
+
+    // Per-keypin: walk rows newest→oldest (commercialResults is already ordered
+    // DESC by tax_year inside fetchCommercialRows; sort defensively).
+    type KeypinFacts = {
+      cls: string
+      pinCount: number
+      buildingSqft: number | null
+      landSqft: number | null
+      latestPropertyTypeUse: string | null
+      latestRentPsf: number | null
+    }
+    const keypinFacts = new Map<string, KeypinFacts>()
+    for (const [keypin, rows] of byKeypin) {
+      const sorted = [...rows].sort((a, b) => (b.tax_year ?? 0) - (a.tax_year ?? 0))
+      const latest = sorted[0]
+      // Assessor stores class as "597", "5-97", or comma-separated "5-97, 5-97"
+      // for multi-class parcels. Take first token and strip hyphens.
+      const rawClass = latest?.class ?? 'UNKNOWN'
+      const cls = rawClass.split(',')[0].trim().replace(/-/g, '')
+
+      // Multi-PIN keypin: parse the "pins" text column ("14-05-410-014-0000,
+      // 14-05-410-015-0000" → 2). Defaults to 1 when blank.
+      const pinCount = (() => {
+        const txt = latest?.pins?.trim()
+        if (!txt) return 1
+        const parts = txt.split(',').map((s) => s.trim()).filter(Boolean)
+        return parts.length > 0 ? parts.length : 1
+      })()
+
+      // Walk newest → oldest, take first non-null per field.
+      let buildingSqft: number | null = null
+      let landSqft: number | null = null
+      let latestPropertyTypeUse: string | null = null
+      let latestRentPsf: number | null = null
+      for (const r of sorted) {
+        if (buildingSqft == null && r.building_sqft != null && Number(r.building_sqft) > 0) {
+          buildingSqft = Number(r.building_sqft)
+        }
+        if (landSqft == null && r.land_sqft != null && Number(r.land_sqft) > 0) {
+          landSqft = Number(r.land_sqft)
+        }
+        if (latestPropertyTypeUse == null && r.property_type_use && r.property_type_use.trim() !== '') {
+          latestPropertyTypeUse = r.property_type_use.trim()
+        }
+        if (
+          latestRentPsf == null &&
+          r.adj_rent_sf != null &&
+          Number.isFinite(Number(r.adj_rent_sf))
+        ) {
+          latestRentPsf = Number(r.adj_rent_sf)
+        }
+        if (
+          buildingSqft != null &&
+          landSqft != null &&
+          latestPropertyTypeUse != null &&
+          latestRentPsf != null
+        ) {
+          break
+        }
+      }
+
+      keypinFacts.set(keypin, {
+        cls,
+        pinCount,
+        buildingSqft,
+        landSqft,
+        latestPropertyTypeUse,
+        latestRentPsf,
+      })
     }
 
     const commercialByClass = new Map<string, { uses: CommercialUse[]; pinCount: number }>()
-    for (const row of latestByKeypin.values()) {
-      // Assessor stores class as "597", "5-97", or comma-separated "5-97, 5-97" for
-      // multi-class parcels. Take first class token and strip hyphens for bucketing.
-      const rawClass = row.class ?? 'UNKNOWN'
-      const cls = rawClass.split(',')[0].trim().replace(/-/g, '')
-      let bucket = commercialByClass.get(cls)
+    let commercialBuildingSqftTotal = 0
+    let commercialLandSqftTotal = 0
+    for (const facts of keypinFacts.values()) {
+      let bucket = commercialByClass.get(facts.cls)
       if (!bucket) {
         bucket = { uses: [], pinCount: 0 }
-        commercialByClass.set(cls, bucket)
+        commercialByClass.set(facts.cls, bucket)
       }
-      bucket.pinCount += 1
-      if (row.property_type_use && row.property_type_use.trim() !== '') {
+      bucket.pinCount += facts.pinCount
+      if (facts.latestPropertyTypeUse) {
         bucket.uses.push({
-          propertyType: row.property_type_use.trim(),
-          rentPsf:
-            row.adj_rent_sf != null && Number.isFinite(Number(row.adj_rent_sf))
-              ? Number(row.adj_rent_sf)
-              : null,
+          propertyType: facts.latestPropertyTypeUse,
+          rentPsf: facts.latestRentPsf,
         })
       }
+      if (facts.buildingSqft != null) commercialBuildingSqftTotal += facts.buildingSqft
+      if (facts.landSqft != null) commercialLandSqftTotal += facts.landSqft
     }
+    // Use null when nothing was populated so the card hides the row.
+    const commercialBuildingSqft = commercialBuildingSqftTotal > 0 ? commercialBuildingSqftTotal : null
+    const commercialLandSqft = commercialLandSqftTotal > 0 ? commercialLandSqftTotal : null
 
     // ── Compose rows: residential first, then commercial sorted by PIN count desc ──
     const rows: BuildingCompositionRow[] = []
@@ -241,13 +347,37 @@ export async function fetchBuildingComposition(params: {
       })
     }
 
+    // Single-class + single-property_type building (the common commercial
+    // apartment case, e.g. 5630 N Sheridan: one class 391, one type
+    // "Multifamily-Mixed Use, Mid rise (4 to 12 floors)") gets the
+    // property_type_use promoted to a top-level Property type row on the
+    // card. The class row stays static — no expandable dropdown.
+    //
+    // Multi-class buildings (mixed-use towers with retail + residential)
+    // keep commercialUses on the class breakdown so each class shows its
+    // own use type inside the dropdown.
+    const distinctUsesAcrossAllClasses = new Set<string>()
+    for (const bucket of commercialByClass.values()) {
+      for (const use of bucket.uses) {
+        if (use.propertyType) distinctUsesAcrossAllClasses.add(use.propertyType)
+      }
+    }
+    const promoteToTopLevelPropertyType =
+      commercialByClass.size === 1 && distinctUsesAcrossAllClasses.size === 1
+
+    const promotedPropertyType = promoteToTopLevelPropertyType
+      ? [...distinctUsesAcrossAllClasses][0]
+      : null
+
     const commercialRows: BuildingCompositionRow[] = [...commercialByClass.entries()].map(
       ([cls, bucket]) => ({
         class: cls,
         description: cls !== 'UNKNOWN' ? getClassDescription(cls) ?? null : null,
         pinCount: bucket.pinCount,
         unitBreakdown: null,
-        commercialUses: bucket.uses,
+        // Clear commercialUses when promoted — prevents the use from rendering
+        // both at the top level AND inside the class breakdown dropdown.
+        commercialUses: promoteToTopLevelPropertyType ? null : bucket.uses,
       })
     )
     commercialRows.sort((a, b) => b.pinCount - a.pinCount)
@@ -263,6 +393,8 @@ export async function fetchBuildingComposition(params: {
         yearBuilt: condoYearBuilt ?? commercialYearBuilt,
         stories: hansen?.stories != null && hansen.stories > 0 ? hansen.stories : null,
         floorArea: hansen?.floor_area != null && hansen.floor_area > 0 ? hansen.floor_area : null,
+        commercialBuildingSqft,
+        commercialLandSqft,
         lotDims:
           hansen?.lot_width != null &&
           hansen?.lot_length != null &&
@@ -279,8 +411,10 @@ export async function fetchBuildingComposition(params: {
         recentSale,
         rows,
         allPins: normalized,
-        // Multi-PIN composition view — single-PIN identity fields not applicable.
-        propertyType: null,
+        // Multi-PIN composition view — promoted property_type_use surfaces here
+        // for single-class commercial buildings (see promoteToTopLevelPropertyType
+        // logic above). Residential per-PIN fields remain null in multi-PIN mode.
+        propertyType: promotedPropertyType,
         rooms: null,
         beds: null,
         bathsFull: null,
@@ -366,7 +500,7 @@ async function fetchCommercialRows(
       patterns.map(async (pattern) => {
         const { data, error } = await supabase
           .from('property_chars_commercial')
-          .select('keypin, tax_year, property_type_use, building_sqft, adj_rent_sf, class, year_built')
+          .select('keypin, tax_year, property_type_use, building_sqft, land_sqft, adj_rent_sf, class, year_built, pins')
           .ilike('address', `${pattern}%`)
           .order('tax_year', { ascending: false })
         if (error) {
@@ -561,6 +695,8 @@ export async function buildSinglePinComposition(
         yearBuilt,
         stories,
         floorArea,
+        commercialBuildingSqft: null,
+        commercialLandSqft: null,
         lotDims,
         lotAreaFallback,
         constrType,

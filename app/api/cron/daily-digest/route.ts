@@ -848,15 +848,20 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
               .map((row) => {
                 const e = row.event
                 const isStopWorkRow = e.label === 'STOP-WORK ORDER'
-                // Kind prefix: "Violation" in red and "Permit" in green
-                // before the label; complaints don't get a prefix (the
-                // sr_type IS the kind signal). Stop-work skips the prefix
-                // since the label already dominates.
+                // Kind prefix:
+                //   complaint  → "311 •" in blue (the sr_type doesn't always
+                //                say "311" so this clarifies the source)
+                //   violation  → "Violation •" in red
+                //   permit     → no prefix; permit_type labels (e.g.
+                //                "PERMIT - ELEVATOR EQUIPMENT") already
+                //                carry the kind word, so prepending
+                //                "Permit •" duplicates it
+                //   stop-work  → skip; the label dominates the row
                 let kindPrefix = ''
-                if (e.kind === 'violation' && !isStopWorkRow) {
+                if (e.kind === 'complaint') {
+                  kindPrefix = `<span style="color: #1e3a5f; font-weight: 600;">311</span> <span style="color: #999;">&bull;</span> `
+                } else if (e.kind === 'violation' && !isStopWorkRow) {
                   kindPrefix = `<span style="color: #b8302a; font-weight: 600;">Violation</span> <span style="color: #999;">&bull;</span> `
-                } else if (e.kind === 'permit') {
-                  kindPrefix = `<span style="color: #166534; font-weight: 600;">Permit</span> <span style="color: #999;">&bull;</span> `
                 }
                 // Label color by kind:
                 //   stop-work        → red (#b8302a)
