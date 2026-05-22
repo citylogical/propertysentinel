@@ -40,6 +40,7 @@ type DetailPayload = {
   is_restricted_zone?: boolean
   nearby_listings?: number
   units?: PortfolioUnit[]
+  nav_slug?: string | null
 }
 
 type ComplaintSource = Record<string, unknown>
@@ -264,13 +265,13 @@ export default function PortfolioDetail({
     detailData?.str_registrations ?? p.str_registrations ?? 0
   const nearbyListings = detailData?.nearby_listings ?? p.nearby_listings ?? 0
 
-  // Use a building-range-anchored slug instead of the stored unit-level slug.
-  // The stored slug decodes to e.g. "739 W CORNELIA AVE N-1" which is not in
-  // user_building_ranges, so findApprovedUserRange misses and the page falls
-  // back to single-address view despite ?building=true. getPortfolioBuildingSlug
-  // derives a slug from the first expanded address of address_range, which IS
-  // in the set — lookup succeeds, page expands.
-  const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name)
+  // Prefer the server-computed nav_slug from /api/dashboard/detail. That route
+  // joins portfolio_properties against approved user_building_ranges to derive
+  // a slug whose decoded address findApprovedUserRange will direct-match on
+  // the property page — guaranteeing automatic fan-out (same approach as
+  // /api/dashboard/activity and the daily-digest cron). Falls back to the
+  // stored portfolio slug while the detail fetch is in flight.
+  const slug = detailData?.nav_slug || p.slug
   const propertyHref = `/address/${encodeURIComponent(slug)}?building=true`
   const classDescription = getClassDescription(p.property_class)
 

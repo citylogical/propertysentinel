@@ -533,6 +533,30 @@ type UserBuildingRangeRow = {
   street4_high: string | null
 }
 
+type UserBuildingRangeRowWithSearched = UserBuildingRangeRow & {
+  searched_address: string | null
+}
+
+/**
+ * Build allAddresses from a user_building_ranges row's street1-4 low/high pairs.
+ * Returns null when the row has no usable street ranges.
+ */
+function buildAllAddressesFromRange(range: UserBuildingRangeRow): {
+  allAddresses: string[]
+  canonicalAddress: string
+} | null {
+  const allAddresses: string[] = []
+  for (let i = 1; i <= 4; i++) {
+    const low = range[`street${i}_low` as keyof UserBuildingRangeRow] as string | null | undefined
+    const high = range[`street${i}_high` as keyof UserBuildingRangeRow] as string | null | undefined
+    if (!low || !high) continue
+    allAddresses.push(...enumerateAddressRange(low, high))
+  }
+  if (allAddresses.length === 0) return null
+  const uniqueAll = [...new Set(allAddresses)]
+  return { allAddresses: uniqueAll, canonicalAddress: uniqueAll[0]! }
+}
+
 export async function findApprovedUserRange(
   normalizedAddress: string
 ): Promise<{
@@ -542,25 +566,51 @@ export async function findApprovedUserRange(
 } | null> {
   try {
     const supabaseAdmin = getSupabaseAdmin()
-    const { data, error } = await supabaseAdmin.from('user_building_ranges').select('*').eq('status', 'approved')
+
+    // First: direct match on searched_address. This is the address the user
+    // originally typed/saved, stored verbatim (often with unit suffix like
+    // "2724 W WARREN BLVD 1W" or "6030 N SHERIDAN RD 102"). When the property
+    // page resolves a slug back to a unit-suffixed normalizedAddress, the
+    // expanded street1-4 ranges don't include it (ranges store base addresses
+    // only). Match by searched_address first so unit-suffix portfolio saves
+    // route correctly to the full building range.
+    const { data: directHit, error: directErr } = await supabaseAdmin
+      .from('user_building_ranges')
+      .select('*')
+      .eq('status', 'approved')
+      .eq('searched_address', normalizedAddress)
+      .limit(1)
+      .maybeSingle()
+    if (!directErr && directHit) {
+      const built = buildAllAddressesFromRange(directHit as UserBuildingRangeRow)
+      if (built) {
+        return {
+          allAddresses: built.allAddresses,
+          displayAddresses: built.allAddresses,
+          canonicalAddress: built.canonicalAddress,
+        }
+      }
+    }
+
+    // Fallback: iterate all approved rows, expand their ranges, check whether
+    // normalizedAddress falls inside any expansion. Catches the case where the
+    // user navigated by base address directly (no unit suffix) — e.g. someone
+    // searches "6030 N SHERIDAN RD" without "102", or clicks through to an
+    // address in the range that isn't the saved one.
+    const { data, error } = await supabaseAdmin
+      .from('user_building_ranges')
+      .select('*')
+      .eq('status', 'approved')
     if (error || !data?.length) return null
 
     for (const range of data as UserBuildingRangeRow[]) {
-      const allAddresses: string[] = []
-      for (let i = 1; i <= 4; i++) {
-        const low = range[`street${i}_low` as keyof UserBuildingRangeRow] as string | null | undefined
-        const high = range[`street${i}_high` as keyof UserBuildingRangeRow] as string | null | undefined
-        if (!low || !high) continue
-        allAddresses.push(...enumerateAddressRange(low, high))
-      }
-      if (allAddresses.length === 0) continue
-
-      const uniqueAll = [...new Set(allAddresses)]
-      if (uniqueAll.includes(normalizedAddress)) {
+      const built = buildAllAddressesFromRange(range)
+      if (!built) continue
+      if (built.allAddresses.includes(normalizedAddress)) {
         return {
-          allAddresses: uniqueAll,
-          displayAddresses: uniqueAll,
-          canonicalAddress: uniqueAll[0]!,
+          allAddresses: built.allAddresses,
+          displayAddresses: built.allAddresses,
+          canonicalAddress: built.canonicalAddress,
         }
       }
     }

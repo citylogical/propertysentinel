@@ -2,8 +2,104 @@ import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
-import { getPortfolioBuildingSlug } from '@/lib/portfolio-address-expansion'
+import { addressToSlug } from '@/lib/formatAddress'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
+
+// Street type tokens used to identify the end of an address proper (everything
+// after one of these is treated as a unit suffix and stripped for matching).
+const STREET_TYPES = new Set([
+  'ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD',
+  'WAY', 'PKWY', 'TER', 'CIR', 'HWY',
+])
+
+type UserBuildingRange = {
+  searched_address: string | null
+  street1_low: string | null
+  street1_high: string | null
+  street2_low: string | null
+  street2_high: string | null
+  street3_low: string | null
+  street3_high: string | null
+  street4_low: string | null
+  street4_high: string | null
+}
+
+/**
+ * Strip a unit suffix from a normalized address. The unit is anything trailing
+ * the street type token. Returns the input unchanged when no street type found.
+ *   "6030 N SHERIDAN RD 102" → "6030 N SHERIDAN RD"
+ *   "6030 N SHERIDAN RD"     → "6030 N SHERIDAN RD"
+ */
+function stripUnitSuffix(normalizedAddress: string): string {
+  const tokens = normalizedAddress.trim().toUpperCase().split(/\s+/)
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (STREET_TYPES.has(tokens[i])) {
+      return tokens.slice(0, i + 1).join(' ')
+    }
+  }
+  return normalizedAddress.toUpperCase().trim()
+}
+
+/**
+ * Returns the user_building_ranges row whose street1-4 ranges cover the given
+ * base address (number-in-range and same street name). Used to translate a
+ * portfolio_properties.canonical_address (which may carry a unit suffix or use
+ * a different searched form) into the searched_address string that lives in
+ * user_building_ranges — which is what findApprovedUserRange direct-matches
+ * on the property page.
+ */
+function findCoveringRange(
+  baseAddress: string,
+  ranges: UserBuildingRange[]
+): UserBuildingRange | null {
+  const baseParts = baseAddress.split(/\s+/)
+  const baseNum = parseInt(baseParts[0] ?? '', 10)
+  const baseStreet = baseParts.slice(1).join(' ')
+  if (Number.isNaN(baseNum) || !baseStreet) return null
+
+  for (const r of ranges) {
+    for (let i = 1; i <= 4; i++) {
+      const low = r[`street${i}_low` as keyof UserBuildingRange] as string | null
+      const high = r[`street${i}_high` as keyof UserBuildingRange] as string | null
+      if (!low || !high) continue
+      const lowParts = low.toUpperCase().split(/\s+/)
+      const highParts = high.toUpperCase().split(/\s+/)
+      const lowNum = parseInt(lowParts[0] ?? '', 10)
+      const highNum = parseInt(highParts[0] ?? '', 10)
+      const lowStreet = lowParts.slice(1).join(' ')
+      const highStreet = highParts.slice(1).join(' ')
+      if (Number.isNaN(lowNum) || Number.isNaN(highNum)) continue
+      if (lowStreet !== baseStreet || highStreet !== baseStreet) continue
+      if (baseNum >= Math.min(lowNum, highNum) && baseNum <= Math.max(lowNum, highNum)) {
+        return r
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Build the navigation slug for a portfolio property using user_building_ranges
+ * data. The matching ubr row's searched_address is what the property page's
+ * findApprovedUserRange direct-matches against — so deriving the slug from it
+ * guarantees fan-out fires automatically without modal interception. Zip is
+ * preserved from the stored portfolio slug. Falls back to the stored slug when
+ * no ubr row covers the address.
+ */
+function buildNavSlug(
+  canonical: string,
+  storedSlug: string | null,
+  ranges: UserBuildingRange[]
+): string {
+  const baseAddress = stripUnitSuffix(canonical)
+  const match = findCoveringRange(baseAddress, ranges)
+  if (!match?.searched_address) return storedSlug ?? ''
+
+  const zipMatch = storedSlug?.match(/-(\d{5})$/)
+  const zip = zipMatch?.[1] ?? null
+  const baseSlug = addressToSlug(match.searched_address)
+  return zip ? `${baseSlug}-chicago-${zip}` : baseSlug
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -110,18 +206,26 @@ export async function GET(request: Request) {
 
   const supabase = getSupabaseAdmin()
 
-  // Fetch user's portfolio. Each property expands into one or more
-  // normalized addresses we need to filter by across all three tables.
-  const { data: properties, error: propsErr } = await supabase
-    .from('portfolio_properties')
-    .select('id, canonical_address, address_range, additional_streets, slug, community_area, display_name')
-    .eq('user_id', userId)
+  // Fetch portfolio + approved user_building_ranges in parallel. The ranges
+  // are joined in-memory to derive nav slugs that decode to addresses
+  // findApprovedUserRange direct-matches on the property page — guaranteeing
+  // automatic fan-out without BuildingDetectionModal interception.
+  const [propsResult, rangesResult] = await Promise.all([
+    supabase
+      .from('portfolio_properties')
+      .select('id, canonical_address, address_range, additional_streets, slug, community_area, display_name')
+      .eq('user_id', userId),
+    supabase
+      .from('user_building_ranges')
+      .select('searched_address, street1_low, street1_high, street2_low, street2_high, street3_low, street3_high, street4_low, street4_high')
+      .eq('status', 'approved'),
+  ])
 
-  if (propsErr) {
-    return NextResponse.json({ error: propsErr.message }, { status: 500 })
+  if (propsResult.error) {
+    return NextResponse.json({ error: propsResult.error.message }, { status: 500 })
   }
 
-  const props = (properties ?? []) as {
+  const props = (propsResult.data ?? []) as {
     id: string
     canonical_address: string
     address_range: string | null
@@ -130,6 +234,8 @@ export async function GET(request: Request) {
     community_area: string | null
     display_name: string | null
   }[]
+
+  const userRanges = (rangesResult.data ?? []) as UserBuildingRange[]
 
   if (props.length === 0) {
     return NextResponse.json({ items: [], total: 0, limit, offset, has_properties: false })
@@ -151,10 +257,12 @@ export async function GET(request: Request) {
     const meta = {
       id: p.id,
       address: p.display_name || p.canonical_address,
-      // Building-range-anchored slug — see getPortfolioBuildingSlug docs.
-      // Server-side computation means ActivityFeedClient's existing
-      // ?building=true wrapping (already deployed) just works.
-      slug: getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name),
+      // Slug derived from the matching user_building_ranges row's
+      // searched_address. canonical_address often carries a unit suffix
+      // ("6030 N SHERIDAN RD 102") that doesn't appear in user_building_ranges
+      // — the ubr row's searched_address is "6030 N SHERIDAN RD". Using that
+      // for the slug ensures findApprovedUserRange direct-matches on arrival.
+      slug: buildNavSlug(p.canonical_address, p.slug, userRanges),
       community_area: p.community_area,
     }
     for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {

@@ -2,8 +2,87 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
-import { getPortfolioBuildingSlug } from '@/lib/portfolio-address-expansion'
+import { addressToSlug } from '@/lib/formatAddress'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
+
+// Street type tokens used to identify the end of an address proper (everything
+// after one of these is treated as a unit suffix and stripped for matching).
+const STREET_TYPES = new Set([
+  'ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD',
+  'WAY', 'PKWY', 'TER', 'CIR', 'HWY',
+])
+
+type UserBuildingRange = {
+  searched_address: string | null
+  street1_low: string | null
+  street1_high: string | null
+  street2_low: string | null
+  street2_high: string | null
+  street3_low: string | null
+  street3_high: string | null
+  street4_low: string | null
+  street4_high: string | null
+}
+
+/**
+ * Strip a unit suffix from a normalized address. See activity/route.ts for
+ * detailed rationale — duplicated inline here to keep edits scoped to the two
+ * navigation endpoints.
+ */
+function stripUnitSuffix(normalizedAddress: string): string {
+  const tokens = normalizedAddress.trim().toUpperCase().split(/\s+/)
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (STREET_TYPES.has(tokens[i])) {
+      return tokens.slice(0, i + 1).join(' ')
+    }
+  }
+  return normalizedAddress.toUpperCase().trim()
+}
+
+function findCoveringRange(
+  baseAddress: string,
+  ranges: UserBuildingRange[]
+): UserBuildingRange | null {
+  const baseParts = baseAddress.split(/\s+/)
+  const baseNum = parseInt(baseParts[0] ?? '', 10)
+  const baseStreet = baseParts.slice(1).join(' ')
+  if (Number.isNaN(baseNum) || !baseStreet) return null
+
+  for (const r of ranges) {
+    for (let i = 1; i <= 4; i++) {
+      const low = r[`street${i}_low` as keyof UserBuildingRange] as string | null
+      const high = r[`street${i}_high` as keyof UserBuildingRange] as string | null
+      if (!low || !high) continue
+      const lowParts = low.toUpperCase().split(/\s+/)
+      const highParts = high.toUpperCase().split(/\s+/)
+      const lowNum = parseInt(lowParts[0] ?? '', 10)
+      const highNum = parseInt(highParts[0] ?? '', 10)
+      const lowStreet = lowParts.slice(1).join(' ')
+      const highStreet = highParts.slice(1).join(' ')
+      if (Number.isNaN(lowNum) || Number.isNaN(highNum)) continue
+      if (lowStreet !== baseStreet || highStreet !== baseStreet) continue
+      if (baseNum >= Math.min(lowNum, highNum) && baseNum <= Math.max(lowNum, highNum)) {
+        return r
+      }
+    }
+  }
+  return null
+}
+
+function buildNavSlug(
+  canonical: string,
+  storedSlug: string | null,
+  ranges: UserBuildingRange[]
+): string {
+  const baseAddress = stripUnitSuffix(canonical)
+  const match = findCoveringRange(baseAddress, ranges)
+  if (!match?.searched_address) return storedSlug ?? ''
+
+  const zipMatch = storedSlug?.match(/-(\d{5})$/)
+  const zip = zipMatch?.[1] ?? null
+  const baseSlug = addressToSlug(match.searched_address)
+  return zip ? `${baseSlug}-chicago-${zip}` : baseSlug
+}
 
 export const maxDuration = 300 // 5 min for Vercel Pro / Hobby Pro
 
@@ -31,6 +110,13 @@ type DigestEvent = {
   // yesterday. Drives the asterisk + footnote disclosure on the rendered row.
   // Only set on violation/permit rows; complaints never trip this flag.
   is_backdated?: boolean
+  // Permit-only display fields (carried from the permits SELECT). The render
+  // layer uses these to compose a structured block (contact line + cost) in
+  // place of the long work_description that used to occupy that slot. Null
+  // skips the corresponding line in the rendered row.
+  permit_reported_cost?: number | null
+  permit_contact_type?: string | null
+  permit_contact_name?: string | null
   url_path?: string
 }
 
@@ -171,14 +257,24 @@ export async function GET(request: Request) {
         continue
       }
 
-      // Get subscriber's portfolio. slug is selected so the rendered digest
-      // can link each property heading to its address page with the
-      // ?building=true expansion flag (mirrors the dashboard navigation
-      // pattern — see PortfolioDetail.tsx).
-      const { data: props } = await supabase
-        .from('portfolio_properties')
-        .select('id, canonical_address, address_range, additional_streets, display_name, slug')
-        .eq('user_id', clerk_id)
+      // Get subscriber's portfolio + approved building ranges in parallel.
+      // The ranges are joined in-memory below to derive nav slugs that decode
+      // to addresses findApprovedUserRange direct-matches on the property
+      // page — recipients clicking through from the email land on full-
+      // building view, not single-unit view.
+      const [propsResult, rangesResult] = await Promise.all([
+        supabase
+          .from('portfolio_properties')
+          .select('id, canonical_address, address_range, additional_streets, display_name, slug')
+          .eq('user_id', clerk_id),
+        supabase
+          .from('user_building_ranges')
+          .select('searched_address, street1_low, street1_high, street2_low, street2_high, street3_low, street3_high, street4_low, street4_high')
+          .eq('status', 'approved'),
+      ])
+
+      const props = propsResult.data
+      const userRanges = (rangesResult.data ?? []) as UserBuildingRange[]
 
       if (!props || props.length === 0) {
         results.push({ subscriber_id: setting.subscriber_id, status: 'empty_portfolio', count: 0 })
@@ -196,12 +292,11 @@ export async function GET(request: Request) {
         slug: string | null
       }>) {
         const display = p.display_name || p.canonical_address
-        // Building-range-anchored slug — see getPortfolioBuildingSlug docs.
-        // Email property headings link to the full building view via
-        // ?building=true; the helper guarantees the underlying address
-        // is in user_building_ranges so the page expands correctly
-        // (same fix as PortfolioDetail.tsx and the activity API route).
-        const slug = getPortfolioBuildingSlug(p.canonical_address, p.address_range, p.slug, p.display_name)
+        // Slug derived from the matching user_building_ranges row's
+        // searched_address. See lib/formatAddress.ts addressToSlug + the
+        // local buildNavSlug above for details — same approach used by
+        // /api/dashboard/activity.
+        const slug = buildNavSlug(p.canonical_address, p.slug, userRanges)
         for (const addr of getAllAddresses(p.canonical_address, p.address_range, p.additional_streets)) {
           addressToProperty.set(addr, { id: p.id, display, slug })
         }
@@ -416,7 +511,7 @@ export async function GET(request: Request) {
       if (setting.trigger_permits) {
         const { data: permits } = await supabase
           .from('permits')
-          .select('permit_type, work_description, issue_date, address_normalized, permit_number, created_at')
+          .select('permit_type, work_description, issue_date, address_normalized, permit_number, reported_cost, contact_1_name, contact_1_type, created_at')
           .in('address_normalized', allAddresses)
           .gte('created_at', startIso)
           .lt('created_at', endIso)
@@ -430,6 +525,9 @@ export async function GET(request: Request) {
           issue_date: string | null
           address_normalized: string | null
           permit_number: string | null
+          reported_cost: number | string | null
+          contact_1_name: string | null
+          contact_1_type: string | null
           created_at: string | null
         }>) {
           if (p.permit_number && seenPermits.has(p.permit_number)) continue
@@ -440,15 +538,30 @@ export async function GET(request: Request) {
 
           const isBackdated = p.issue_date.slice(0, 10) !== activityDate
 
+          // Permit description on the digest is a structured block: contact
+          // line ("CONTRACTOR-ELEVATOR — Urban Elevator Service") and cost
+          // ($1,149,719). work_description is dropped — too long, often
+          // boilerplate. The render layer assembles these from the fields
+          // stuffed onto DigestEvent below.
+          const reportedCostNum =
+            p.reported_cost != null && Number(p.reported_cost) > 0
+              ? Number(p.reported_cost)
+              : null
+          const contactType = p.contact_1_type?.trim() || null
+          const contactName = p.contact_1_name?.trim() || null
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
             property_slug: meta.slug,
             kind: 'permit',
             label: p.permit_type ?? 'Permit',
-            description: p.work_description?.trim() || null,
+            description: null,
             date: p.issue_date,
             is_backdated: isBackdated,
+            permit_reported_cost: reportedCostNum,
+            permit_contact_type: contactType,
+            permit_contact_name: contactName,
           })
         }
       }
@@ -676,35 +789,122 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
           .sort((a, b) => a.earliestMs - b.earliestMs)
           .map(({ display, slug, propEventsSorted }) => {
 
-            const eventRows = propEventsSorted
-              .map((e, idx) => {
-              const isStopWorkRow = e.label === 'STOP-WORK ORDER'
-              // Kind prefix: "Violation" in red for non-stop-work violation
-              // rows, paired with a gray bullet separator before the
-              // inspection-number label. Stop-work skips the prefix since
-              // the label already dominates. Complaints don't get a prefix —
-              // their sr_type ("Sanitation Code Violation", "Plumbing
-              // Violation", etc.) carries the kind signal directly, so the
-              // color is applied to the label itself.
-              const kindPrefix = (e.kind === 'violation' && !isStopWorkRow)
-                ? `<span style="color: #b8302a; font-weight: 600;">Violation</span> <span style="color: #999;">&bull;</span> `
-                : ''
-              // Label color by kind:
-              //   stop-work        → red (#b8302a) — kind word IS the label
-              //   violation        → black (#1a1a1a) — kind word lives on the prefix
-              //   complaint        → blue (#1e3a5f) — sr_type itself is the kind
-              //   permit (default) → black for now
-              let labelColor: string
-              if (isStopWorkRow) labelColor = '#b8302a'
-              else if (e.kind === 'complaint') labelColor = '#1e3a5f'
-              else labelColor = '#1a1a1a'
-              const labelWeight = isStopWorkRow ? '700' : '500'
-                // First row: no top padding. Last row: no bottom padding.
-                // Middle rows: 6px vertical gap between events (no hairline).
-                const isFirst = idx === 0
-                const isLast = idx === propEventsSorted.length - 1
-                const paddingTop = isFirst ? 0 : 6
-                const paddingBottom = isLast ? 0 : 6
+            // Group by kind within this property. Complaints first, then
+            // violations, then permits. Oldest-first within each group.
+            // Dotted divider between groups that both have rows.
+            const KIND_ORDER: Record<DigestEvent['kind'], number> = {
+              complaint: 0,
+              violation: 1,
+              permit: 2,
+            }
+            const grouped: Record<DigestEvent['kind'], DigestEvent[]> = {
+              complaint: [],
+              violation: [],
+              permit: [],
+            }
+            for (const e of propEventsSorted) grouped[e.kind].push(e)
+            const sortAsc = (a: DigestEvent, b: DigestEvent) =>
+              new Date(a.date).getTime() - new Date(b.date).getTime()
+            grouped.complaint.sort(sortAsc)
+            grouped.violation.sort(sortAsc)
+            grouped.permit.sort(sortAsc)
+
+            // Flatten into a single array, recording for each row whether it's
+            // first within its kind (for top padding) and last within its kind
+            // (for divider placement). Row-level flags drive the render below.
+            type FlatRow = {
+              event: DigestEvent
+              isFirstInKind: boolean
+              isLastInKind: boolean
+              isFirstOverall: boolean
+              isLastOverall: boolean
+              isLastInKindBeforeAnotherKind: boolean
+            }
+            const orderedKinds = (['complaint', 'violation', 'permit'] as const).filter(
+              (k) => grouped[k].length > 0
+            )
+            const flat: FlatRow[] = []
+            let overallIdx = 0
+            const totalRows = orderedKinds.reduce((sum, k) => sum + grouped[k].length, 0)
+            for (let ki = 0; ki < orderedKinds.length; ki++) {
+              const kind = orderedKinds[ki]
+              const rows = grouped[kind]
+              for (let i = 0; i < rows.length; i++) {
+                const isLastInKind = i === rows.length - 1
+                const hasNextKind = ki < orderedKinds.length - 1
+                flat.push({
+                  event: rows[i],
+                  isFirstInKind: i === 0,
+                  isLastInKind,
+                  isFirstOverall: overallIdx === 0,
+                  isLastOverall: overallIdx === totalRows - 1,
+                  isLastInKindBeforeAnotherKind: isLastInKind && hasNextKind,
+                })
+                overallIdx++
+              }
+            }
+
+            const eventRows = flat
+              .map((row) => {
+                const e = row.event
+                const isStopWorkRow = e.label === 'STOP-WORK ORDER'
+                // Kind prefix: "Violation" in red and "Permit" in green
+                // before the label; complaints don't get a prefix (the
+                // sr_type IS the kind signal). Stop-work skips the prefix
+                // since the label already dominates.
+                let kindPrefix = ''
+                if (e.kind === 'violation' && !isStopWorkRow) {
+                  kindPrefix = `<span style="color: #b8302a; font-weight: 600;">Violation</span> <span style="color: #999;">&bull;</span> `
+                } else if (e.kind === 'permit') {
+                  kindPrefix = `<span style="color: #166534; font-weight: 600;">Permit</span> <span style="color: #999;">&bull;</span> `
+                }
+                // Label color by kind:
+                //   stop-work        → red (#b8302a)
+                //   violation        → black (#1a1a1a); kind word on the prefix
+                //   complaint        → blue (#1e3a5f); sr_type itself is the kind
+                //   permit           → green (#166534); kind word also on the prefix
+                let labelColor: string
+                if (isStopWorkRow) labelColor = '#b8302a'
+                else if (e.kind === 'complaint') labelColor = '#1e3a5f'
+                else if (e.kind === 'permit') labelColor = '#166534'
+                else labelColor = '#1a1a1a'
+                const labelWeight = isStopWorkRow ? '700' : '500'
+
+                // Permit-only: structured block in place of work_description.
+                // Contact line ("CONTRACTOR-ELEVATOR — Urban Elevator Service, LLC")
+                // appears only when BOTH type and name are present. Cost
+                // ($1,149,719) appears only when reported_cost > 0.
+                let permitContactLine = ''
+                let permitCostLine = ''
+                if (e.kind === 'permit') {
+                  if (e.permit_contact_type && e.permit_contact_name) {
+                    permitContactLine = `<div style="font-size: 12px; color: #666; margin-top: 2px;">${escapeHtml(e.permit_contact_type)} — ${escapeHtml(e.permit_contact_name)}</div>`
+                  }
+                  if (e.permit_reported_cost != null && e.permit_reported_cost > 0) {
+                    permitCostLine = `<div style="font-size: 12px; color: #666; margin-top: 2px;">$${e.permit_reported_cost.toLocaleString()}</div>`
+                  }
+                }
+
+                // Vertical spacing rules:
+                //   First row in property: no top padding
+                //   Last row in property: no bottom padding
+                //   Otherwise: 6px gap between events
+                const paddingTop = row.isFirstOverall ? 0 : 6
+                const paddingBottom = row.isLastOverall ? 0 : 6
+
+                // Divider row appended after this event when this row is the
+                // last in its kind AND there's another kind coming after.
+                // Dotted top border, modest vertical breathing room.
+                const dividerRow = row.isLastInKindBeforeAnotherKind
+                  ? `
+            <tr>
+              <td style="padding: 8px 0 0 0;">
+                <div style="border-top: 1px dotted #d9d3c2; height: 1px; line-height: 1px; font-size: 1px;">&nbsp;</div>
+              </td>
+            </tr>
+          `
+                  : ''
+
                 return `
             <tr>
               <td style="padding: ${paddingTop}px 0 ${paddingBottom}px 0;">
@@ -712,13 +912,15 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
                   ${kindPrefix}${escapeHtml(e.label)}
                 </div>
                 ${e.description ? `<div style="font-size: 12px; color: #666; margin-top: 2px; font-style: italic;">${escapeHtml(e.description)}</div>` : ''}
+                ${permitContactLine}
+                ${permitCostLine}
                 ${e.woli_stage ? `<div style="font-size: 11px; margin-top: 3px;"><span style="color: #4a4a4a; font-weight: 700;">${e.woli_is_closed ? 'CLOSED' : 'OPEN'}</span> <span style="color: #888; font-weight: 500;">— ${escapeHtml(e.woli_stage)}</span></div>` : ''}
                 <div style="font-size: 11px; color: #999; margin-top: 4px; font-family: 'DM Mono', ui-monospace, monospace;">
                   ${e.is_backdated ? '<sup style="font-size: 10px; line-height: 0;">*</sup>' : ''}${escapeHtml(formatEventDate(e))}
                 </div>
               </td>
             </tr>
-          `
+          ${dividerRow}`
               })
               .join('')
 
