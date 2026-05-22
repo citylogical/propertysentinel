@@ -8,7 +8,16 @@ import { normalizePinSilent } from './supabase-search'
  * property_chars_*, and per-PIN address lookups for buildings like
  * 440 N Wabash (854 PINs).
  */
-export const LARGE_BUILDING_THRESHOLD = 7
+/**
+ * Threshold above which a building is rendered as a class-breakdown summary
+ * rather than a per-PIN list. Originally 7 to handle large condo towers
+ * (440 N Wabash, 854 PINs); lowered to 2 so all multi-PIN buildings render
+ * through the unified BuildingCompositionCard for UI consistency.
+ *
+ * Below this threshold (single-PIN), the page routes through buildSinglePinComposition.
+ * At or above (multi-PIN), through fetchBuildingComposition.
+ */
+export const LARGE_BUILDING_THRESHOLD = 2
 
 export type UnitBreakdown = {
   units: number
