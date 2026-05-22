@@ -335,18 +335,27 @@ export async function fetchSiblingPins(
     }
 
     // PATH A — multiple PINs share exact same address (condo tower)
-    // Also tries prefix match to catch unit-suffixed condos (943 W 95TH ST → 943 W 95TH ST G, 1W, etc.)
+    // Also tries prefix match to catch unit-suffixed condos. We trigger the
+    // prefix match whenever the exact-address match returns ≤ 5 PINs, since
+    // condo towers often store master parcels (1-3 PINs) at the base address
+    // AND hundreds of unit-suffixed PINs ("333 W HUBBARD ST 201", "...202").
+    // The old `≤ 1` gate missed buildings like 333 W Hubbard where the base
+    // address has 2 master parcels — exact match returned 2, prefix never
+    // ran, the page rendered with just the 2 master parcels and missed all
+    // 200+ residential condo units.
     console.log('fetchSiblingPins entered, pin:', pin, 'address:', addressNormalized)
     let { data: sameAddress } = await supabaseAdmin
       .from('properties')
       .select('pin, address_normalized')
       .eq('address_normalized', addressNormalized)
 
-    if (!sameAddress || sameAddress.length <= 1) {
+    const PREFIX_TRIGGER_THRESHOLD = 5
+    if (!sameAddress || sameAddress.length <= PREFIX_TRIGGER_THRESHOLD) {
       const prefixResult = await supabaseAdmin
         .from('properties')
         .select('pin, address_normalized')
         .like('address_normalized', `${addressNormalized} %`)
+        .limit(2000)
       if (prefixResult.data && prefixResult.data.length > 0) {
         const combined = [...(sameAddress ?? []), ...prefixResult.data]
         const uniquePins = new Map<string, any>()
@@ -944,7 +953,7 @@ async function _fetchComplaintsUncached(normalizedAddress: string): Promise<{
 
 export const fetchComplaints = unstable_cache(
   _fetchComplaintsUncached,
-  ['fetch-complaints-by-address'],
+  ['fetch-complaints-by-address-v2'],
   { revalidate: PROPERTY_CACHE_REVALIDATE_SECONDS, tags: ['complaints'] }
 )
 

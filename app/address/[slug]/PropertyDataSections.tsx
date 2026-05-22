@@ -386,13 +386,40 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         compositionResult,
       ] = await Promise.all([
       assessedPromise,
-      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+      // Detect unit-suffix condo towers: ALL sibling addresses share the base
+      // address as a prefix (e.g. "333 W HUBBARD ST" is the base, units are
+      // "333 W HUBBARD ST 201", "...202", etc.). In these buildings ALL
+      // complaints/violations/permits are filed at the base — residents calling
+      // 311 don't include their unit number. Fanning out across 200+ unit
+      // addresses sends a query that times out at the Supabase planner level
+      // ("canceling statement due to statement timeout"). Always query just the
+      // base address for these buildings.
+      //
+      // For genuine multi-address buildings (cross-street entrances, range
+      // buildings — managed via manual-building-addresses.ts), addresses don't
+      // share a common prefix and fan-out is correct.
+      (() => {
+        const isUnitSuffixCondo = siblings.siblingAddresses.every(
+          (a) => a === normalizedAddress || a.startsWith(normalizedAddress + ' ')
+        )
+        return isExpanded && siblings.siblingAddresses.length > 1 && !isUnitSuffixCondo
+      })()
         ? fetchComplaintsByAddresses(siblings.siblingAddresses)
         : fetchComplaints(normalizedAddress),
-      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+      (() => {
+        const isUnitSuffixCondo = siblings.siblingAddresses.every(
+          (a) => a === normalizedAddress || a.startsWith(normalizedAddress + ' ')
+        )
+        return isExpanded && siblings.siblingAddresses.length > 1 && !isUnitSuffixCondo
+      })()
         ? fetchViolationsByAddresses(siblings.siblingAddresses)
         : fetchViolations(normalizedAddress),
-      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+      (() => {
+        const isUnitSuffixCondo = siblings.siblingAddresses.every(
+          (a) => a === normalizedAddress || a.startsWith(normalizedAddress + ' ')
+        )
+        return isExpanded && siblings.siblingAddresses.length > 1 && !isUnitSuffixCondo
+      })()
         ? fetchPermitsByAddresses(siblings.siblingAddresses)
         : fetchPermits(normalizedAddress),
       fetchPropertyCharsResidential(normalizedPin),
@@ -406,6 +433,16 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
       compositionError: compositionResult.error,
       compositionRows: compositionResult.composition?.rows.length ?? null,
       compositionTotalPins: compositionResult.composition?.totalPins ?? null,
+    })
+    console.log('[PDS] complaints fetch result', {
+      isExpanded,
+      isLocalCondoExpand,
+      siblingAddressesCount: siblings.siblingAddresses.length,
+      whichPath: isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand ? 'byAddresses' : 'single',
+      normalizedAddressUsed: normalizedAddress,
+      firstFewAddresses: siblings.siblingAddresses.slice(0, 5),
+      resultCount: complaintsResult.complaints?.length ?? 0,
+      resultError: complaintsResult.error,
     })
 
     composition = compositionResult.composition

@@ -186,11 +186,76 @@ export default function BuildingCompositionCard({ composition, totalPins }: Prop
     materials,
     recentSale,
     rows,
+    allPins,
     propertyType,
+    rooms,
+    beds,
+    bathsFull,
+    bathsHalf,
+    basement,
+    garageSize,
+    porch,
+    heating,
+    centralAir,
     singlePinClass,
     singlePinClassDescription,
     singlePinPin,
   } = composition
+
+  const hasNoBuildingData =
+    yearBuilt == null &&
+    stories == null &&
+    floorArea == null &&
+    lotDims == null &&
+    lotAreaFallback == null &&
+    constrType == null &&
+    materials == null &&
+    recentSale == null &&
+    rows.length === 0 &&
+    propertyType == null &&
+    rooms == null &&
+    beds == null &&
+    bathsFull == null &&
+    bathsHalf == null &&
+    basement == null &&
+    garageSize == null &&
+    porch == null &&
+    heating == null &&
+    centralAir == null
+
+  if (hasNoBuildingData) {
+    return (
+      <div style={{ padding: '14px' }}>
+        {singlePinClass != null && (
+          <div className="detail-row" style={{ borderBottom: 'none' }}>
+            <span className="detail-key">Class</span>
+            <span className="detail-val">
+              {singlePinClass}
+              {singlePinClassDescription ? ` — ${singlePinClassDescription}` : ''}
+            </span>
+          </div>
+        )}
+        <div
+          style={{
+            fontSize: '12px',
+            color: 'var(--text-dim)',
+            padding: '8px 0 4px',
+            fontStyle: 'italic',
+          }}
+        >
+          Building characteristics not available for this property class.
+        </div>
+        {allPins.map((pin) => (
+          <div key={pin} className="detail-row" style={{ borderBottom: 'none' }}>
+            <span className="detail-key">PIN</span>
+            <span className="detail-val" style={{ fontFamily: 'var(--mono)' }}>
+              {pin}
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="detail-list">

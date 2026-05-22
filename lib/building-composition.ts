@@ -64,6 +64,8 @@ export type BuildingComposition = {
   /** Most recent valid sale across building PINs; null when none on file. */
   recentSale: RecentSale | null
   rows: BuildingCompositionRow[]
+  /** Raw PIN list this composition was built from. Used for empty-data fallback display. */
+  allPins: string[]
 
   // ── Single-PIN-only fields below. Populated only when totalPins === 1 and
   //    Assessor chars are available. Multi-PIN composition view leaves null.
@@ -276,6 +278,7 @@ export async function fetchBuildingComposition(params: {
         materials: null,
         recentSale,
         rows,
+        allPins: normalized,
         // Multi-PIN composition view — single-PIN identity fields not applicable.
         propertyType: null,
         rooms: null,
@@ -564,6 +567,7 @@ export async function buildSinglePinComposition(
         materials,
         recentSale,
         rows: [], // Class breakdown empty in single-PIN mode — class lives in footer.
+        allPins: [normalized],
 
         propertyType,
         rooms: toPositiveInt(r?.num_rooms),
