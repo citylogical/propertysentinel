@@ -68,15 +68,25 @@ export const getPortfolioSaveBuildingSnapshot = cache(
       }
     }
 
-    const pinsList = siblingPins.length > 0 ? siblingPins : [normalizedPin]
+    // Cap snapshot work to avoid N+1 explosions on large condo buildings
+    // (e.g. 440 N Wabash, 854 PINs). The snapshot only needs ONE representative
+    // PIN's chars and (optionally) summed implied value; full-fan-out across
+    // all sibling PINs is wasteful below the cap and fatal above it.
+    const SNAPSHOT_PIN_CAP = 20
+    const fullPinsList = siblingPins.length > 0 ? siblingPins : [normalizedPin]
+    const isLargeBuilding = fullPinsList.length > SNAPSHOT_PIN_CAP
+    const pinsList = isLargeBuilding ? fullPinsList.slice(0, SNAPSHOT_PIN_CAP) : fullPinsList
+
     const byPins = await fetchAssessedValuesByPins(pinsList)
 
-    const representativePin = await pickRepresentativePin(normalizedPin, siblingPins, byPins)
+    const representativePin = await pickRepresentativePin(normalizedPin, pinsList, byPins)
 
     let propertyClass: string | null = propertyClassFallback
     let impliedValue: number | null = null
 
-    if (useMultiPinImplied && pinsList.length > 1) {
+    if (isLargeBuilding) {
+      // Above threshold: leave impliedValue null. Composition card shows N/A.
+    } else if (useMultiPinImplied && pinsList.length > 1) {
       if (
         !byPins.error &&
         byPins.results.length > 0 &&

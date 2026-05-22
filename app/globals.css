@@ -949,6 +949,64 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
 .address-page .property-details-expanded-address { font-weight: 600; font-size: 0.8rem; }
 .address-page .property-details-expanded-pin { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
 .address-page .property-details-expanded-body { padding: 0 0 0.75rem 1.75rem; }
+
+/* Building composition — class breakdown expandable summary */
+.address-page .building-composition-classes > summary {
+  list-style: none;
+}
+
+.address-page .building-composition-classes > summary::-webkit-details-marker {
+  display: none;
+}
+
+.address-page .building-composition-classes > summary::marker {
+  content: "";
+}
+
+.address-page .building-composition-toggle {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.address-page .additional-characteristics-classes .building-composition-toggle {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.address-page .building-composition-classes:not([open]) > summary .building-composition-toggle::before {
+  content: "+";
+}
+
+.address-page .building-composition-classes[open] > summary .building-composition-toggle::before {
+  content: "−";
+}
+
+/* Additional Characteristics — same +/- pattern as Class Breakdown, on navy background */
+.address-page .additional-characteristics-classes > summary {
+  list-style: none;
+}
+
+.address-page .additional-characteristics-classes > summary::-webkit-details-marker {
+  display: none;
+}
+
+.address-page .additional-characteristics-classes > summary::marker {
+  content: "";
+}
+
+.address-page .additional-characteristics-classes:not([open]) > summary .building-composition-toggle::before {
+  content: "+";
+}
+
+.address-page .additional-characteristics-classes[open] > summary .building-composition-toggle::before {
+  content: "−";
+}
 .address-page .property-details-expanded-loading { color: var(--text-dim); font-style: italic; }
 
 /* Expanded PIN accordions + condo shared block: align with property card typography; tighter row padding */

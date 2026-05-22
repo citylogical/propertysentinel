@@ -16,6 +16,7 @@ import {
   collectPinsForUserRangeAddresses,
   normalizePin,
 } from '@/lib/supabase-search'
+import { findManualBuilding } from '@/lib/manual-building-addresses'
 import { getClassDescription } from '@/lib/class-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import EnrichmentHealthCheck from '@/components/EnrichmentHealthCheck'
@@ -159,23 +160,37 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         }
       }
 
-  const displayZip =
-    property?.zip != null && String(property.zip).trim() !== ''
-      ? String(property.zip).trim()
-      : slugToZip(decodedSlug)
-
+  // Manual building entry (if any) wins over fetchProperty for parcel anchoring.
+  // fetchProperty uses address-only lookup against the Cook County `properties`
+  // table, which can return non-Chicago parcels at the same address string
+  // (e.g. 600 N LAKE SHORE DR exists in both Chicago and Palatine). The
+  // manual building entry has explicit Chicago PINs — use them to anchor the
+  // parcelMeta resolution and prevent municipality/zip subhead bleed.
+  const manualEntry = findManualBuilding(normalizedAddress)
   const pinForParcelMeta =
-    property?.pin != null && String(property.pin).trim() !== ''
+    manualEntry?.pins?.[0] ??
+    (property?.pin != null && String(property.pin).trim() !== ''
       ? String(property.pin).trim()
       : siblingPinsForPortfolio.length > 0
         ? String(siblingPinsForPortfolio[0]).trim()
         : nearestParcel?.pin != null && String(nearestParcel.pin).trim() !== ''
           ? String(nearestParcel.pin).trim()
-          : null
+          : null)
 
-  const { parcel: parcelMeta } = pinForParcelMeta ? await fetchParcelUniverse(pinForParcelMeta) : { parcel: null }
+          const { parcel: parcelMeta } = pinForParcelMeta ? await fetchParcelUniverse(pinForParcelMeta) : { parcel: null }
 
-  const municipalityName = parcelMeta?.municipality_name?.trim() ?? null
+          // When manual building entry matches, prefer slug-derived zip over property.zip,
+          // since property.zip could be the wrong-municipality match from fetchProperty
+          // (e.g. Palatine 60067 instead of Chicago 60611 for 600 N Lake Shore Dr).
+          // parcel_universe has no zip column, so we can't anchor on parcelMeta — slug
+          // is the next-best source since the slug was just fixed to carry the right zip.
+          const displayZip = manualEntry
+            ? slugToZip(decodedSlug)
+            : property?.zip != null && String(property.zip).trim() !== ''
+              ? String(property.zip).trim()
+              : slugToZip(decodedSlug)
+        
+          const municipalityName = parcelMeta?.municipality_name?.trim() ?? null
 
   const caNameFromLookup = getCommunityAreaName(property?.community_area ?? nearestParcel?.community_area)
   const caFromParcel = parcelMeta?.community_area_name?.trim() ?? null

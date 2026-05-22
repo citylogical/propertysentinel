@@ -9,12 +9,15 @@ export type PlacesAddressLike = {
   types?: string[]
 }
 
-/** Metro area: Chicago + Cook collar (Park Ridge, Evanston, etc.). Old bounds cut off north of ~41.97°. */
+/** Chicago city proper. Excludes NW Cook suburbs (Palatine, Schaumburg) and other collar cities
+ *  that would otherwise show up for ambiguous queries like "600 Lake Shore Dr" → Palatine.
+ *  If we ever support adjacent cities (Evanston, Cicero), widen back out — but the rule should
+ *  be explicit allowlist, not "metro bbox that happens to include random suburbs." */
 export const CHICAGO_METRO_BOUNDS = {
-  north: 42.2,
-  south: 41.45,
-  east: -87.52,
-  west: -88.35,
+  north: 42.023,   // ~Howard St, Rogers Park
+  south: 41.644,   // ~Hegewisch
+  east: -87.524,   // Lake Michigan
+  west: -87.940,   // ~western city limits past Austin
 }
 
 const LEADING_STREET_NUMBER = /^(\d+[A-Za-z0-9\-]*)\s+/

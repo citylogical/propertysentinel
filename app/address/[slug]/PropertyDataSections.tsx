@@ -40,6 +40,18 @@ import PortfolioSaveStatsUpdater from '@/components/PortfolioSaveStatsUpdater'
 import { computePortfolioSaveStats } from '@/lib/portfolio-save-stats'
 import OwnerPortfolioCard from './OwnerPortfolioCard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import {
+  LARGE_BUILDING_THRESHOLD,
+  fetchBuildingComposition,
+  buildSinglePinComposition,
+  formatRoomsBedsBathsWithNa,
+  formatBasementGaragePorchWithNa,
+  formatHvacWithNa,
+  type BuildingComposition,
+} from '@/lib/building-composition'
+import { fetchCityLogic, type CityLogic } from '@/lib/city-logic'
+import BuildingCompositionCard from './BuildingCompositionCard'
+import CityLogicCard from './CityLogicCard'
 import React from 'react'
 
 export type PropertyDataSectionsProps = {
@@ -119,7 +131,7 @@ const ADDITIONAL_RESIDENTIAL_FIELDS: AdditionalResidentialField[] = [
   { key: 'garage_area_included', label: 'Garage Area Included', kind: 'numeric' },
   { key: 'garage_ext_wall_material', label: 'Garage Ext Wall', kind: 'string' },
   { key: 'renovation', label: 'Renovation', kind: 'boolish' },
-  { key: 'porch', label: 'Porch', kind: 'string' },
+  // Porch removed — now lives in Basement / Garage / Porch combined row.
 ]
 
 function additionalResidentialDetailRows(chars: PropertyCharsResidentialRow): React.ReactNode {
@@ -215,6 +227,8 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
   let exemptOwnerName: string | null = null
   let expandedSiblings: SiblingPin[] = []
   let buildingParcelCountForAv = 0
+  let composition: BuildingComposition | null = null
+  let cityLogic: CityLogic | null = null
   let ownerOtherProperties: { address: string; address_normalized: string; pin: string; neighborhood: string | null }[] = []
   let ownerMailingName: string | null = null
   let isJunkMailingName = false
@@ -232,6 +246,15 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
 
   if (normalizedDataPin) {
     const normalizedPin = normalizedDataPin
+    console.log('[PDS] entry', {
+      normalizedAddress,
+      normalizedPin,
+      siblingPinsCount: siblingPinsForPortfolio.length,
+      siblingAddressesCount: siblingAddresses.length,
+      addressRange,
+      isExpandedFromQuery,
+      pin,
+    })
     const siblings = {
       siblingPins: siblingPinsForPortfolio,
       siblingAddresses,
@@ -288,7 +311,31 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
     }
 
     const pinsForAssessment = localCondoPins ?? siblings.siblingPins
-    const useBuildingAssessedSum = isExpanded && pinsForAssessment.length > 1
+    const useCompositionView = isExpanded && pinsForAssessment.length >= LARGE_BUILDING_THRESHOLD
+    // Composition view still gets aggregate implied value at moderate parcel counts.
+    // Above ~50 PINs the per-PIN fan-out gets slow (854 was catastrophic; ~50 is the
+    // crossover where parallel round-trips stay under a couple hundred ms total).
+    const COMPOSITION_AV_PIN_CAP = 50
+    const useCompositionAssessedSum =
+      useCompositionView && pinsForAssessment.length <= COMPOSITION_AV_PIN_CAP
+    const useBuildingAssessedSum =
+      (isExpanded && pinsForAssessment.length > 1 && !useCompositionView) ||
+      useCompositionAssessedSum
+
+    // Single-PIN unified card: route residential/condo single-PIN through
+    // BuildingCompositionCard with single-PIN payload. Commercial keeps the
+    // existing CommercialCharacteristicRows path. Exempt also keeps existing
+    // path since exempt parcels have their own field set.
+    // Gating happens AFTER chars are fetched, since we need to know if the
+    // parcel is residential/condo vs commercial/exempt. Computed below.
+    console.log('[PDS] gates', {
+      isExpanded,
+      localCondoPinsCount: localCondoPins?.length ?? null,
+      pinsForAssessmentCount: pinsForAssessment.length,
+      LARGE_BUILDING_THRESHOLD,
+      useCompositionView,
+      useBuildingAssessedSum,
+    })
 
     type AssessedUnion =
       | { mode: 'byPins'; result: Awaited<ReturnType<typeof fetchAssessedValuesByPins>> }
@@ -296,7 +343,21 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
 
     const assessedPromise: Promise<AssessedUnion> = useBuildingAssessedSum
       ? fetchAssessedValuesByPins(pinsForAssessment).then((result) => ({ mode: 'byPins' as const, result }))
-      : fetchAssessedValue(normalizedPin).then((result) => ({ mode: 'single' as const, result }))
+      : useCompositionView
+        ? // Large-building composition view without assessed sum (>50 PINs):
+          // skip the per-PIN fetch entirely. Implied Value will render N/A.
+          Promise.resolve({
+            mode: 'single' as const,
+            result: { assessed: null, error: null } as Awaited<ReturnType<typeof fetchAssessedValue>>,
+          })
+        : fetchAssessedValue(normalizedPin).then((result) => ({ mode: 'single' as const, result }))
+
+        const compositionPromise: Promise<Awaited<ReturnType<typeof fetchBuildingComposition>>> = useCompositionView
+        ? fetchBuildingComposition({
+            pins: pinsForAssessment,
+            addresses: siblings.siblingAddresses,
+          })
+        : Promise.resolve({ composition: null, error: null })
 
     const canEarlyFetchMailing = hasDirectPropertyMatch && !isExpanded && !!pin
     const earlyMailingPromise: Promise<{ mailing_name: string | null; pin: string | null }[]> = canEarlyFetchMailing
@@ -311,23 +372,46 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         })()
       : Promise.resolve([])
 
-    const [assessedUnion, complaintsResult, violationsResult, permitsResult, charsResResult, charsCondoResult, parcelResult, earlyMailingRows] =
-      await Promise.all([
-        assessedPromise,
-        isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
-          ? fetchComplaintsByAddresses(siblings.siblingAddresses)
-          : fetchComplaints(normalizedAddress),
-        isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
-          ? fetchViolationsByAddresses(siblings.siblingAddresses)
-          : fetchViolations(normalizedAddress),
-        isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
-          ? fetchPermitsByAddresses(siblings.siblingAddresses)
-          : fetchPermits(normalizedAddress),
-        fetchPropertyCharsResidential(normalizedPin),
-        fetchPropertyCharsCondo(normalizedPin),
-        fetchParcelUniverse(normalizedPin),
-        earlyMailingPromise,
-      ])
+      console.log('[PDS] about to await Promise.all')
+      const promiseAllStart = Date.now()
+      const [
+        assessedUnion,
+        complaintsResult,
+        violationsResult,
+        permitsResult,
+        charsResResult,
+        charsCondoResult,
+        parcelResult,
+        earlyMailingRows,
+        compositionResult,
+      ] = await Promise.all([
+      assessedPromise,
+      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+        ? fetchComplaintsByAddresses(siblings.siblingAddresses)
+        : fetchComplaints(normalizedAddress),
+      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+        ? fetchViolationsByAddresses(siblings.siblingAddresses)
+        : fetchViolations(normalizedAddress),
+      isExpanded && siblings.siblingAddresses.length > 1 && !isLocalCondoExpand
+        ? fetchPermitsByAddresses(siblings.siblingAddresses)
+        : fetchPermits(normalizedAddress),
+      fetchPropertyCharsResidential(normalizedPin),
+      fetchPropertyCharsCondo(normalizedPin),
+      fetchParcelUniverse(normalizedPin),
+      earlyMailingPromise,
+      compositionPromise,
+    ])
+    console.log('[PDS] Promise.all done in', Date.now() - promiseAllStart, 'ms', {
+      compositionPresent: !!compositionResult.composition,
+      compositionError: compositionResult.error,
+      compositionRows: compositionResult.composition?.rows.length ?? null,
+      compositionTotalPins: compositionResult.composition?.totalPins ?? null,
+    })
+
+    composition = compositionResult.composition
+    if (useCompositionView) {
+      buildingParcelCountForAv = pinsForAssessment.length
+    }
 
     if (canEarlyFetchMailing && earlyMailingRows.length > 0) {
       mailingRowsEarly = earlyMailingRows
@@ -343,14 +427,109 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
     if (assessedUnion.mode === 'byPins') {
       assessedByPins = assessedUnion.result
       assessed = null
-      buildingParcelCountForAv = isLocalCondoExpand ? pinsForAssessment.length : siblingPinsForPortfolio.length
+      if (!useCompositionView) {
+        buildingParcelCountForAv = isLocalCondoExpand ? pinsForAssessment.length : siblingPinsForPortfolio.length
+      }
     } else {
       assessed = assessedUnion.result.assessed
       assessedByPins = null
-      buildingParcelCountForAv = 0
+      if (!useCompositionView) {
+        buildingParcelCountForAv = 0
+      }
     }
 
-    const pinsForExpansion = localCondoPins ?? (isExpanded ? siblings.siblingPins : [])
+    // Fetch city logic / regulatory context. Runs for every property type
+    // (residential, condo, commercial, exempt) since ward/neighborhood/PBL/etc.
+    // apply universally. Uses lat/lng from parcel_universe for the restricted-zone
+    // spatial check; pin + addresses for direct lookups.
+    const cityLogicResult = await fetchCityLogic({
+      pin: normalizedPin,
+      addresses: [normalizedAddress, ...siblingAddresses].filter(Boolean),
+      lat: parcel?.lat != null ? Number(parcel.lat) : null,
+      lng: parcel?.lng != null ? Number(parcel.lng) : null,
+    })
+    cityLogic = cityLogicResult.cityLogic
+
+    const majorClass = parseInt(String(parcel?.class ?? assessed?.class ?? '0').substring(0, 1), 10)
+    const isCommercial = [3, 5, 6, 7, 8].includes(majorClass)
+    const isExempt = majorClass === 4
+
+    // Single-PIN unified card path: residential or condo single-PIN, not in
+    // composition view, not commercial, not exempt. Builds the same composition
+    // payload that fetchBuildingComposition produces for the multi-PIN flow, so
+    // BuildingCompositionCard can render either case.
+    //
+    // Gates on pinsForAssessment.length === 1 (not !isExpanded) because
+    // isExpandedFromQuery or auto-expand can be true even for true single-PIN
+    // properties, which would incorrectly route them through PropertyDetailsExpanded.
+    const useSinglePinUnified =
+      !useCompositionView &&
+      pinsForAssessment.length === 1 &&
+      !isCommercial &&
+      !isExempt &&
+      (charsResidential != null || charsCondo != null)
+
+    if (useSinglePinUnified && composition == null) {
+      const displayClassForFooter =
+        (parcel?.['class'] ?? assessed?.class) != null
+          ? String(parcel?.['class'] ?? assessed?.class).trim()
+          : null
+      const classDescForFooter = displayClassForFooter
+        ? getClassDescription(displayClassForFooter) ?? null
+        : null
+
+      const singlePinResult = await buildSinglePinComposition({
+        pin: normalizedPin,
+        addresses: [normalizedAddress, ...siblings.siblingAddresses].filter(Boolean),
+        residentialChars: charsResidential
+          ? {
+              year_built:
+                charsResidential.year_built != null &&
+                Number.isFinite(Number(charsResidential.year_built))
+                  ? Number(charsResidential.year_built)
+                  : null,
+              building_sqft: charsResidential.building_sqft ?? null,
+              land_sqft: charsResidential.land_sqft ?? null,
+              type_of_residence: charsResidential.type_of_residence ?? null,
+              single_v_multi_family: charsResidential.single_v_multi_family ?? null,
+              num_rooms: charsResidential.num_rooms ?? null,
+              num_bedrooms: charsResidential.num_bedrooms ?? null,
+              num_full_baths: charsResidential.num_full_baths ?? null,
+              num_half_baths: charsResidential.num_half_baths ?? null,
+              basement_type: charsResidential.basement_type ?? null,
+              garage_size: charsResidential.garage_size ?? null,
+              porch: (charsResidential as { porch?: string | null }).porch ?? null,
+              central_heating: charsResidential.central_heating ?? null,
+              central_air: charsResidential.central_air ?? null,
+              ext_wall_material: charsResidential.ext_wall_material ?? null,
+              roof_material: charsResidential.roof_material ?? null,
+            }
+          : null,
+        condoChars: charsCondo
+          ? {
+              year_built:
+                charsCondo.year_built != null && Number.isFinite(Number(charsCondo.year_built))
+                  ? Number(charsCondo.year_built)
+                  : null,
+              building_sqft: charsCondo.building_sqft ?? null,
+              land_sqft: charsCondo.land_sqft ?? null,
+            }
+          : null,
+        classCode: displayClassForFooter,
+        classDescription: classDescForFooter,
+      })
+      composition = singlePinResult.composition
+    }
+
+    // Skip per-PIN expansion entirely above the large-building threshold —
+    // the composition card replaces the per-parcel multiparcel list and
+    // none of the downstream fetches (fetchPinAddressMap, fetchAssessedValue × N)
+    // would render. This is what eliminates the N+1 problem for 440 N Wabash.
+    // Single-PIN unified path also skips per-PIN expansion (no expandable siblings to render).
+    const pinsForExpansion =
+      useCompositionView || useSinglePinUnified
+        ? []
+        : (localCondoPins ?? (isExpanded ? siblings.siblingPins : []))
     if (isExpanded && pinsForExpansion.length > 0) {
       const pinMap = await fetchPinAddressMap(pinsForExpansion)
       if (assessedByPins && !assessedByPins.error) {
@@ -382,10 +561,6 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         })
       }
     }
-
-    const majorClass = parseInt(String(parcel?.class ?? assessed?.class ?? '0').substring(0, 1), 10)
-    const isCommercial = [3, 5, 6, 7, 8].includes(majorClass)
-    const isExempt = majorClass === 4
 
     if (isCommercial) {
       const { chars } = await fetchCommercialChars(normalizedPin)
@@ -447,9 +622,15 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
           ? [pin]
           : []
 
+  // Cap mailing-name scan to a reasonable sample to avoid 1700-key .in() queries
+  // for buildings like 440 N Wabash. First 50 PINs are enough to find a non-junk
+  // mailing name with very high probability.
+  const MAILING_SCAN_CAP = 50
+  const cappedMailingScan = pinsForMailingScan.slice(0, MAILING_SCAN_CAP)
+
   const pinKeysForMailing = [
     ...new Set(
-      pinsForMailingScan
+      cappedMailingScan
         .flatMap((p) => {
           const s = String(p).trim()
           const n = normalizePinSilent(s)
@@ -471,7 +652,7 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
   }
 
   const firstNonJunkMailingForPins = (() => {
-    for (const p of pinsForMailingScan) {
+    for (const p of cappedMailingScan) {
       const pk = normalizePinSilent(String(p))
       const row = mailingRows.find((r) => normalizePinSilent(String(r.pin ?? '')) === pk)
       const m = row?.mailing_name?.trim()
@@ -481,7 +662,7 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
   })()
 
   const firstAnyMailingForPins = (() => {
-    for (const p of pinsForMailingScan) {
+    for (const p of cappedMailingScan) {
       const pk = normalizePinSilent(String(p))
       const row = mailingRows.find((r) => normalizePinSilent(String(r.pin ?? '')) === pk)
       const m = row?.mailing_name?.trim()
@@ -731,9 +912,17 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
         </div>
 
         <div className="profile-card">
-          {!(isExpanded && expandedSiblings.length > 0) && (
+          {!(isExpanded && expandedSiblings.length > 0) && !composition && (
             <div className="profile-card-header">
               <span style={{ flex: 1 }}>Property Details</span>
+            </div>
+          )}
+
+          {composition && (
+            <div className="profile-card-header">
+              <span style={{ flex: 1 }}>
+                {composition.totalPins === 1 ? 'Property Details' : 'Building Composition'}
+              </span>
             </div>
           )}
 
@@ -782,7 +971,72 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
             </div>
           )}
 
-          {isExpanded && expandedSiblings.length > 0 ? (
+          {composition ? (
+            <>
+              <BuildingCompositionCard composition={composition} totalPins={composition.totalPins} />
+              {composition.totalPins === 1 && (charsResidential != null || charsCondo != null) && (() => {
+                const rbb = formatRoomsBedsBathsWithNa(
+                  composition.rooms,
+                  composition.beds,
+                  composition.bathsFull,
+                  composition.bathsHalf
+                )
+                const bgp = formatBasementGaragePorchWithNa(
+                  composition.basement,
+                  composition.garageSize,
+                  composition.porch
+                )
+                const hvac = formatHvacWithNa(composition.heating, composition.centralAir)
+
+                return (
+                  <details className="additional-characteristics-classes">
+                    <summary
+                      style={{
+                        fontFamily: 'var(--mono)',
+                        fontSize: '9px',
+                        fontWeight: 400,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase' as const,
+                        color: 'rgba(255, 255, 255, 0.95)',
+                        padding: '7px 14px',
+                        background: '#264a6e',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        listStyle: 'none',
+                        userSelect: 'none' as const,
+                      }}
+                    >
+                      <span>Additional Characteristics</span>
+                      <span className="building-composition-toggle" aria-hidden="true" />
+                    </summary>
+
+                    {rbb != null && (
+                      <div className="detail-row">
+                        <span className="detail-key">Rooms / Beds / Baths</span>
+                        <span className="detail-val">{rbb}</span>
+                      </div>
+                    )}
+                    {bgp != null && (
+                      <div className="detail-row">
+                        <span className="detail-key">Basement / Garage / Porch</span>
+                        <span className="detail-val">{bgp}</span>
+                      </div>
+                    )}
+                    {hvac != null && (
+                      <div className="detail-row">
+                        <span className="detail-key">HVAC</span>
+                        <span className="detail-val">{hvac}</span>
+                      </div>
+                    )}
+
+                    {charsResidential != null && additionalResidentialDetailRows(charsResidential)}
+                  </details>
+                )
+              })()}
+            </>
+          ) : isExpanded && expandedSiblings.length > 0 ? (
             <PropertyDetailsExpanded
               key={expandedSiblings.map((s) => s.pin).join(',')}
               siblings={expandedSiblings}
@@ -895,22 +1149,28 @@ export default async function PropertyDataSections(props: PropertyDataSectionsPr
           )}
         </div>
 
+        {cityLogic && <CityLogicCard cityLogic={cityLogic} />}
+
+        {/* OwnerPortfolioCard warehoused — restore when subscription teasing is back on
         {ownerMailingName && (
           <OwnerPortfolioCard
             mailingName={ownerMailingName}
             isJunkName={isJunkMailingName}
             parcelsAtAddress={
-              expandedSiblings.length > 0
-                ? expandedSiblings.length
-                : siblingPinsForPortfolio.length > 0
-                  ? siblingPinsForPortfolio.length
-                  : pin
-                    ? 1
-                    : 0
+              composition
+                ? composition.totalPins
+                : expandedSiblings.length > 0
+                  ? expandedSiblings.length
+                  : siblingPinsForPortfolio.length > 0
+                    ? siblingPinsForPortfolio.length
+                    : pin
+                      ? 1
+                      : 0
             }
             otherParcelsCount={ownerOtherProperties.length}
           />
         )}
+        */}
       </div>
 
       <PropertyFeed

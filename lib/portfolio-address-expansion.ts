@@ -106,17 +106,32 @@ export function getPortfolioBuildingSlug(
   addressRange: string | null,
   storedSlug: string | null
 ): string {
+  // Default range anchor is the canonical-address slug. We override only when the
+  // canonical address appears inside one of the address_range segments — confirms
+  // the range and canonical are on the same street, so deriving from the range
+  // is safe and gets findApprovedUserRange's lookup right.
+  //
+  // 600 N LAKE SHORE DR (canonical) + 460-460 E OHIO ST (range, different street)
+  // would previously route the user to 460 E Ohio St — wrong page. Now we check
+  // whether canonical is actually covered by the range; if not, use canonical.
+  const canonicalNormalized = canonicalAddress.toUpperCase().replace(/\s+/g, ' ').trim()
+
   if (addressRange?.trim()) {
-    // Multi-street ranges separate segments with ' & '; first segment suffices
-    // since any address in the user_range set triggers the lookup.
-    const firstSegment = addressRange.split('&')[0]?.trim()
-    if (firstSegment) {
-      const expanded = expandAddressRange(firstSegment)
-      if (expanded[0]) {
-        // Title-case for cleaner URL aesthetics; lookup normalizes either way.
-        return addressToSlug(formatAddressForDisplay(expanded[0]))
+    const segments = addressRange.split('&').map((s) => s.trim()).filter(Boolean)
+    for (const segment of segments) {
+      const expanded = expandAddressRange(segment)
+      if (expanded.includes(canonicalNormalized)) {
+        // Canonical is in this segment — safe to use range anchor.
+        if (expanded[0]) {
+          return addressToSlug(formatAddressForDisplay(expanded[0]))
+        }
       }
     }
+    // No segment covers the canonical — fall through to canonical/stored slug
+    // since deriving from range would land on the wrong street.
   }
-  return storedSlug?.trim() || canonicalAddress.replace(/\s+/g, '-')
+
+  // Prefer canonical-derived slug over storedSlug since storedSlug can carry
+  // bad data (wrong zip from a Palatine-vs-Chicago Google geocoding miss).
+  return addressToSlug(formatAddressForDisplay(canonicalNormalized))
 }
