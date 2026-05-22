@@ -146,14 +146,10 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 26-hour lookback. Absorbs Vercel's documented cron-scheduler drift
-  // (~46m max observed) on top of a 24h calendar day. Idempotency guard
-  // (alert_digest_log unique partial index on subscriber_id + digest_date
-  // WHERE status='sent') prevents same-day double-sends from the 2h
-  // overlap.
+  // TEMP 100-hour lookback — restore to 26h after format testing is done.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 26 * 60 * 60 * 1000
+  const startMs = now.getTime() - 100 * 60 * 60 * 1000
   const startIso = new Date(startMs).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
