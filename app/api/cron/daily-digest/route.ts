@@ -146,15 +146,24 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // 26-hour lookback. Absorbs Vercel's documented cron-scheduler drift
-  // (~46m max observed) on top of a 24h calendar day. Idempotency guard
-  // (alert_digest_log unique partial index on subscriber_id + digest_date
-  // WHERE status='sent') prevents same-day double-sends from the 2h
-  // overlap.
+  // Lookback window. Default fallback is 26h (absorbs Vercel's documented
+  // ~46m cron-scheduler drift on top of a 24h calendar day) — used for a
+  // subscriber's FIRST send and when no prior successful send is on file.
+  //
+  // For subsequent sends we override the floor with the prior successful
+  // send's `sent_at` timestamp, per-subscriber. Without that override, any
+  // event ingested in the 2h overlap window between consecutive runs shows
+  // up twice — exactly what happened May 22-23 with Worker B's nightly
+  // ingest landing at 2:06 AM CT (inside both runs' 26h windows).
+  //
+  // Using the prior sent_at as the floor is self-correcting: Vercel cron
+  // drift is absorbed because the floor is the real last-send time, not a
+  // fixed clock offset. Per-subscriber override is computed inside the
+  // subscriber loop below; these defaults are the cron-wide fallback.
   const now = new Date()
   const endIso = now.toISOString()
-  const startMs = now.getTime() - 26 * 60 * 60 * 1000
-  const startIso = new Date(startMs).toISOString()
+  const FALLBACK_LOOKBACK_MS = 25.5 * 60 * 60 * 1000
+  const defaultStartIso = new Date(now.getTime() - FALLBACK_LOOKBACK_MS).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
   // guard (alert_digest_log unique index), so each calendar day sends once.
@@ -227,6 +236,24 @@ export async function GET(request: Request) {
         if (alreadySent) {
           results.push({ subscriber_id: setting.subscriber_id, status: 'already_sent', count: 0 })
           continue
+        }
+      }
+
+      // Per-subscriber window floor: prior successful send's sent_at if
+      // available, else the cron-wide 26h fallback. Test mode always uses
+      // the fallback so re-runnable tests don't pin to a stale floor.
+      let startIso: string = defaultStartIso
+      if (!testMode) {
+        const { data: priorSend } = await supabase
+          .from('alert_digest_log')
+          .select('sent_at')
+          .eq('subscriber_id', setting.subscriber_id)
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (priorSend?.sent_at) {
+          startIso = priorSend.sent_at as string
         }
       }
 

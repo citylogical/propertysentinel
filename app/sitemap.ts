@@ -12,14 +12,14 @@ export default async function sitemap() {
     .eq('published', true)
 
   const blogUrls = (posts ?? []).map((post) => ({
-    url: `https://www.propertysentinel.io/blog/${post.slug}`,
+    url: `https://propertysentinel.io/blog/${post.slug}`,
     lastModified: post.updated_at,
   }))
 
   return [
-    { url: 'https://www.propertysentinel.io', lastModified: new Date() },
-    { url: 'https://www.propertysentinel.io/about', lastModified: new Date() },
-    { url: 'https://www.propertysentinel.io/blog', lastModified: new Date() },
+    { url: 'https://propertysentinel.io', lastModified: new Date() },
+    { url: 'https://propertysentinel.io/about', lastModified: new Date() },
+    { url: 'https://propertysentinel.io/blog', lastModified: new Date() },
     ...blogUrls,
   ]
 }
