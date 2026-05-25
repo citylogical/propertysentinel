@@ -91,6 +91,12 @@ type DigestEvent = {
   property_id: string
   property_slug: string | null
   kind: 'complaint' | 'violation' | 'permit'
+  // Persisted dedupe identifier — sr_number for complaints, inspection_number
+  // for violations, permit_number for permits. Written to alert_digest_log's
+  // three sent_*_identifiers arrays on successful send, queried on next run
+  // to filter SELECT results before rendering. Null when the source row had
+  // no identifier (orphan violations); always-send behavior in that case.
+  dedupe_id: string | null
   label: string
   description: string | null
   // Current city action on the work order (complaints only). For open cases:
@@ -146,24 +152,26 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const supabase = getSupabaseAdmin()
 
-  // Lookback window. Default fallback is 26h (absorbs Vercel's documented
-  // ~46m cron-scheduler drift on top of a 24h calendar day) — used for a
-  // subscriber's FIRST send and when no prior successful send is on file.
+  // Fixed 40-hour lookback for all sends. The wider window absorbs Vercel
+  // cron drift AND complaint/violation/permit ingest lag (Worker A's 30-min
+  // poll occasionally takes 3-5 hours to surface a slow complaint; Worker B
+  // runs once daily at 2 AM CT). Per-event identifier dedupe (see below)
+  // handles cross-run uniqueness — the wider window can never cause a
+  // duplicate send because we filter against the prior 3 digest sends'
+  // event identifiers before rendering.
   //
-  // For subsequent sends we override the floor with the prior successful
-  // send's `sent_at` timestamp, per-subscriber. Without that override, any
-  // event ingested in the 2h overlap window between consecutive runs shows
-  // up twice — exactly what happened May 22-23 with Worker B's nightly
-  // ingest landing at 2:06 AM CT (inside both runs' 26h windows).
-  //
-  // Using the prior sent_at as the floor is self-correcting: Vercel cron
-  // drift is absorbed because the floor is the real last-send time, not a
-  // fixed clock offset. Per-subscriber override is computed inside the
-  // subscriber loop below; these defaults are the cron-wide fallback.
+  // Replaces the per-subscriber `sent_at` floor shipped May 23. That floor
+  // closed one class of duplicate (Worker B ingesting at 2 AM CT inside the
+  // 26h overlap), but exposed a new class: a complaint whose `created_date`
+  // predates the floor but whose `created_at` postdates the floor would
+  // slip the SQL filter entirely. Filed May 23, manifest May 24 — see SR26-
+  // 00967028 at 1765 E 55th St (city-recorded 03:14 AM CT May 23, ingested
+  // 08:31 AM CT May 23, missing from May 24 digest). Identifier dedupe is
+  // bulletproof and supersedes timing-based filtering.
   const now = new Date()
   const endIso = now.toISOString()
-  const FALLBACK_LOOKBACK_MS = 25.5 * 60 * 60 * 1000
-  const defaultStartIso = new Date(now.getTime() - FALLBACK_LOOKBACK_MS).toISOString()
+  const LOOKBACK_MS = 40 * 60 * 60 * 1000
+  const startIso = new Date(now.getTime() - LOOKBACK_MS).toISOString()
 
   // digest_date = today's Chicago calendar date — used for the idempotency
   // guard (alert_digest_log unique index), so each calendar day sends once.
@@ -223,7 +231,7 @@ export async function GET(request: Request) {
     subscribers?: { email_alerts: boolean }
   }>) {
     try {
-      // Skip if already sent today (idempotency).
+      // Skip if already sent today (same-day idempotency guard).
       // Bypassed in test mode so the test can be re-run any number of times.
       if (!testMode) {
         const { data: alreadySent } = await supabase
@@ -239,21 +247,34 @@ export async function GET(request: Request) {
         }
       }
 
-      // Per-subscriber window floor: prior successful send's sent_at if
-      // available, else the cron-wide 26h fallback. Test mode always uses
-      // the fallback so re-runnable tests don't pin to a stale floor.
-      let startIso: string = defaultStartIso
+      // Cross-run identifier dedupe. Pull the last 3 successful sends for
+      // this subscriber, union their event-identifier arrays into three
+      // Sets, filter SELECT results against them before queueing events.
+      // Three rows is enough — the 40h lookback window means anything older
+      // than ~3 days can't appear in this run's SQL fetch, so older
+      // identifiers are dead weight.
+      //
+      // Test mode skips the dedupe lookup so re-runnable tests aren't
+      // pinned to stale prior-send state.
+      const sentComplaints = new Set<string>()
+      const sentViolations = new Set<string>()
+      const sentPermitsCross = new Set<string>()
       if (!testMode) {
-        const { data: priorSend } = await supabase
+        const { data: priorSends } = await supabase
           .from('alert_digest_log')
-          .select('sent_at')
+          .select('sent_complaint_sr_numbers, sent_violation_inspection_ids, sent_permit_numbers')
           .eq('subscriber_id', setting.subscriber_id)
           .eq('status', 'sent')
           .order('sent_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (priorSend?.sent_at) {
-          startIso = priorSend.sent_at as string
+          .limit(3)
+        for (const row of (priorSends ?? []) as Array<{
+          sent_complaint_sr_numbers: string[] | null
+          sent_violation_inspection_ids: string[] | null
+          sent_permit_numbers: string[] | null
+        }>) {
+          for (const sr of row.sent_complaint_sr_numbers ?? []) sentComplaints.add(sr)
+          for (const id of row.sent_violation_inspection_ids ?? []) sentViolations.add(id)
+          for (const pn of row.sent_permit_numbers ?? []) sentPermitsCross.add(pn)
         }
       }
 
@@ -334,11 +355,15 @@ export async function GET(request: Request) {
       const events: DigestEvent[] = []
 
       if (setting.trigger_complaints) {
-        // Filter by DEFAULT_VISIBLE_CODES at the SQL layer — drops the JS
-        // post-filter that used to drop non-visible codes after the round trip.
-        // Selects concern_category, problem_category, status, final_outcome,
-        // workflow_step for description+WOLI rendering.
+        // Filter by created_at (our ingestion timestamp), NOT created_date
+        // (city's official record time). Mirrors the violations/permits
+        // approach shipped May 17. Without this, complaints created BEFORE
+        // the prior cron fired but ingested AFTER it slip through the SQL
+        // filter forever (e.g. SR26-00967028 at 1765 E 55th, city-recorded
+        // 03:14 AM CT but Worker A took 5h to ingest, missing from the
+        // May 24 digest under the prior `sent_at` floor logic).
         //
+        // Need sr_number on the SELECT now for cross-run dedupe identifier.
         // Exclude duplicate complaints. Salesforce auto-couples duplicates by
         // address+type; the parent SR carries the workflow, the child adds
         // noise without information for the digest reader. Surface them in
@@ -346,19 +371,21 @@ export async function GET(request: Request) {
         // .or() form keeps legacy null rows (pre-duplicate-column ingest).
         const { data: complaints } = await supabase
           .from('complaints_311')
-          .select('sr_type, sr_short_code, created_date, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, work_order_status, final_outcome, workflow_step')
+          .select('sr_number, sr_type, sr_short_code, created_date, created_at, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, work_order_status, final_outcome, workflow_step')
           .in('address_normalized', allAddresses)
           .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
-          .gte('created_date', startIso)
-          .lt('created_date', endIso)
+          .gte('created_at', startIso)
+          .lt('created_at', endIso)
           .or('duplicate.is.null,duplicate.is.false')
-          .order('created_date', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(500)
 
         for (const c of (complaints ?? []) as Array<{
+          sr_number: string | null
           sr_type: string | null
           sr_short_code: string | null
           created_date: string | null
+          created_at: string | null
           address_normalized: string | null
           standard_description: string | null
           complaint_description: string | null
@@ -372,6 +399,8 @@ export async function GET(request: Request) {
           if (!c.address_normalized || !c.created_date) continue
           const meta = addressToProperty.get(c.address_normalized)
           if (!meta) continue
+          // Cross-run dedupe: skip if this SR was in a prior digest send.
+          if (c.sr_number && sentComplaints.has(c.sr_number)) continue
 
           // Build description from standard_description + structured intake.
           // For structured-intake codes (SGA, WM3, AAD, AAI) standard_description
@@ -421,6 +450,7 @@ export async function GET(request: Request) {
             property_id: meta.id,
             property_slug: meta.slug,
             kind: 'complaint',
+            dedupe_id: c.sr_number ?? null,
             label: c.sr_type ?? 'Building Complaint',
             description,
             woli_stage: woliStage,
@@ -477,7 +507,7 @@ export async function GET(request: Request) {
           else violationGroups.set(key, [v])
         }
 
-        for (const [, rows] of violationGroups) {
+        for (const [groupKey, rows] of violationGroups) {
           const first = rows[0]
           if (!first.address_normalized || !first.violation_date) continue
           const meta = addressToProperty.get(first.address_normalized)
@@ -487,6 +517,18 @@ export async function GET(request: Request) {
           const isStopWork = rows.some((r) => Boolean(r.is_stop_work_order))
           if (isStopWork && !setting.trigger_stop_work) continue
           if (!isStopWork && !setting.trigger_violations) continue
+
+          // Cross-run dedupe: skip if this inspection was in a prior send.
+          // Orphan rows (no inspection_number) use the synthetic counter key
+          // which resets each run — they can't be persisted meaningfully, so
+          // they're always sent. Acceptable since orphans are rare and a
+          // false re-send is preferable to silently dropping a violation.
+          if (
+            first.inspection_number &&
+            sentViolations.has(first.inspection_number)
+          ) continue
+          // groupKey is intentionally unused for dedupe — same reasoning.
+          void groupKey
 
           // Compare YYYY-MM-DD prefix against activityDate (yesterday-CT).
           const isBackdated = first.violation_date.slice(0, 10) !== activityDate
@@ -522,6 +564,7 @@ export async function GET(request: Request) {
             property_id: meta.id,
             property_slug: meta.slug,
             kind: 'violation',
+            dedupe_id: first.inspection_number ?? null,
             label,
             description,
             date: first.violation_date,
@@ -545,23 +588,26 @@ export async function GET(request: Request) {
           .order('created_at', { ascending: false })
           .limit(500)
 
-        const seenPermits = new Set<string>()
-        for (const p of (permits ?? []) as Array<{
-          permit_type: string | null
-          work_description: string | null
-          issue_date: string | null
-          address_normalized: string | null
-          permit_number: string | null
-          reported_cost: number | string | null
-          contact_1_name: string | null
-          contact_1_type: string | null
-          created_at: string | null
-        }>) {
-          if (p.permit_number && seenPermits.has(p.permit_number)) continue
-          if (p.permit_number) seenPermits.add(p.permit_number)
-          if (!p.address_normalized || !p.issue_date) continue
-          const meta = addressToProperty.get(p.address_normalized)
-          if (!meta) continue
+          const seenPermits = new Set<string>()
+          for (const p of (permits ?? []) as Array<{
+            permit_type: string | null
+            work_description: string | null
+            issue_date: string | null
+            address_normalized: string | null
+            permit_number: string | null
+            reported_cost: number | string | null
+            contact_1_name: string | null
+            contact_1_type: string | null
+            created_at: string | null
+          }>) {
+            // In-run dedupe: same permit_number returned twice by the SELECT.
+            if (p.permit_number && seenPermits.has(p.permit_number)) continue
+            if (p.permit_number) seenPermits.add(p.permit_number)
+            // Cross-run dedupe: skip if this permit was in a prior send.
+            if (p.permit_number && sentPermitsCross.has(p.permit_number)) continue
+            if (!p.address_normalized || !p.issue_date) continue
+            const meta = addressToProperty.get(p.address_normalized)
+            if (!meta) continue
 
           const isBackdated = p.issue_date.slice(0, 10) !== activityDate
 
@@ -582,6 +628,7 @@ export async function GET(request: Request) {
             property_id: meta.id,
             property_slug: meta.slug,
             kind: 'permit',
+            dedupe_id: p.permit_number ?? null,
             label: p.permit_type ?? 'Permit',
             description: null,
             date: p.issue_date,
@@ -653,6 +700,19 @@ export async function GET(request: Request) {
         violations: events.filter((e) => e.kind === 'violation').length,
         permits: events.filter((e) => e.kind === 'permit').length,
       }
+      // Collect dedupe identifiers from events that were actually sent. Drop
+      // nulls (orphan violations have no inspection_number — they're sent
+      // every time they appear in the SQL window, which is acceptable).
+      const sentComplaintIds = events
+        .filter((e) => e.kind === 'complaint' && e.dedupe_id != null)
+        .map((e) => e.dedupe_id as string)
+      const sentViolationIds = events
+        .filter((e) => e.kind === 'violation' && e.dedupe_id != null)
+        .map((e) => e.dedupe_id as string)
+      const sentPermitIds = events
+        .filter((e) => e.kind === 'permit' && e.dedupe_id != null)
+        .map((e) => e.dedupe_id as string)
+
       if (!testMode) {
         await supabase.from('alert_digest_log').insert({
           subscriber_id: setting.subscriber_id,
@@ -661,6 +721,9 @@ export async function GET(request: Request) {
           events_count: events.length,
           event_summary: summary,
           status: 'sent',
+          sent_complaint_sr_numbers: sentComplaintIds,
+          sent_violation_inspection_ids: sentViolationIds,
+          sent_permit_numbers: sentPermitIds,
         })
       }
       results.push({
