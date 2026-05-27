@@ -224,6 +224,97 @@ export function normalizeAddress(raw: string): string {
 // Sibling PIN resolution
 // ---------------------------------------------------------------------------
 
+// Street-type tokens used to identify the end of the address proper. Anything
+// after one of these is treated as a unit suffix and can be stripped to
+// recover the base address. Used by Path A0 in fetchSiblingPins (unit-suffix
+// condo fan-out) and by the property-page redirect that canonicalizes
+// unit-suffixed slugs to base-slug form when a covering condo tower exists.
+// The same set is duplicated inline in buildNavSlug across three API routes
+// (activity, daily-digest, detail) — they do the same strip operation
+// server-side before deriving slugs.
+const STREET_TYPE_TOKENS = new Set([
+  'ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD',
+  'WAY', 'PKWY', 'TER', 'CIR', 'HWY',
+])
+
+/**
+ * Returns the base address with any unit suffix stripped, or null if the
+ * input has no unit suffix (its last token is itself a street type) or no
+ * recognizable street-type token at all.
+ *
+ *   "5445 N SHERIDAN RD 301"  → "5445 N SHERIDAN RD"
+ *   "333 W HUBBARD ST 201"    → "333 W HUBBARD ST"
+ *   "5445 N SHERIDAN RD"      → null (already base — nothing to strip)
+ *   "ALLEY"                   → null (no street-type token present)
+ */
+export function stripUnitSuffix(addressNormalized: string): string | null {
+  const tokens = addressNormalized.trim().toUpperCase().split(/\s+/)
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (STREET_TYPE_TOKENS.has(tokens[i] ?? '')) {
+      if (i === tokens.length - 1) return null
+      return tokens.slice(0, i + 1).join(' ')
+    }
+  }
+  return null
+}
+
+/**
+ * Returns true when `unitAddress` is the unit-suffixed form of a real
+ * condo-tower base address — that is, the base has multiple PINs (exact +
+ * prefix match), every match is either the base itself or a unit-suffixed
+ * sibling of the base, AND the input unit address is among the siblings.
+ *
+ * Used by the property page to decide whether to 308-redirect a unit-
+ * suffixed slug to its base-slug canonical form. Mirrors the exact
+ * conditions Path A0 in fetchSiblingPins uses to fan out — if Path A0
+ * would have fired on `unitAddress`, this returns true.
+ *
+ * Returns null when no redirect should happen (input has no unit suffix,
+ * base has ≤1 PIN, base isn't a condo-tower pattern, or input not in the
+ * fan-out).
+ */
+export async function findUnitSuffixCondoBase(unitAddress: string): Promise<string | null> {
+  const baseAddress = stripUnitSuffix(unitAddress)
+  if (!baseAddress || baseAddress === unitAddress) return null
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const [exactResult, prefixResult] = await Promise.all([
+    supabaseAdmin
+      .from('properties')
+      .select('address_normalized')
+      .eq('address_normalized', baseAddress),
+    supabaseAdmin
+      .from('properties')
+      .select('address_normalized')
+      .like('address_normalized', `${baseAddress} %`)
+      .limit(2000),
+  ])
+
+  const combined = [
+    ...(exactResult.data ?? []),
+    ...(prefixResult.data ?? []),
+  ] as Array<{ address_normalized: string | null }>
+  if (combined.length <= 1) return null
+
+  const addresses = [
+    ...new Set(combined.map((r) => r.address_normalized).filter(Boolean)),
+  ] as string[]
+
+  const allAreUnitSuffixed = addresses.every(
+    (a) => a === baseAddress || a.startsWith(baseAddress + ' ')
+  )
+  if (!allAreUnitSuffixed) return null
+
+  // Input unit must be in the fan-out — guards against the (improbable)
+  // case where the base exists but the input unit address isn't one of
+  // its real children (e.g. typed-in unit number that doesn't exist).
+  // Without this check we'd redirect to a base that doesn't include the
+  // unit the user came from, breaking the mental model.
+  if (!addresses.includes(unitAddress)) return null
+
+  return baseAddress
+}
+
 /** Data artifacts (not real entities) — never use for Path C or owner portfolio card */
 export const JUNK_MAILING_NAMES = new Set([
   'STREET',
@@ -330,6 +421,78 @@ export async function fetchSiblingPins(
           siblingAddresses: userRange.allAddresses,
           addressRange: buildAddressRange(userRange.allAddresses),
           resolvedVia: 'user_range',
+        }
+      }
+    }
+
+    // PATH A0 — unit-suffix condo fan-out from a unit-suffixed input (May 27).
+    // Activates when we land on a unit-suffixed address (e.g. "5445 N SHERIDAN
+    // RD 301") via slug routing from the activity feed, daily digest, or
+    // portfolio detail link. The existing Path A queries exact + prefix on
+    // addressNormalized — for unit-suffixed input the prefix query becomes
+    // "5445 N SHERIDAN RD 301 %" which finds nothing, and we miss the
+    // sibling units (302, 303, ...) that belong to the same building.
+    //
+    // Strip the unit suffix to recover the base address, then run exact +
+    // prefix against the base. If the results form a unit-suffix condo
+    // pattern (every address is the base or base + unit) AND include the
+    // input address, fan out across the whole building.
+    //
+    // This is the property-page complement to buildNavSlug's stripUnitSuffix
+    // in the three nav routes — those derive a clean base-address slug for
+    // outbound links when a ubr row exists. When no ubr row covers the
+    // address, buildNavSlug falls back to the stored portfolio slug (which
+    // carries the unit suffix), and the property page recovers building view
+    // from the unit-suffixed input on its own via this path.
+    const baseAddress = stripUnitSuffix(addressNormalized)
+    if (baseAddress && baseAddress !== addressNormalized) {
+      const baseExactResult = await supabaseAdmin
+        .from('properties')
+        .select('pin, address_normalized')
+        .eq('address_normalized', baseAddress)
+      const basePrefixResult = await supabaseAdmin
+        .from('properties')
+        .select('pin, address_normalized')
+        .like('address_normalized', `${baseAddress} %`)
+        .limit(2000)
+      const combinedRows = [
+        ...(baseExactResult.data ?? []),
+        ...(basePrefixResult.data ?? []),
+      ] as Array<{ pin: string | null; address_normalized: string | null }>
+      if (combinedRows.length > 1) {
+        const uniquePins = new Map<string, { pin: string; address_normalized: string | null }>()
+        for (const r of combinedRows) {
+          if (r.pin) uniquePins.set(r.pin, { pin: r.pin, address_normalized: r.address_normalized })
+        }
+        const baseAll = Array.from(uniquePins.values())
+        const addresses = [
+          ...new Set(baseAll.map((r) => r.address_normalized).filter(Boolean)),
+        ] as string[]
+        const allAreUnitSuffixed = addresses.every(
+          (a) => a === baseAddress || a.startsWith(baseAddress + ' ')
+        )
+        // Sanity check: the input address must appear in the fan-out. Guards
+        // against the (improbable) case where a different building happens
+        // to share the base address but not include our specific unit.
+        // If it isn't, fall through to the existing Path A.
+        const inputInFanout = addresses.includes(addressNormalized)
+        if (allAreUnitSuffixed && inputInFanout) {
+          const pins = baseAll.map((r) => r.pin).filter(Boolean) as string[]
+          const allAddresses = [...new Set([baseAddress, ...addresses])]
+          console.log(
+            'fetchSiblingPins Path A0 unit-suffix base fan-out:',
+            allAddresses.length,
+            'addresses,',
+            pins.length,
+            'PINs (from base',
+            baseAddress + ')'
+          )
+          return {
+            siblingPins: pins,
+            siblingAddresses: allAddresses,
+            addressRange: baseAddress,
+            resolvedVia: 'address',
+          }
         }
       }
     }

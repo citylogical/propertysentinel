@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import React, { Suspense, cache } from 'react'
+import { redirect } from 'next/navigation'
 import { auth } from '@clerk/nextjs/server'
-import { slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
+import { addressToSlug, slugToDisplayAddress, slugToNormalizedAddress, slugToZip } from '@/lib/address-slug'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import { getCommunityAreaName } from '@/lib/chicago-community-areas'
 import { formatNeighborhoodWithCommunityArea, lookupNeighborhood } from '@/lib/neighborhood-lookup'
@@ -12,6 +13,7 @@ import {
   fetchProperty,
   fetchSiblingPins,
   findApprovedUserRange,
+  findUnitSuffixCondoBase,
   buildAddressRange,
   collectPinsForUserRangeAddresses,
   normalizePin,
@@ -99,6 +101,32 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   const decodedSlug = decodeURIComponent(slug)
   const normalizedAddress = slugToNormalizedAddress(decodedSlug)
   const displayAddressFromSlug = slugToDisplayAddress(decodedSlug)
+
+  // Canonicalize unit-suffixed slugs to the base-address slug whenever the
+  // base address is a real condo tower (multiple PINs at base + units).
+  // Activity feed, daily digest, and portfolio detail all call buildNavSlug
+  // before producing links — that helper produces a base-address slug when
+  // an approved user_building_ranges row covers the property, but falls
+  // back to the stored portfolio slug (which often carries the unit suffix
+  // verbatim from the user's save-time input) when no ubr row exists.
+  //
+  // This redirect closes the gap: for any unit-suffixed inbound slug where
+  // the base resolves to a condo-tower pattern, we 308 to the base-slug
+  // form. Bookmarks, shared links, and stored slug fallbacks all
+  // canonicalize on first hit. Preserves ?building=true.
+  //
+  // Same trigger conditions as fetchSiblingPins Path A0 — if A0 would have
+  // fired on this address, we redirect first instead. Path A0 stays in
+  // place as the in-page recovery for any case where redirect didn't fire
+  // (e.g. someone hitting the unit-suffixed URL with a stale browser
+  // cache).
+  const condoBase = await findUnitSuffixCondoBase(normalizedAddress)
+  if (condoBase) {
+    const zip = slugToZip(decodedSlug)
+    const baseSlug = addressToSlug(condoBase, zip)
+    const qs = buildingParamTrue ? '?building=true' : ''
+    redirect(`/address/${baseSlug}${qs}`)
+  }
 
   const propertyResult = await cachedFetchProperty(normalizedAddress)
   const property = propertyResult.property

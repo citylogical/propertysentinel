@@ -7,21 +7,33 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import PortfolioSummaryBanner from './PortfolioSummaryBanner'
 import PortfolioSummaryModal, { type PortfolioSummaryData } from './PortfolioSummaryModal'
 
-const TABS = [
-  { href: '/dashboard/portfolio', label: 'Portfolio' },
-  { href: '/dashboard/activity', label: 'Activity Feed' },
-  { href: '/dashboard/settings', label: 'Settings' },
-]
+// Tab definitions assembled per-render so the Insights tab can be conditionally
+// included for admins only. Order matters: Insights leads when present so it
+// reads as the default landing tab. The root /dashboard redirect in
+// app/dashboard/page.tsx handles the actual routing for admin users.
+function buildTabs(isAdmin: boolean) {
+  const tabs: Array<{ href: string; label: string }> = []
+  if (isAdmin) {
+    tabs.push({ href: '/dashboard/insights', label: 'Insights' })
+  }
+  tabs.push({ href: '/dashboard/portfolio', label: 'Portfolio' })
+  tabs.push({ href: '/dashboard/activity', label: 'Activity Feed' })
+  tabs.push({ href: '/dashboard/settings', label: 'Settings' })
+  return tabs
+}
 
 export default function DashboardLayoutClient({
   children,
   propertyCount: _propertyCount,
   today: _today,
+  isAdmin = false,
 }: {
   children: ReactNode
   propertyCount: number
   today: string
+  isAdmin?: boolean
 }) {
+  const TABS = buildTabs(isAdmin)
   const pathname = usePathname()
   const { isSignedIn, isLoaded: clerkLoaded } = useUser()
   const [summaryData, setSummaryData] = useState<PortfolioSummaryData | null>(null)

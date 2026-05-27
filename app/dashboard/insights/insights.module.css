@@ -1,0 +1,616 @@
+/* Insights dashboard — scoped CSS module. All class names here are local
+   to the insights directory and never collide with globals.css. */
+
+.page {
+  background: #f0f0ed;
+  min-height: 100vh;
+  padding: 24px 32px 80px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #1a1a1a;
+}
+
+.pageInner {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.identityRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.identityTitle {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+
+.identityMeta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+}
+
+.cardPad {
+  padding: 20px 24px;
+}
+
+.loadingFallback {
+  padding: 80px 24px;
+  text-align: center;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: #8a94a0;
+}
+
+.errorFallback {
+  padding: 24px;
+  background: #fff7f7;
+  border: 1px solid rgba(200, 16, 46, 0.2);
+  border-radius: 4px;
+  color: #c8102e;
+  font-size: 13px;
+}
+
+/* ── Headline ─────────────────────────────────────────────────────── */
+.headlineCard {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+  padding: 18px 24px;
+  margin-bottom: 16px;
+}
+.headlineLabel {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+.headlineProse {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #1a1a1a;
+}
+.headlineProse strong {
+  font-weight: 700;
+  color: #0f2744;
+}
+
+/* ── KPI strip ────────────────────────────────────────────────────── */
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.kpiCard {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+  padding: 16px 18px;
+}
+.kpiCardAlert {
+  background: #fff7f7;
+  border-color: rgba(200, 16, 46, 0.25);
+}
+.kpiLabel {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+.kpiValue {
+  font-size: 30px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.1;
+}
+.kpiValueAlert {
+  color: #c8102e;
+}
+.kpiDelta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  margin-top: 6px;
+  letter-spacing: 0.02em;
+}
+.kpiDotsRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+.kpiDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.kpiDotCount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #4a4a4a;
+  margin-right: 6px;
+}
+
+/* ── Mid grid: carousel + what changed ────────────────────────────── */
+.midGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* ── Carousel ─────────────────────────────────────────────────────── */
+.carouselCard {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
+}
+.carouselHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #f0ede6;
+  gap: 16px;
+}
+.carouselTitle {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.carouselMeta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.carouselViewport {
+  position: relative;
+  flex: 1;
+  padding: 16px 20px;
+  min-height: 240px;
+}
+.carouselSlide {
+  position: absolute;
+  inset: 16px 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.carouselSlideActive {
+  opacity: 1;
+  pointer-events: auto;
+}
+.carouselNav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0 14px;
+  border-top: 1px solid #f0ede6;
+}
+.carouselArrow {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 10px;
+  line-height: 1;
+}
+.carouselArrow:hover {
+  color: #1a1a1a;
+}
+.carouselDots {
+  display: flex;
+  gap: 6px;
+}
+.carouselDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d9d3c2;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.carouselDotActive {
+  background: #0f2744;
+}
+
+/* ── Scope funnel ────────────────────────────────────────────────── */
+.funnel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.funnelStep {
+  text-align: right;
+}
+.funnelLabel {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+.funnelValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-top: 2px;
+}
+.funnelStepEmphasized .funnelValue {
+  font-size: 22px;
+  color: #0f2744;
+}
+.funnelArrow {
+  font-size: 16px;
+  color: #c4c0b4;
+}
+
+/* ── Workflow beads slide ─────────────────────────────────────────── */
+.beadsWrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.beadsSvg {
+  width: 100%;
+  height: 100%;
+  max-height: 240px;
+}
+
+/* ── Daily activity slide ─────────────────────────────────────────── */
+.activityWrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.activityToggles {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.activityToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #d9d3c2;
+  border-radius: 12px;
+  background: #ffffff;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+.activityToggleOff {
+  background: #f7f6f2;
+  color: #999;
+  border-color: #ece8dd;
+}
+.activityToggleOff .activityToggleSwatch {
+  opacity: 0.3;
+}
+.activityToggleSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.activitySvg {
+  width: 100%;
+  flex: 1;
+  max-height: 200px;
+}
+
+/* ── Complaints by type slide ─────────────────────────────────────── */
+.byTypeWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+.byTypeRow {
+  display: grid;
+  grid-template-columns: 60px 1fr 4fr 40px;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+.byTypeCode {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e3a5f;
+}
+.byTypeLabel {
+  color: #4a4a4a;
+  font-size: 12px;
+}
+.byTypeBarTrack {
+  background: #f0ede6;
+  height: 10px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.byTypeBarFill {
+  background: #1e3a5f;
+  height: 100%;
+}
+.byTypeCount {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: #1a1a1a;
+}
+.byTypeEmpty {
+  font-size: 13px;
+  color: #8a94a0;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ── Open aging slide ─────────────────────────────────────────────── */
+.agingWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+.agingTotal {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0ede6;
+}
+.agingTotalValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.agingTotalLabel {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+.agingBars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.agingBucket {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agingBucketHeader {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+.agingBucketLabel {
+  color: #4a4a4a;
+}
+.agingBucketCount {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+.agingBucketTrack {
+  background: #f0ede6;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.agingBucketFill {
+  height: 100%;
+}
+.agingEmpty {
+  font-size: 13px;
+  color: #8a94a0;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ── What changed panel ──────────────────────────────────────────── */
+.whatChangedCard {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.whatChangedHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #f0ede6;
+}
+.whatChangedTitle {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.whatChangedMeta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+.whatChangedList {
+  padding: 8px 0;
+}
+.whatChangedRow {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f7f5ef;
+}
+.whatChangedRow:last-child {
+  border-bottom: none;
+}
+.whatChangedDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+.whatChangedBody {
+  min-width: 0;
+}
+.whatChangedLabel {
+  font-size: 13px;
+  color: #1a1a1a;
+  line-height: 1.35;
+}
+.whatChangedAddress {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+.whatChangedAge {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: #999;
+  white-space: nowrap;
+}
+.whatChangedEmpty {
+  font-size: 13px;
+  color: #8a94a0;
+  padding: 32px 20px;
+  text-align: center;
+}
+
+/* ── Hot properties ───────────────────────────────────────────────── */
+.hotCard {
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 4px;
+}
+.hotHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 16px 20px 10px;
+  border-bottom: 1px solid #f0ede6;
+}
+.hotTitle {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.hotMeta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+.hotTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.hotTable thead th {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  padding: 8px 16px;
+  font-weight: 500;
+  border-bottom: 1px solid #e5e1d6;
+}
+.hotThAddress { text-align: left; }
+.hotThLeft { text-align: left; }
+.hotThRight { text-align: right; }
+.hotTable tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0ede6;
+}
+.hotTable tbody tr:last-child td {
+  border-bottom: none;
+}
+.hotTdAddress {
+  text-align: left;
+  white-space: nowrap;
+}
+.hotTdRight { text-align: right; }
+.hotTdLeft { text-align: left; }
+.hotAddressLink {
+  color: #1a1a1a;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px dotted #c4c0b4;
+}
+.hotCommunity {
+  color: #999;
+  font-size: 12px;
+  margin-left: 8px;
+}
+.hotZero {
+  color: #c4c0b4;
+}
+.hotMono {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+.hotSignalPill {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.hotEmpty {
+  padding: 32px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: #8a94a0;
+}

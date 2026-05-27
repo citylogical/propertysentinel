@@ -527,15 +527,47 @@ async function fetchCommercialRows(
   return out
 }
 
+// Street-type tokens used to strip unit suffixes before querying Hansen.
+// Hansen's `input_address` column is keyed on the BASE address (no unit
+// suffix), so passing unit-suffixed addresses like "5445 N SHERIDAN RD 301"
+// to `.in()` finds nothing AND inflates the IN-list to hundreds of entries
+// for condo towers, hitting Supabase's REST URL length limit (~8KB).
+//
+// Same token set used by stripUnitSuffix in supabase-search.ts — kept
+// duplicated here to avoid an import cycle.
+const HANSEN_STREET_TYPES = new Set([
+  'ST', 'AVE', 'BLVD', 'DR', 'CT', 'PL', 'LN', 'RD',
+  'WAY', 'PKWY', 'TER', 'CIR', 'HWY',
+])
+
+function stripUnitForHansen(address: string): string {
+  const tokens = address.trim().toUpperCase().split(/\s+/)
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (HANSEN_STREET_TYPES.has(tokens[i] ?? '')) {
+      return tokens.slice(0, i + 1).join(' ')
+    }
+  }
+  return address.trim().toUpperCase()
+}
+
 async function fetchHansenRow(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   addresses: string[]
 ): Promise<HansenRow | null> {
   if (!addresses.length) return null
+  // Hansen keys on base address only — strip unit suffixes and dedupe.
+  // A 464-PIN condo tower's fan-out address list collapses to a single base
+  // address; the IN-list stays small regardless of building size.
   // Pick the most-populated row across all address variants. Hansen stores
   // populated values for most fields together (or none), so ordering by
   // `stories IS NOT NULL` + `stories > 0` surfaces the useful row.
-  const cleaned = [...new Set(addresses.map((a) => a.trim().toUpperCase()).filter(Boolean))]
+  const cleaned = [
+    ...new Set(
+      addresses
+        .map((a) => stripUnitForHansen(a))
+        .filter(Boolean)
+    ),
+  ]
   try {
     const { data, error } = await supabase
       .from('hansen_buildings')
