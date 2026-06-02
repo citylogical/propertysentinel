@@ -34,6 +34,12 @@ export const SKIP_IDS = new Set([
   'a1Yt0000000LiLuEAK',  // AAD construction nearby
   'a1Yt0000000Li2MEAS',  // AAI missing lid
   'a1Yt0000000Li2JEAS',  // AAI someone pumping
+  // Jun 2026 additions
+  'a1Yt0000000LiJDEA0',  // SDR witness?
+  'a1Yt0000000LiJEEA0',  // SDR willing to file witness report for reward?
+  'a1Yt0000003GWzqEAG',  // WCA3 scheduling acknowledgment
+  'a1Yt0000003GAJlEAO',  // SCSP disabled/senior 65+? (PII-adjacent)
+  'a1Yt0000003PcMeEAK',  // SCSP how to send bill
 ])
 
 export const QUESTION_MAP: Record<string, Record<string, string>> = {
@@ -211,5 +217,41 @@ export const QUESTION_MAP: Record<string, Record<string, string>> = {
     concern_category: 'a1Yt0000000Li2KEAS',
     problem_category: 'a1Yt0000000Li2LEAS',
     description:      'a1Yt0000000LiYjEAK',
+  },
+  // ── Added Jun 2026 ──────────────────────────────────────────────────────
+  // SDR — Fly Dumping (citywide, paraphrased)
+  '08qt0000000Cad6AAC': {
+    description:      'a1Yt0000000Liv8EAC',
+    concern_category: 'a1Yt0000000LiPQEA0',
+  },
+  // WCA3 — Water Lead Test Visit (portfolio-only)
+  '08qt0000000CaXEAA0': {
+    danger_reported:  'a1Yt0000000Lh7cEAC',
+  },
+  // SCX — Recycling Inspection (portfolio-only, paraphrased)
+  '08qt0000000CacyAAC': {
+    description:      'a1Yt0000000Liw3EAC',
+    concern_category: 'a1Yt0000000LfrmEAC',
+    problem_category: 'a1Yt0000000LiLWEA0',
+  },
+  // SCT — Clean Vacant Lot (portfolio-only, paraphrased)
+  '08qt0000000CacwAAC': {
+    description:      'a1Yt0000000LivoEAC',
+    concern_category: 'a1Yt0000000LivnEAC',
+  },
+  // SCP — Weed Removal (portfolio-only, paraphrased)
+  '08qt0000000CabDAAS': {
+    description:      'a1Yt0000000LioSEAS',
+    concern_category: 'a1Yt0000000Li5aEAC',
+    problem_category: 'a1Yt0000000LioQEAS',
+  },
+  // SWSNOREM — Snow / Uncleared Sidewalk (portfolio-only, paraphrased)
+  '08qt0000000CafSAAS': {
+    description:      'a1Yt0000000LiuKEAS',
+    concern_category: 'a1Yt0000000Li4TEAS',
+  },
+  // SCSP — Shared Cost Sidewalk Program (portfolio-only)
+  '08qt00000004DUhAAM': {
+    concern_category: 'a1Yt0000003GAJqEAO',
   },
 }

@@ -301,8 +301,8 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
     <div
       style={{
         background: '#fff',
-        borderRadius: 8,
-        border: '1px solid #ece8dd',
+        borderRadius: 'var(--card-radius)',
+        boxShadow: 'var(--card-shadow)',
         overflow: 'hidden',
         marginBottom: 16,
       }}

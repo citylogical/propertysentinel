@@ -70,15 +70,6 @@ export default function InsightsClient() {
   return (
     <div className={styles.page}>
       <div className={styles.pageInner}>
-        <div className={styles.identityRow}>
-          <div className={styles.identityTitle}>
-            {data.meta.org_name ?? 'Portfolio'} — Insights
-          </div>
-          <div className={styles.identityMeta}>
-            {data.meta.portfolio_buildings} buildings · last 24h
-          </div>
-        </div>
-
         <HeadlineInsight headline={data.headline} />
 
         <KpiStrip kpis={data.kpis} />

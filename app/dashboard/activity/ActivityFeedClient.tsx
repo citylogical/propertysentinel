@@ -214,7 +214,13 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
         }}
       >
         {/* ── List pane ─────────────────────────────────────────────── */}
-        <div style={{ background: '#fff', border: '1px solid #e5e1d6', minWidth: 0 }}>
+        <div style={{
+          background: '#fff',
+          borderRadius: 'var(--card-radius)',
+          boxShadow: 'var(--card-shadow)',
+          minWidth: 0,
+          overflow: 'hidden',
+        }}>
           {/* Filter toolbar — each control sits above its corresponding column */}
           <div
             style={{
@@ -528,8 +534,10 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
             position: 'sticky',
             top: 70,
             background: '#fff',
-            border: '1px solid #e5e1d6',
+            borderRadius: 'var(--card-radius)',
+            boxShadow: 'var(--card-shadow)',
             minHeight: 200,
+            overflow: 'hidden',
           }}
         >
           {selectedRow ? (

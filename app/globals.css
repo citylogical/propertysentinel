@@ -29,6 +29,12 @@
   /* App rail: icon 18px centered → equal inset from edges and icon-to-label gap */
   --app-rail-w: 48px;
   --app-rail-expanded-w: 200px;
+  --card-radius: 8px;
+  --card-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 1px 3px rgba(15, 23, 42, 0.04),
+    0 4px 8px -2px rgba(15, 23, 42, 0.03);
 }
 
 @theme inline {
@@ -1753,8 +1759,8 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
 
 .address-page .profile-card {
   background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
   padding: 0;
 }
@@ -1784,8 +1790,8 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
 
 .address-page .stat {
   background: #ffffff;
-  border: 1px solid var(--border);
   border-radius: 4px;
+  box-shadow: var(--card-shadow);
   padding: 8px 8px 6px;
 }
 
@@ -3076,7 +3082,8 @@ button.save-toggle-switch {
 /* Dashboard table — clean white, no navy header */
 .dashboard-table-wrap {
   background: #ffffff;
-  border: 1px solid #e5e1d6;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
 }
 
@@ -3491,9 +3498,11 @@ button.save-toggle-switch {
 
 .dashboard-detail-inner {
   background: #ffffff;
-  border: 1px solid #e5e1d6;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   display: grid;
   grid-template-columns: 280px 1fr;
+  overflow: hidden;
 }
 
 .dashboard-detail-inner--with-reports {

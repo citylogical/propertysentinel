@@ -462,7 +462,22 @@ export async function POST(request: Request) {
 
   const asString = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 
-  if (sr_short_code) {
+  if (sr_short_code === 'RFC') {
+    // Mirror enrich_complaints.py: RFC gets a fixed standard_description in the
+    // same column paraphrased descriptions use, instead of an LLM call.
+    const paraphrasedAt = new Date().toISOString()
+    const { error: rfcErr } = await supabaseAdmin
+      .from('complaints_311')
+      .update({
+        standard_description: 'Renter filed an eviction complaint with the city',
+        paraphrased_at: paraphrasedAt,
+      })
+      .eq('sr_number', sr_number)
+    if (!rfcErr) {
+      update.standard_description = 'Renter filed an eviction complaint with the city'
+      update.paraphrased_at = paraphrasedAt
+    }
+  } else if (sr_short_code) {
     const paraphrase = await paraphraseComplaint({
       sr_short_code,
       sr_type,

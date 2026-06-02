@@ -3,18 +3,23 @@
 import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import PortfolioSummaryBanner from './PortfolioSummaryBanner'
-import PortfolioSummaryModal, { type PortfolioSummaryData } from './PortfolioSummaryModal'
+import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
 
-// Tab definitions assembled per-render so the Insights tab can be conditionally
-// included for admins only. Order matters: Insights leads when present so it
-// reads as the default landing tab. The root /dashboard redirect in
-// app/dashboard/page.tsx handles the actual routing for admin users.
+type HeaderStats = {
+  buildings: number
+  units: number
+  organization: string | null
+  is_admin: boolean
+}
+
+// Tabs assembled per-render so the Dashboard tab can be conditionally
+// included for admins only. Dashboard leads when present so it reads as
+// the default landing tab — the root /dashboard redirect in
+// app/dashboard/page.tsx sends admins to /dashboard/insights.
 function buildTabs(isAdmin: boolean) {
   const tabs: Array<{ href: string; label: string }> = []
   if (isAdmin) {
-    tabs.push({ href: '/dashboard/insights', label: 'Insights' })
+    tabs.push({ href: '/dashboard/insights', label: 'Dashboard' })
   }
   tabs.push({ href: '/dashboard/portfolio', label: 'Portfolio' })
   tabs.push({ href: '/dashboard/activity', label: 'Activity Feed' })
@@ -26,94 +31,42 @@ export default function DashboardLayoutClient({
   children,
   propertyCount: _propertyCount,
   today: _today,
-  isAdmin = false,
 }: {
   children: ReactNode
   propertyCount: number
   today: string
-  isAdmin?: boolean
 }) {
-  const TABS = buildTabs(isAdmin)
   const pathname = usePathname()
   const { isSignedIn, isLoaded: clerkLoaded } = useUser()
-  const [summaryData, setSummaryData] = useState<PortfolioSummaryData | null>(null)
-  const [summaryLoading, setSummaryLoading] = useState(true)
-  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [stats, setStats] = useState<HeaderStats | null>(null)
 
-  // Fetch the portfolio-summary aggregate. Extracted into a callback so it can
-  // run both on the initial sign-in effect AND when PortfolioTable signals that
-  // it has persisted fresh per-row stats back to portfolio_properties.
-  // `showLoading` is false for background re-pulls so the banner doesn't flicker
-  // back to its "—" loading state on every refresh.
-  const fetchSummary = useCallback(
-    async (showLoading: boolean) => {
-      if (showLoading) setSummaryLoading(true)
-      try {
-        const res = await fetch('/api/dashboard/portfolio-summary')
-        const data = (await res.json()) as PortfolioSummaryData & { error?: string }
-        if (!data.error) setSummaryData(data)
-      } catch {
-        // leave existing summaryData in place
-      } finally {
-        if (showLoading) setSummaryLoading(false)
-      }
-    },
-    []
-  )
-
-  // Initial load — once Clerk knows whether the user is signed in.
   useEffect(() => {
     if (!clerkLoaded) return
     if (!isSignedIn) {
-      setSummaryData(null)
-      setSummaryLoading(false)
+      setStats(null)
       return
     }
-    void fetchSummary(true)
-  }, [clerkLoaded, isSignedIn, fetchSummary])
-
-  // Re-pull the summary when PortfolioTable persists fresh per-row stats.
-  // Debounced ~1.5s so rapid sort/filter/page clicks (each of which fires
-  // list-activity → this event) collapse into a single re-fetch.
-  useEffect(() => {
-    if (!clerkLoaded || !isSignedIn) return
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const onStatsUpdated = () => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        void fetchSummary(false)
-      }, 1500)
-    }
-    window.addEventListener('ps:portfolio-stats-updated', onStatsUpdated)
+    let cancelled = false
+    fetch('/api/dashboard/header-stats')
+      .then((r) => r.json())
+      .then((data: HeaderStats & { error?: string }) => {
+        if (cancelled) return
+        if (!data.error) setStats(data)
+      })
+      .catch(() => {
+        // Header stats failure is non-fatal — leave the right side blank.
+      })
     return () => {
-      if (timer) clearTimeout(timer)
-      window.removeEventListener('ps:portfolio-stats-updated', onStatsUpdated)
+      cancelled = true
     }
-  }, [clerkLoaded, isSignedIn, fetchSummary])
+  }, [clerkLoaded, isSignedIn])
 
-  // Decide whether to auto-open the modal once summary data loads.
-  // Three guards:
-  //  1) Don't open if the API didn't return data (likely unauthenticated or error)
-  //  2) Don't open if the portfolio is empty (nothing to show)
-  //  3) Respect localStorage suppression + sessionStorage "already seen" flags
-  //  Force-open via ?show_summary=1 bypasses all guards EXCEPT requiring data.
-  useEffect(() => {
-    if (summaryLoading) return
-    if (!summaryData) return
-    if ((summaryData.headline?.total_buildings ?? 0) === 0) return
-
-    const suppressed =
-      typeof window !== 'undefined' && window.localStorage.getItem('ps_summary_suppressed') === 'true'
-    const seenThisSession =
-      typeof window !== 'undefined' && window.sessionStorage.getItem('ps_summary_seen') === 'true'
-    const forceShow =
-      typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('show_summary') === '1'
-
-    if (forceShow || (!suppressed && !seenThisSession)) {
-      setSummaryOpen(true)
-      if (typeof window !== 'undefined') window.sessionStorage.setItem('ps_summary_seen', 'true')
-    }
-  }, [summaryLoading, summaryData])
+  const orgPrefix = stats?.organization ? `${stats.organization}` : 'Dashboard'
+  const todayStr = new Date().toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
 
   return (
     <div className="prop-main-content">
@@ -130,25 +83,40 @@ export default function DashboardLayoutClient({
           <div className="dashboard-identity-left">
             <div className="dashboard-logo">PS</div>
             <div className="dashboard-identity-text">
-              <h1>{summaryData?.organization ? `${summaryData.organization} Dashboard` : 'Dashboard'}</h1>
-              <div className="dashboard-identity-sub">
-                Last 12 months ·{' '}
-                {new Date().toLocaleDateString('en-US', {
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </div>
+              <h1>{orgPrefix}</h1>
+              <div className="dashboard-identity-sub">Last 12 months · {todayStr}</div>
             </div>
           </div>
-        </div>
 
-        <div style={{ marginTop: 10, marginBottom: 14, paddingLeft: 28, paddingRight: 28 }}>
-          <PortfolioSummaryBanner
-            data={summaryData}
-            loading={summaryLoading}
-            onOpenSummary={() => setSummaryOpen(true)}
-          />
+          <div style={headerRightStyle}>
+            {stats ? (
+              <>
+                <div style={statBlockStyle}>
+                  <div style={statValueStyle}>{stats.buildings}</div>
+                  <div style={statLabelStyle}>Buildings</div>
+                </div>
+                <div style={dividerStyle} />
+                <div style={statBlockStyle}>
+                  <div style={statValueStyle}>{stats.units}</div>
+                  <div style={statLabelStyle}>Units</div>
+                </div>
+                <div style={dividerStyle} />
+              </>
+            ) : null}
+            <button
+              type="button"
+              style={addPropertyBtnStyle}
+              onClick={() => {
+                // Re-uses the existing Cmd+K bind to open the add-property flow.
+                // PortfolioTable / search modal listens for this event.
+                window.dispatchEvent(
+                  new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
+                )
+              }}
+            >
+              + Add property
+            </button>
+          </div>
         </div>
 
         <div
@@ -159,7 +127,7 @@ export default function DashboardLayoutClient({
             padding: '0 32px',
           }}
         >
-          {TABS.map((tab) => {
+          {buildTabs(stats?.is_admin ?? false).map((tab) => {
             const isActive = pathname === tab.href || pathname?.startsWith(`${tab.href}/`)
             return (
               <Link
@@ -180,32 +148,61 @@ export default function DashboardLayoutClient({
               </Link>
             )
           })}
-          <button
-            type="button"
-            className="dashboard-banner-add-btn"
-            onClick={() => {
-              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))
-            }}
-          >
-            + Add property
-          </button>
         </div>
       </header>
 
       {children}
-      <PortfolioSummaryModal
-        isOpen={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        showSuppressionOption
-        onSuppressChange={(s) => {
-          if (typeof window !== 'undefined') {
-            if (s) window.localStorage.setItem('ps_summary_suppressed', 'true')
-            else window.localStorage.removeItem('ps_summary_suppressed')
-          }
-        }}
-        data={summaryData}
-        loading={summaryLoading}
-      />
     </div>
   )
+}
+
+const headerRightStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 18,
+}
+
+const statBlockStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  minWidth: 56,
+}
+
+const statValueStyle: CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 20,
+  fontWeight: 600,
+  color: '#0f2744',
+  lineHeight: 1.1,
+}
+
+const statLabelStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 9,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: '#8a94a0',
+  marginTop: 2,
+}
+
+const dividerStyle: CSSProperties = {
+  width: 1,
+  height: 28,
+  background: '#e5e1d6',
+}
+
+const addPropertyBtnStyle: CSSProperties = {
+  padding: '8px 16px',
+  background: '#166534',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: 6,
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  boxShadow:
+    'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04)',
 }
