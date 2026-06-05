@@ -377,8 +377,9 @@ export default function ComplaintFlowDiagram({ isAdmin }: { isAdmin: boolean }) 
       const ln = liabNodes[liab]
       const g = el('g', { class: `cf-nodegroup liab-node-${liab}` }, nodeLayer)
       drawBand(X.liab, ln.top, ln.bot, ln.color, g)
-      const t1 = el('text', { x: X.liabLbl, y: ln.mid - 6, class: 'cf-nodelabel' }, g); t1.textContent = ln.label || ''
-      const t2 = el('text', { x: X.liabLbl, y: ln.mid + 8, class: 'cf-nodesub' }, g); t2.textContent = `${ln.count} codes`
+      const liabLabelY = Math.min(ln.mid, ln.top + 90)
+      const t1 = el('text', { x: X.liabLbl, y: liabLabelY - 6, class: 'cf-nodelabel' }, g); t1.textContent = ln.label || ''
+      const t2 = el('text', { x: X.liabLbl, y: liabLabelY + 8, class: 'cf-nodesub' }, g); t2.textContent = `${ln.count} codes`
       hookLiab(g, liab)
     }
     for (const owner of OWNER_ORDER) {
