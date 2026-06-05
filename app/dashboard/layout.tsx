@@ -38,7 +38,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="address-page">
       <div className="prop-page-shell">
-        <DashboardLayoutClient propertyCount={propertyCount} today={today} isAdmin={isAdmin}>
+      <DashboardLayoutClient propertyCount={propertyCount} today={today}>
           {children}
         </DashboardLayoutClient>
       </div>
