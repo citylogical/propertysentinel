@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 
 type AlertSettings = {
   subscriber_id: string
@@ -259,13 +260,34 @@ export default function SettingsContent() {
 
       {/* Triggers */}
       <Card title="What triggers an alert">
-        <ToggleRow
+      <ToggleRow
           label="New 311 building complaints"
           description="Sanitation, plumbing, vacant building, heat, etc."
           checked={settings.trigger_complaints}
           onChange={(v) => toggleSetting('trigger_complaints', v)}
           disabled={saving}
         />
+        <Link
+          href="/dashboard/settings/311complaints"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            margin: '8px 0 12px',
+            padding: '10px 14px',
+            background: '#f0f7f2',
+            border: '1px solid #166534',
+            borderRadius: 4,
+            textDecoration: 'none',
+            color: '#166534',
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          <span>View owner-relevant 311 complaints</span>
+          <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>&rarr;</span>
+        </Link>
         <ToggleRow
           label="New building violations"
           description="Department of Buildings violations issued against your properties"
