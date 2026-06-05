@@ -1,6 +1,27 @@
 'use client'
 
+import Link from 'next/link'
 import { ClosedPill, StatusPill, formatDate, monoLabel } from './_shared'
+import { DEPARTMENT_BY_CODE } from '@/lib/sr-codes'
+
+// Local date+time formatter for the header open date. created_date is Chicago
+// local time stored without a tz marker (Supabase shows +00:00), so we slice
+// the wall-clock value and display as-is — NO tz conversion (that would shift
+// it -6h). Shared formatDate stays date-only and is still used for the compact
+// workflow step nodes below.
+function formatOpenDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const m = String(dateStr).slice(0, 19).match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/)
+  if (!m) return ''
+  const [, y, mo, dd, hh, mi] = m
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const base = `${months[parseInt(mo, 10) - 1] ?? mo} ${parseInt(dd, 10)}, ${y}`
+  if (hh == null) return base
+  let h = parseInt(hh, 10)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12; if (h === 0) h = 12
+  return `${base} ${h}:${mi} ${ampm}`
+}
 
 type WOLIStep = {
   order?: number | null
@@ -41,6 +62,8 @@ type Props = {
   isAdmin: boolean
   /** Address the SR was filed at — surfaces in card header so a screenshot is self-contained. */
   address?: string | null
+  /** Slug for the property-page link on the address line. */
+  addressSlug?: string | null
 }
 
 // Outcome classifier — buckets WOLI step outcomes into semantic categories for coloring.
@@ -74,7 +97,7 @@ const bucketColor: Record<OutcomeBucket, string> = {
   unknown: '#1e3a5f',      // navy
 }
 
-export default function ComplaintDetail({ complaint: c, isAdmin, address }: Props) {
+export default function ComplaintDetail({ complaint: c, isAdmin, address, addressSlug }: Props) {
   const caseStatus = String(c.status ?? '').toLowerCase()
   const isOpen = caseStatus === 'open'
   const isCanceled = caseStatus === 'canceled' || caseStatus === 'cancelled'
@@ -94,6 +117,12 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
     ? Math.floor((Date.now() - new Date(lastStepEndDate).getTime()) / 86_400_000)
     : null
   const isStuckOpen = isOpen && finalOutcome.length > 0 && daysSinceLastStep != null && daysSinceLastStep >= 14
+  // Complaint is closed in city records (status Completed/Closed, not open, not
+  // canceled) but the WOLI steps may not reflect it — Phase 2 sets status +
+  // closed_date without refreshing work_order_steps, so the timeline can freeze
+  // mid-workflow. Always append a synthetic Closed node when closed_date exists
+  // and the complaint isn't open/canceled, regardless of step state.
+  const isClosedComplaint = !isOpen && !isCanceled && Boolean(c.closed_date)
 
   // Build "tags" row of structured intake fields (Yes/No flags + categories).
   // Tenant-identifying fields (Filed by, Unit, Danger, Owner notified, Owner occupied)
@@ -133,11 +162,14 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'baseline',
-          marginBottom: 6,
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 4,
         }}
       >
-        <span style={monoLabel}>{formatDate(c.created_date)}</span>
+        <span style={{ ...monoLabel, letterSpacing: '0.04em' }}>
+          {c.sr_type ?? 'Complaint'}{c.sr_number ? <span style={{ color: '#888' }}> · #{c.sr_number}</span> : null}
+        </span>
         {isStuckOpen ? (
           <span
             title={`Service request remains OPEN in city records, but the inspector closed the workflow as "${finalOutcome}" on ${formatDate(lastStepEndDate)} — ${daysSinceLastStep} days ago.`}
@@ -185,32 +217,18 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
         )}
       </div>
       {address ? (
-        <div
-          style={{
-            fontSize: 11,
-            color: '#5a5044',
-            marginBottom: 6,
-            marginTop: 2,
-            fontWeight: 500,
-            letterSpacing: '0.01em',
-          }}
-        >
-          {address}
-        </div>
-      ) : null}
-      {c.sr_type ? (
-        <div style={{ ...monoLabel, marginBottom: 4, letterSpacing: '0.04em' }}>{c.sr_type}</div>
-      ) : null}
-      {c.sr_number ? (
-        <div
-          style={{
-            fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-            fontSize: 11,
-            color: '#888',
-            marginBottom: 10,
-          }}
-        >
-          #{c.sr_number}
+        <div style={{ fontSize: 12, color: '#5a5044', marginBottom: 6 }}>
+          <span style={{ color: '#5a7898' }}>Complaint address: </span>
+          {addressSlug ? (
+            <Link
+              href={`/address/${encodeURIComponent(addressSlug)}?building=true`}
+              style={{ color: '#1e3a5f', fontWeight: 600, textDecoration: 'none', borderBottom: '1px dotted #c4c0b4' }}
+            >
+              {address}
+            </Link>
+          ) : (
+            <span style={{ color: '#1a1a1a', fontWeight: 600 }}>{address}</span>
+          )}
         </div>
       ) : null}
       {(c as { duplicate?: boolean | null }).duplicate === true &&
@@ -286,7 +304,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
       ) : null}
 
       {tags.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, marginBottom: 12 }}>
           {tags.map((tag, idx) => (
             <span
               key={`tag-${idx}`}
@@ -307,17 +325,27 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
         </div>
       ) : null}
 
+      {(() => {
+        const dept = c.sr_short_code ? DEPARTMENT_BY_CODE[c.sr_short_code.toUpperCase()] : null
+        if (!dept) return null
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8, marginBottom: 5 }}>
+            <span style={{ color: '#5a7898', flexShrink: 0 }}>Handled by</span>
+            <span style={{ color: '#1a1a1a', fontWeight: 500, textAlign: 'right' }}>{dept}</span>
+          </div>
+        )
+      })()}
       {isOpen && (c.sla_target_days != null || c.actual_mean_days != null) ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: hasSteps ? 12 : 0 }}>
           {c.sla_target_days != null ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: '#5a7898' }}>Target</span>
+              <span style={{ color: '#5a7898' }}>Target Resolution</span>
               <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{c.sla_target_days} days</span>
             </div>
           ) : null}
           {c.actual_mean_days != null ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: '#5a7898' }}>Avg</span>
+              <span style={{ color: '#5a7898' }}>Avg Resolution</span>
               <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{c.actual_mean_days} days</span>
             </div>
           ) : null}
@@ -336,7 +364,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
               marginBottom: 8,
             }}
           >
-            Workflow ({steps.length} step{steps.length !== 1 ? 's' : ''}{isStuckOpen ? ' + city status' : ''})
+            Workflow
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
 
@@ -349,13 +377,12 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                   <span style={{ fontSize: 12, color: '#1a1a1a', fontWeight: 500 }}>Complaint Filed</span>
-                  <span style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 9, color: '#1e3a5f', letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>Filed</span>
+                  {c.created_date ? (
+                    <span style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 9, color: '#888', letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
+                      {formatDate(c.created_date)}
+                    </span>
+                  ) : null}
                 </div>
-                {c.created_date ? (
-                  <div style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 9, color: '#999', marginTop: 2, letterSpacing: '0.04em' }}>
-                    {formatDate(c.created_date)}
-                  </div>
-                ) : null}
               </div>
             </div>
 
@@ -372,19 +399,27 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
                   return ss === 'new' || ss === 'in progress'
                 })))
               const isFuture = isNew && !isCurrent
-              const isLast = idx === steps.length - 1 && !isStuckOpen
+              // "Last" (no connecting line below) only when nothing follows. A
+              // synthetic stuck-open OR closed node follows the final real step,
+              // so the real last step must still draw its connector into it.
+              const isLast = idx === steps.length - 1 && !isStuckOpen && !isClosedComplaint
 
               // Color the dot based on outcome bucket when closed (so "No Cause" reads as gray,
               // "Ticket Issued" as green, etc.). Fall back to status-based color otherwise.
               const outcomeText = (step.outcome ?? '').trim()
               const bucket = classifyOutcome(outcomeText)
-              const dotColor = isClosed
-                ? bucketColor[bucket]
-                : isCanceledStep
-                  ? '#c4c0b4'  // hollow-feeling gray for canceled
-                  : isCurrent
-                    ? '#1e3a5f'
-                    : '#c4c0b4'
+              // "Perform Work" is always amber regardless of status — it's the
+              // stage where city action / owner-relevant work happens.
+              const isPerformWork = String(step.step ?? '').toLowerCase().includes('perform work')
+              const dotColor = isPerformWork
+                ? '#a05a20'
+                : isClosed
+                  ? bucketColor[bucket]
+                  : isCanceledStep
+                    ? '#c4c0b4'
+                    : isCurrent
+                      ? '#1e3a5f'
+                      : '#c4c0b4'
 
               const stepColor = isFuture || isCanceledStep ? '#999' : '#1a1a1a'
               const stepDecoration = isCanceledStep ? 'line-through' : 'none'
@@ -448,7 +483,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
                           flexShrink: 0,
                         }}
                       >
-                        {isCurrent ? 'Current' : step.status ?? ''}
+                        {isClosedComplaint ? '' : isCurrent ? 'Current' : step.status ?? ''}
                       </span>
                     </div>
                     {outcomeText ? (
@@ -512,6 +547,29 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address }: Prop
                   </div>
                   <div style={{ fontSize: 11, color: '#1a1a1a', marginTop: 4, lineHeight: 1.5 }}>
                     Inspector dispositioned this complaint as &quot;{finalOutcome}&quot; but DOB has not closed the parent service request. {daysSinceLastStep} days since the last activity.
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Synthetic Closed node — always shown when the complaint is closed,
+                even if work_order_steps froze mid-workflow (Phase 2 closes status
+                without refreshing WOLI). Dated from closed_date. */}
+            {isClosedComplaint ? (
+              <div style={{ display: 'flex', gap: 10, paddingTop: 0, position: 'relative' }}>
+                <div style={{ width: 14, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 2 }}>
+                  <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#888', border: '2px solid #888', flexShrink: 0 }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#1a1a1a', fontWeight: 500 }}>
+                      {finalOutcome ? `Closed — ${finalOutcome}` : 'Closed'}
+                    </span>
+                    {c.closed_date ? (
+                      <span style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 9, color: '#888', letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
+                        {formatDate(c.closed_date)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>

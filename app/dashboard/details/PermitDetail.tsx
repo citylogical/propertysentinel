@@ -1,6 +1,7 @@
 'use client'
 
-import { StatusPill, formatDate, formatShortDate, monoLabel } from './_shared'
+import Link from 'next/link'
+import { StatusPill, formatShortDate } from './_shared'
 
 export type PermitDetailRecord = {
   permit_number?: string | null
@@ -16,9 +17,11 @@ export type PermitDetailRecord = {
 
 type Props = {
   permit: PermitDetailRecord
+  address?: string | null
+  addressSlug?: string | null
 }
 
-export default function PermitDetail({ permit: pr }: Props) {
+export default function PermitDetail({ permit: pr, address, addressSlug }: Props) {
   const workDesc = (pr.work_description ?? '').trim()
 
   const computeExpiry = (iso: string | null | undefined) => {
@@ -33,24 +36,24 @@ export default function PermitDetail({ permit: pr }: Props) {
   return (
     <>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}
       >
-        <span style={monoLabel}>{formatDate(pr.issue_date)}</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a' }}>
+          {pr.permit_type ?? '—'}
+          {pr.permit_number ? (
+            <span style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 11, color: '#888', fontWeight: 400 }}> · #{pr.permit_number}</span>
+          ) : null}
+        </span>
         <StatusPill kind={expiry?.isExpired ? 'expired' : 'active'} />
       </div>
-      <div style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', marginBottom: 4 }}>
-        {pr.permit_type ?? '—'}
-      </div>
-      {pr.permit_number ? (
-        <div
-          style={{
-            fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-            fontSize: 11,
-            color: '#888',
-            marginBottom: 10,
-          }}
-        >
-          #{pr.permit_number}
+      {address ? (
+        <div style={{ fontSize: 12, color: '#5a5044', marginBottom: 6 }}>
+          <span style={{ color: '#5a7898' }}>Permit address: </span>
+          {addressSlug ? (
+            <Link href={`/address/${encodeURIComponent(addressSlug)}?building=true`} style={{ color: '#1e3a5f', fontWeight: 600, textDecoration: 'none', borderBottom: '1px dotted #c4c0b4' }}>{address}</Link>
+          ) : (
+            <span style={{ color: '#1a1a1a', fontWeight: 600 }}>{address}</span>
+          )}
         </div>
       ) : null}
       <div
@@ -91,17 +94,10 @@ export default function PermitDetail({ permit: pr }: Props) {
         ) : null}
         {pr.contact_1_name ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8, marginTop: 4 }}>
-            <span
-              style={{
-                color: '#5a7898',
-                flexShrink: 0,
-                textTransform: 'uppercase',
-                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                fontSize: 10,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {pr.contact_1_type ?? 'Contact'}
+            <span style={{ color: '#5a7898', flexShrink: 0, fontSize: 12 }}>
+              {pr.contact_1_type
+                ? pr.contact_1_type.charAt(0).toUpperCase() + pr.contact_1_type.slice(1).toLowerCase()
+                : 'Contact'}
             </span>
             <span style={{ color: '#1a1a1a', fontWeight: 500, textAlign: 'right' }}>
               {pr.contact_1_name}

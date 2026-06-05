@@ -14,6 +14,9 @@ type ActivityRow = {
   category: Category
   id: string
   date: string
+  ingest_date: string | null
+  open_date: string | null
+  last_modified: string | null
   display_type: string
   status: 'open' | 'closed' | 'active' | 'expired' | null
   property_id: string
@@ -31,11 +34,48 @@ type Props = {
 
 const PAGE_SIZE = 50
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
+// Two distinct date formatters, because complaints_311 / violations store
+// Chicago-local time WITHOUT a tz marker (Supabase appends +00:00, making it
+// look UTC), while created_at is genuinely UTC. Converting the former with a
+// timeZone option double-shifts it -6h — that was the original display bug.
+
+// For TRUE UTC timestamps (created_at / ingest). Converts UTC → Central,
+// shows date + time.
+function formatIngestCT(dateStr: string | null): string {
+  if (!dateStr) return '—'
   const d = new Date(dateStr)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
+// For Chicago-local-stored-as-fake-UTC timestamps (created_date,
+// last_modified_date, closed_date, violation_last_modified_date). Slice to the
+// first 19 chars (YYYY-MM-DDTHH:MM:SS), drop the bogus offset, and display the
+// wall-clock value AS-IS — no tz conversion. Handles DATE-only values
+// (violation_date / issue_date, length 10) by showing date with no time.
+function formatLocalAsIs(dateStr: string | null): string {
+  if (!dateStr) return '—'
+  const s = String(dateStr)
+  const dateOnly = s.length <= 10
+  const sliced = s.slice(0, 19).replace('T', ' ')
+  // Parse the sliced wall-clock string into parts manually so no tz logic runs.
+  const m = sliced.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s(\d{2}):(\d{2}))?/)
+  if (!m) return '—'
+  const [, y, mo, dd, hh, mi] = m
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const monthLabel = months[parseInt(mo, 10) - 1] ?? mo
+  const dayNum = parseInt(dd, 10)
+  const base = `${monthLabel} ${dayNum}, ${y}`
+  if (dateOnly || hh == null) return base
+  let h = parseInt(hh, 10)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12
+  if (h === 0) h = 12
+  return `${base} ${h}:${mi} ${ampm}`
 }
 
 function categoryLabel(cat: Category): string {
@@ -129,12 +169,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
 
   const selectedRow = rows.find((r) => rowKey(r) === selectedKey) ?? null
 
-  const headerTitle =
-    selectedRow?.category === 'violation'
-      ? 'Violation details'
-      : selectedRow?.category === 'permit'
-        ? 'Permit details'
-        : 'Complaint details'
+  const headerTitle = 'Activity Details'
 
   const panelPalette =
     selectedRow?.category === 'violation'
@@ -164,17 +199,6 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
         }}
       >
         <div>
-          <div
-            style={{
-              fontFamily: 'Merriweather, Georgia, serif',
-              fontSize: 18,
-              fontWeight: 600,
-              color: '#1a1a1a',
-              lineHeight: 1.2,
-            }}
-          >
-            Activity Feed
-          </div>
           <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
             {loading
               ? 'Loading…'
@@ -208,7 +232,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 360px',
+          gridTemplateColumns: 'minmax(620px, 1fr) 540px',
           gap: 16,
           alignItems: 'start',
         }}
@@ -225,7 +249,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '110px minmax(0, 1.6fr) 76px minmax(0, 2fr) 70px',
+              gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
               gap: 12,
               padding: '10px 14px 8px',
               borderBottom: '1px solid #f0ede6',
@@ -247,6 +271,8 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               <option value="6mo">Last 6 months</option>
               <option value="12mo">Last 12 months</option>
             </select>
+
+            <div />
 
             <input
               type="search"
@@ -297,10 +323,12 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               aria-label="Building filter"
               title={category !== 'all' && category !== '311' ? 'Applies to 311 complaints only' : undefined}
             >
-              <option value="building">Building only</option>
-              <option value="other">Other only</option>
-              <option value="all">All types</option>
+              <option value="building">Owner-related</option>
+              <option value="other">Other</option>
+              <option value="all">All</option>
             </select>
+
+            <div />
 
             <select
               value={statusFilter}
@@ -321,7 +349,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '110px minmax(0, 1.6fr) 76px minmax(0, 2fr) 70px',
+              gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
               gap: 12,
               padding: '8px 14px',
               borderBottom: '2px solid #e5e1d6',
@@ -333,10 +361,12 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               textTransform: 'uppercase',
             }}
           >
-            <span>Date</span>
+            <span>Ingest Date</span>
+            <span>Open Date</span>
             <span>Address</span>
             <span>Category</span>
             <span>Type</span>
+            <span>Last Modified</span>
             <span style={{ textAlign: 'right' }}>Status</span>
           </div>
 
@@ -386,7 +416,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                   }}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '110px minmax(0, 1.6fr) 76px minmax(0, 2fr) 70px',
+                    gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
                     gap: 12,
                     padding: '10px 14px',
                     borderBottom: '1px solid #f0ede6',
@@ -416,7 +446,16 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                       color: '#888',
                     }}
                   >
-                    {formatDate(row.date)}
+                    {formatIngestCT(row.ingest_date)}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      color: '#888',
+                    }}
+                  >
+                    {formatLocalAsIs(row.open_date)}
                   </span>
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {propertyHref ? (
@@ -462,6 +501,30 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                     }}
                   >
                     {row.display_type}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      color: '#888',
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {(() => {
+                      // Hide last-modified when it's the same wall-clock instant as
+                      // open date (no real change to report). Compare sliced raw
+                      // strings since both are Chicago-local-as-fake-UTC.
+                      const lm = row.last_modified
+                      const od = row.open_date
+                      // Compare at minute precision (16 chars: YYYY-MM-DDTHH:MM) to
+                      // match what's displayed — created_date and last_modified_date
+                      // can differ by seconds yet render as the same minute.
+                      if (lm && od && String(lm).slice(0, 16) === String(od).slice(0, 16)) return '—'
+                      return formatLocalAsIs(lm)
+                    })()}
                   </span>
                   <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     {sk ? <StatusPill kind={sk} /> : null}
@@ -544,61 +607,54 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
             <div style={{ padding: '20px 24px' }}>
               <div
                 style={{
-                  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                  fontSize: 11,
-                  letterSpacing: '0.08em',
-                  color: panelPalette.headerText,
-                  fontWeight: 500,
-                  textTransform: 'uppercase',
-                  background: panelPalette.headerBg,
-                  padding: '8px 12px',
-                  borderRadius: 4,
-                  marginBottom: 12,
+                  fontFamily: 'Merriweather, Georgia, serif',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: '#1a1a1a',
+                  lineHeight: 1.2,
+                  marginBottom: 10,
                 }}
               >
                 {headerTitle}
               </div>
-              {selectedRow.property_slug ? (
-                <Link
-                  href={`/address/${encodeURIComponent(selectedRow.property_slug)}?building=true`}
-                  style={{
-                    display: 'block',
-                    fontSize: 12,
-                    color: '#5a7898',
-                    textDecoration: 'none',
-                    marginBottom: 14,
-                    paddingBottom: 10,
-                    borderBottom: '1px solid #f0ede6',
-                  }}
-                >
-                  {selectedRow.property_address}
-                  {selectedRow.community_area ? (
-                    <span style={{ color: '#999', marginLeft: 6 }}>{selectedRow.community_area}</span>
-                  ) : null}
-                  <span style={{ marginLeft: 6, opacity: 0.6 }}>→</span>
-                </Link>
-              ) : (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: '#5a7898',
-                    marginBottom: 14,
-                    paddingBottom: 10,
-                    borderBottom: '1px solid #f0ede6',
-                  }}
-                >
-                  {selectedRow.property_address}
-                  {selectedRow.community_area ? (
-                    <span style={{ color: '#999', marginLeft: 6 }}>{selectedRow.community_area}</span>
-                  ) : null}
-                </div>
-              )}
+              {selectedRow ? (
+                <>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      letterSpacing: '0.04em',
+                      color: '#888',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <span style={{ color: categoryColor(selectedRow.category), fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      {selectedRow.category === 'complaint' ? '311 Complaint' : selectedRow.category === 'violation' ? 'Violation' : 'Permit'}
+                    </span>
+                    {selectedRow.open_date ? <span> · {formatLocalAsIs(selectedRow.open_date)}</span> : null}
+                  </div>
+                  <div style={{ borderTop: '1px solid #f0ede6', marginBottom: 12 }} />
+                </>
+              ) : null}
               {selectedRow.category === 'complaint' && selectedRow.complaint ? (
-                <ComplaintDetail complaint={selectedRow.complaint} isAdmin={isAdmin} />
+                <ComplaintDetail
+                  complaint={selectedRow.complaint}
+                  isAdmin={isAdmin}
+                  address={(selectedRow.complaint as { address?: string | null }).address ?? null}
+                  addressSlug={selectedRow.property_slug}
+                />
               ) : selectedRow.category === 'violation' && selectedRow.violations ? (
-                <ViolationDetail violations={selectedRow.violations} />
+                <ViolationDetail
+                  violations={selectedRow.violations}
+                  address={(selectedRow.violations[0] as { address?: string | null })?.address ?? null}
+                  addressSlug={selectedRow.property_slug}
+                />
               ) : selectedRow.category === 'permit' && selectedRow.permit ? (
-                <PermitDetail permit={selectedRow.permit} />
+                <PermitDetail
+                  permit={selectedRow.permit}
+                  address={(selectedRow.permit as { address?: string | null }).address ?? null}
+                  addressSlug={selectedRow.property_slug}
+                />
               ) : (
                 <div style={{ fontSize: 13, color: '#8a94a0', fontStyle: 'italic' }}>
                   No details available.

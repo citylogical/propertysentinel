@@ -1,6 +1,7 @@
 'use client'
 
-import { ClosedPill, StatusPill, formatDate, monoLabel } from './_shared'
+import Link from 'next/link'
+import { ClosedPill, StatusPill } from './_shared'
 
 export type ViolationDetailRecord = {
   violation_code?: string | null
@@ -19,9 +20,11 @@ export type ViolationDetailRecord = {
 
 type Props = {
   violations: ViolationDetailRecord[]
+  address?: string | null
+  addressSlug?: string | null
 }
 
-export default function ViolationDetail({ violations: vols }: Props) {
+export default function ViolationDetail({ violations: vols, address, addressSlug }: Props) {
   if (vols.length === 0) {
     return <div style={{ fontSize: 13, color: '#888', fontStyle: 'italic' }}>No description available</div>
   }
@@ -44,14 +47,12 @@ export default function ViolationDetail({ violations: vols }: Props) {
   return (
     <>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}
       >
-        <span style={monoLabel}>{formatDate(first.violation_date)}</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a' }}>
+          {category}{bureau ? ` · ${bureau}` : ''}
+        </span>
         {hasOpen ? <StatusPill kind="open" /> : <ClosedPill closedDate={closedDate} />}
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', marginBottom: 4 }}>
-        {category}
-        {bureau ? ` · ${bureau}` : ''}
       </div>
       {hasStopWork ? (
         <div
@@ -82,6 +83,16 @@ export default function ViolationDetail({ violations: vols }: Props) {
       >
         {inspNum ? `Inspection #${inspNum}` : '—'} · {vols.length} violation{vols.length !== 1 ? 's' : ''}
       </div>
+      {address ? (
+        <div style={{ fontSize: 12, color: '#5a5044', marginBottom: 8 }}>
+          <span style={{ color: '#5a7898' }}>Violation address: </span>
+          {addressSlug ? (
+            <Link href={`/address/${encodeURIComponent(addressSlug)}?building=true`} style={{ color: '#1e3a5f', fontWeight: 600, textDecoration: 'none', borderBottom: '1px dotted #c4c0b4' }}>{address}</Link>
+          ) : (
+            <span style={{ color: '#1a1a1a', fontWeight: 600 }}>{address}</span>
+          )}
+        </div>
+      ) : null}
       {ordinance ? (
         <div style={{ fontSize: 11, color: '#5a7898', lineHeight: 1.4, marginBottom: 12 }}>{ordinance}</div>
       ) : null}

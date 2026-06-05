@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
+import { OWNER_RELEVANT_CODES } from '@/lib/sr-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 function parseOptInt(v: unknown): number | null {
@@ -242,6 +243,30 @@ export async function POST(request: Request) {
   }
 
   if (insertedRow?.id) {
+    // Seed the user's SR preferences on their FIRST property add. Presence of
+    // a row in user_sr_preferences = code enabled; the owner-relevant set in
+    // sr-codes.ts is the seed default (not the live filter — the seam reads
+    // the table after this). Gated on "user has zero prefs rows" so we don't
+    // re-seed codes the user later turned off, and don't re-run 29 inserts on
+    // every subsequent save. Idempotent via on_conflict regardless. Non-fatal.
+    try {
+      const { count: existingPrefsCount } = await supabase
+        .from('user_sr_preferences')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+      if ((existingPrefsCount ?? 0) === 0) {
+        const seedRows = Array.from(OWNER_RELEVANT_CODES).map((code) => ({
+          user_id: userId,
+          sr_short_code: code,
+        }))
+        await supabase
+          .from('user_sr_preferences')
+          .upsert(seedRows, { onConflict: 'user_id,sr_short_code', ignoreDuplicates: true })
+      }
+    } catch (seedErr) {
+      console.error('SR preference seed failed (non-fatal):', seedErr)
+    }
+
     try {
       const activity = await fetchPortfolioActivity(
         supabase,

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { addressToSlug } from '@/lib/formatAddress'
-import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
+import { getEnabledCodes } from '@/lib/sr-preferences'
 
 // Street type tokens used to identify the end of an address proper (everything
 // after one of these is treated as a unit suffix and stripped for matching).
@@ -106,6 +106,7 @@ export const maxDuration = 30
 
 const COMPLAINT_FIELDS =
   'sr_number, sr_short_code, sr_type, status, created_date, closed_date, ' +
+  'created_at, last_modified_date, ' +
   'address, address_normalized, ' +
   'standard_description, complaint_description, complainant_type, unit_number, ' +
   'danger_reported, owner_notified, owner_occupied, ' +
@@ -117,17 +118,17 @@ const COMPLAINT_FIELDS =
 const VIOLATION_FIELDS =
   'violation_id, violation_code, violation_description, violation_inspector_comments, ' +
   'violation_ordinance, violation_status, inspection_status, ' +
-  'violation_date, violation_last_modified_date, ' +
+  'violation_date, violation_last_modified_date, created_at, ' +
   'inspection_category, department_bureau, inspection_number, ' +
   'is_stop_work_order, address, address_normalized'
 
 const PERMIT_FIELDS =
   'permit_number, permit_type, permit_status, work_description, ' +
-  'issue_date, reported_cost, total_fee, ' +
+  'issue_date, reported_cost, total_fee, created_at, ' +
   'contact_1_name, contact_1_type, address, address_normalized'
 
-// Default-visible 311 SR codes — same set as lib/portfolio-stats.ts (open_building_complaints / total_building_complaints_12mo).
-const BUILDING_SR_CODES = Array.from(DEFAULT_VISIBLE_CODES)
+// Building SR codes are now per-user (read from user_sr_preferences via the
+// seam inside GET) — see BUILDING_SR_CODES derivation in the handler.
 
 type ComplaintRow = Record<string, unknown> & {
   sr_number?: string | null
@@ -159,7 +160,10 @@ type PermitRow = Record<string, unknown> & {
 type ActivityRow = {
   category: 'complaint' | 'violation' | 'permit'
   id: string
-  date: string // ISO date string used for sorting
+  date: string // sort key — ingest timestamp (created_at)
+  ingest_date: string | null // created_at (true UTC, convert to CT for display)
+  open_date: string | null // city event date (Chicago-local-as-fake-UTC, or DATE-only)
+  last_modified: string | null // 311: closed_date||last_modified_date; violation: violation_last_modified_date; permit: null
   display_type: string // human-readable type label
   status: 'open' | 'closed' | 'active' | 'expired' | null
   property_id: string
@@ -205,6 +209,13 @@ export async function GET(request: Request) {
   const searchQuery = (searchParams.get('search') ?? '').trim()
 
   const supabase = getSupabaseAdmin()
+
+  // Per-user enabled SR codes from user_sr_preferences (the seam). Replaces the
+  // legacy DEFAULT_VISIBLE_CODES module constant. userId is the Clerk ID, which
+  // is what the prefs table is keyed on. The "building" filter scopes to this
+  // set; "other" is its complement.
+  const enabledCodes = await getEnabledCodes(supabase, userId)
+  const BUILDING_SR_CODES = Array.from(enabledCodes)
 
   // Fetch portfolio + approved user_building_ranges in parallel. The ranges
   // are joined in-memory to derive nav slugs that decode to addresses
@@ -399,10 +410,17 @@ export async function GET(request: Request) {
       if (!meta) return null
       const status = String(c.status ?? '').toLowerCase()
       const normalizedStatus: ActivityRow['status'] = status === 'open' ? 'open' : 'closed'
+      const cIngest = (c as { created_at?: string | null }).created_at ?? null
+      const cClosed = (c as { closed_date?: string | null }).closed_date ?? null
+      const cLastMod = (c as { last_modified_date?: string | null }).last_modified_date ?? null
       return {
         category: 'complaint' as const,
         id: c.sr_number ? String(c.sr_number) : `complaint-${addrKey}-${c.created_date}`,
-        date: String(c.created_date ?? ''),
+        date: String(cIngest ?? c.created_date ?? ''),
+        ingest_date: cIngest,
+        open_date: (c.created_date ?? null) as string | null,
+        // Hybrid: closed_date when the complaint is closed, else city's last_modified_date.
+        last_modified: normalizedStatus === 'closed' ? (cClosed ?? cLastMod) : cLastMod,
         display_type: c.sr_type ? String(c.sr_type) : 'Complaint',
         status: normalizedStatus,
         property_id: meta.id,
@@ -447,10 +465,15 @@ export async function GET(request: Request) {
       const bureau = g.first.department_bureau || ''
       const countSuffix = g.sources.length > 1 ? ` · ${g.sources.length} violations` : ''
       const label = bureau ? `${category} · ${bureau}${countSuffix}` : `${category}${countSuffix}`
+      const vIngest = (g.first as { created_at?: string | null }).created_at ?? null
+      const vLastMod = (g.first as { violation_last_modified_date?: string | null }).violation_last_modified_date ?? null
       return {
         category: 'violation' as const,
         id: String(g.first.inspection_number ?? g.first.violation_id ?? `violation-${addrKey}-${g.first.violation_date}`),
-        date: String(g.first.violation_date ?? ''),
+        date: String(vIngest ?? g.first.violation_date ?? ''),
+        ingest_date: vIngest,
+        open_date: (g.first.violation_date ?? null) as string | null,
+        last_modified: vLastMod,
         display_type: label,
         status: g.isOpen ? 'open' : 'closed',
         property_id: meta.id,
@@ -475,10 +498,14 @@ export async function GET(request: Request) {
       const label = `${p.permit_type ?? 'Permit'}${cost}`
       // Permit "active" vs "expired" is a function of issue_date age (540d window).
       // Keep it null in the feed; the detail panel computes it precisely.
+      const pIngest = (p as { created_at?: string | null }).created_at ?? null
       return {
         category: 'permit' as const,
         id: p.permit_number ? String(p.permit_number) : `permit-${addrKey}-${p.issue_date}`,
-        date: String(p.issue_date ?? ''),
+        date: String(pIngest ?? p.issue_date ?? ''),
+        ingest_date: pIngest,
+        open_date: (p.issue_date ?? null) as string | null,
+        last_modified: null,
         display_type: label,
         status: null,
         property_id: meta.id,

@@ -3,7 +3,7 @@ import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
 import { addressToSlug } from '@/lib/formatAddress'
-import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
+import { getEnabledCodesForUsers } from '@/lib/sr-preferences'
 
 // Street type tokens used to identify the end of an address proper (everything
 // after one of these is treated as a unit suffix and stripped for matching).
@@ -219,6 +219,29 @@ export async function GET(request: Request) {
 
   const { data: enabledSubs } = await enabledSubsQuery
 
+  // Resolve subscriber_id → clerk_id once for all enabled subscribers, then
+  // batch-load every user's SR preferences in a single round-trip. The loop
+  // below slices per-user from these maps instead of querying prefs per
+  // subscriber (the N+1 the seam was designed to avoid). user_sr_preferences
+  // is keyed on clerk_id (matches portfolio_properties.user_id).
+  const subscriberIds = ((enabledSubs ?? []) as Array<{ subscriber_id: string }>).map(
+    (s) => s.subscriber_id
+  )
+  const clerkIdBySubscriber = new Map<string, string>()
+  if (subscriberIds.length > 0) {
+    const { data: subRows } = await supabase
+      .from('subscribers')
+      .select('id, clerk_id')
+      .in('id', subscriberIds)
+    for (const row of (subRows ?? []) as Array<{ id: string; clerk_id: string | null }>) {
+      if (row.clerk_id) clerkIdBySubscriber.set(row.id, row.clerk_id)
+    }
+  }
+  const enabledCodesByClerkId = await getEnabledCodesForUsers(
+    supabase,
+    Array.from(clerkIdBySubscriber.values())
+  )
+
   const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
 
   for (const setting of (enabledSubs ?? []) as unknown as Array<{
@@ -286,6 +309,11 @@ export async function GET(request: Request) {
         .maybeSingle()
       if (!subscriber) continue
       const { clerk_id, organization } = subscriber as { clerk_id: string; organization: string | null }
+
+      // Per-subscriber enabled SR codes from the batch pre-load. Empty set =
+      // nothing enabled (un-seeded or read failure) → no complaints surface,
+      // which is the safe-quiet behavior. Seeded users always have a full set.
+      const enabledCodes = enabledCodesByClerkId.get(clerk_id) ?? new Set<string>()
 
       const { data: recipients } = await supabase
         .from('alert_recipients')
@@ -373,7 +401,7 @@ export async function GET(request: Request) {
           .from('complaints_311')
           .select('sr_number, sr_type, sr_short_code, created_date, created_at, address_normalized, standard_description, complaint_description, concern_category, problem_category, status, work_order_status, final_outcome, workflow_step')
           .in('address_normalized', allAddresses)
-          .in('sr_short_code', Array.from(DEFAULT_VISIBLE_CODES))
+          .in('sr_short_code', Array.from(enabledCodes))
           .gte('created_at', startIso)
           .lt('created_at', endIso)
           .or('duplicate.is.null,duplicate.is.false')
@@ -445,6 +473,12 @@ export async function GET(request: Request) {
             : (c.workflow_step?.trim() || null)
           const woliIsClosed = isWorkOrderClosed && Boolean(outcome)
 
+          // Backdated flag now applies to complaints too: created_date (city
+          // record date) older than the digest's "yesterday" → the row is here
+          // because it just landed in our ingest pipe, not because it happened
+          // yesterday. Compare the YYYY-MM-DD prefix, same as violations/permits.
+          const complaintBackdated = c.created_date.slice(0, 10) !== activityDate
+
           events.push({
             property_display: meta.display,
             property_id: meta.id,
@@ -456,6 +490,7 @@ export async function GET(request: Request) {
             woli_stage: woliStage,
             woli_is_closed: woliIsClosed,
             date: c.created_date,
+            is_backdated: complaintBackdated,
           })
         }
       }
@@ -1057,7 +1092,7 @@ function renderEmailHtml(orgName: string, events: DigestEvent[], digestDate: str
     ? `
           <div style="padding-top: 14px; margin-top: 6px;">
             <div style="font-size: 11px; color: #888; line-height: 1.5; font-style: italic;">
-              *Reflects the city&rsquo;s official record; violations and permits are typically published to Chicago&rsquo;s open data feed 3-7 days after the recorded date.
+              *Reflects the city&rsquo;s official record &mdash; violations and permits are typically published to Chicago&rsquo;s open data feed on a 2&ndash;7 day lag; similar lags are atypical for 311 complaints, although they do occur.
             </div>
           </div>`
     : ''

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { DEFAULT_VISIBLE_CODES } from '@/lib/sr-codes'
+import { getEnabledCodes } from '@/lib/sr-preferences'
 import type { InsightsData, WhatChangedEvent, HotProperty } from '@/app/dashboard/insights/types'
 
 export const maxDuration = 60
@@ -12,31 +13,12 @@ export const runtime = 'nodejs'
 // Building + Property = DEFAULT_VISIBLE_CODES from lib/sr-codes (the 49
 // codes marked defaultVisible: true).
 //
-// Actionable scope: enrichable building/property codes + WCA3 + PETCO.
-// Verified against lib/sr-codes.ts March 2026.
-//
-// Inclusion criteria:
-//   1. enrichable === true in sr-codes.ts (Worker C tracks workflow state), OR
-//   2. WCA3 / PETCO — actionable owner-relevant codes that aren't enrichable
-//      (default to Assign Inspector bead when open).
-//
-// Exclusions:
-//   - Business category enrichables (HFB, RBL, BAG, BAM, CSF, CST, CAFE,
-//     CORNVEND, FPC, ODM, MWC) — restaurant/retail complaints, not
-//     property-owner concerns.
-//   - WCA2 — city test-kit shortage means it dominates raw counts without
-//     representing real actionable work.
-const ACTIONABLE_CODES = new Set([
-  // Building category, enrichable (15)
-  'BBA', 'BBC', 'BBD', 'BBK', 'BPI', 'FAC', 'HDF', 'SCB', 'SHVR',
-  'NAC', 'AAF', 'WM3', 'WBJ', 'WBK', 'WCA',
-  // Other category, enrichable + property-relevant (2)
-  'EAF', 'SGA',
-  // Street infrastructure, enrichable + property-adjacent (3)
-  'AAD', 'AAI', 'SEC',
-  // Non-enrichable but actionable (2)
-  'WCA3', 'PETCO',
-])
+// ACTIONABLE scope is now per-user: the codes this user has enabled in
+// user_sr_preferences (the seam), resolved inside GET as `ACTIONABLE_CODES`.
+// This widens the prior curated 22-code list to the user's full owner-relevant
+// set (~28 codes) — weed/recycling/dumping/sidewalk codes now count as
+// actionable. WCA2 stays excluded via EXCLUDED_FROM_AGING on the aging/by-type
+// slides (and isn't owner-relevant, so it's never in the seam set anyway).
 
 // SR codes excluded from the "Complaints by SR type" and aging slides.
 const EXCLUDED_FROM_AGING = new Set(['WCA2'])
@@ -155,6 +137,15 @@ export async function GET() {
   if (!subscriber || subscriber.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+
+  // Per-user enabled SR codes (the seam) — the ACTIONABLE denominator for the
+  // KPI strip, beads, and aging. userId is the Clerk ID the prefs table is
+  // keyed on. Local const keeps the six downstream `ACTIONABLE_CODES.has(...)`
+  // call sites unchanged. building_property scope (below) reads the same set.
+  const enabledCodesRaw = await getEnabledCodes(supabase, userId)
+  const ACTIONABLE_CODES = new Set(
+    Array.from(enabledCodesRaw).filter((c) => !EXCLUDED_FROM_AGING.has(c))
+  )
 
   // ─── Portfolio properties ────────────────────────────────────────────
   const { data: properties, error: propsErr } = await supabase
@@ -369,7 +360,7 @@ export async function GET() {
   // ─── Scope counts ────────────────────────────────────────────────────
   const allOpen = openComplaints.length
   const buildingProperty = openComplaints.filter((c) =>
-    DEFAULT_VISIBLE_CODES.has((c.sr_short_code ?? '').toUpperCase())
+    ACTIONABLE_CODES.has((c.sr_short_code ?? '').toUpperCase())
   ).length
   const actionable = openComplaints.filter((c) =>
     ACTIONABLE_CODES.has((c.sr_short_code ?? '').toUpperCase())
