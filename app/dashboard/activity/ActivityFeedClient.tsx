@@ -130,16 +130,26 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
   const [searchInput, setSearchInput] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [isMobile, setIsMobile] = useState(false)
+  const [isNarrow, setIsNarrow] = useState(false)
 
-  // Track viewport width to switch the table to a compact 3-col layout and
-  // the detail panel to a full-screen modal on narrow screens. matchMedia is
-  // SSR-safe behind the effect (window only touched after mount).
+  // Three responsive tiers:
+  //   mobile  (≤640): compact 3-col rows + modal detail, no filters
+  //   narrow  (≤768): 4-col rows (open/address/category/status), no filters, side detail
+  //   full    (>768): 7-col rows + filters + side detail
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)')
-    const update = () => setIsMobile(mq.matches)
+    const mqMobile = window.matchMedia('(max-width: 640px)')
+    const mqNarrow = window.matchMedia('(max-width: 1024px)')
+    const update = () => {
+      setIsMobile(mqMobile.matches)
+      setIsNarrow(mqNarrow.matches)
+    }
     update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
+    mqMobile.addEventListener('change', update)
+    mqNarrow.addEventListener('change', update)
+    return () => {
+      mqMobile.removeEventListener('change', update)
+      mqNarrow.removeEventListener('change', update)
+    }
   }, [])
 
   // Debounce search input → committed query (300ms)
@@ -176,10 +186,12 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           setRows(data.items ?? [])
           setTotal(data.total ?? 0)
           setHasProperties(data.has_properties ?? true)
+          // Detail is always a modal now — never auto-open on load. Selection
+          // is cleared on each fetch; the user taps a row to open the modal.
           setSelectedKey((prev) => {
             const items = data.items ?? []
             if (prev && items.some((r) => rowKey(r) === prev)) return prev
-            return items[0] ? rowKey(items[0]) : null
+            return null
           })
         }
       })
@@ -255,7 +267,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'minmax(620px, 1fr) 540px',
+          gridTemplateColumns: '1fr',
           gap: 16,
           alignItems: 'start',
         }}
@@ -268,8 +280,8 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           minWidth: 0,
           overflow: 'hidden',
         }}>
-          {/* Filter toolbar — desktop only; hidden on mobile (list uses defaults) */}
-          {!isMobile ? (
+          {/* Filter toolbar — full-width desktop only; hidden on narrow + mobile */}
+          {!isNarrow ? (
           <div
             style={{
               display: 'grid',
@@ -370,8 +382,29 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           </div>
           ) : null}
 
-          {/* Column headers — desktop only; mobile rows are self-describing */}
-          {!isMobile ? (
+          {/* Column headers: mobile = none; narrow = 4-col; full = 7-col */}
+          {isMobile ? null : isNarrow ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '130px minmax(0, 1fr) 64px 70px',
+                gap: 12,
+                padding: '8px 14px',
+                borderBottom: '2px solid #e5e1d6',
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                color: '#999',
+                textTransform: 'uppercase',
+              }}
+            >
+              <span>Open Date</span>
+              <span>Address</span>
+              <span>Category</span>
+              <span style={{ textAlign: 'right' }}>Status</span>
+            </div>
+          ) : (
             <div
               style={{
                 display: 'grid',
@@ -395,7 +428,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               <span>Last Modified</span>
               <span style={{ textAlign: 'right' }}>Status</span>
             </div>
-          ) : null}
+          )}
 
           {loading && rows.length === 0 ? (
             <div style={{ padding: '32px 16px', textAlign: 'center', color: '#8a94a0', fontSize: 13 }}>
@@ -445,7 +478,9 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                     display: 'grid',
                     gridTemplateColumns: isMobile
                       ? '64px minmax(0, 1fr) auto'
-                      : '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
+                      : isNarrow
+                        ? '130px minmax(0, 1fr) 64px 70px'
+                        : '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
                     gap: isMobile ? 10 : 12,
                     padding: isMobile ? '12px 14px' : '10px 14px',
                     borderBottom: '1px solid #f0ede6',
@@ -503,6 +538,49 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                         }}
                       >
                         {categoryLabel(row.category)}
+                      </span>
+                    </>
+                  ) : isNarrow ? (
+                    <>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {formatLocalAsIs(row.open_date)}
+                      </span>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {propertyHref ? (
+                          <Link
+                            href={propertyHref}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ color: '#1a1a1a', fontWeight: 500, textDecoration: 'none', borderBottom: '1px dotted #c4c0b4' }}
+                          >
+                            {row.property_address}
+                          </Link>
+                        ) : (
+                          <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{row.property_address}</span>
+                        )}
+                        {row.community_area ? (
+                          <span style={{ color: '#999', fontWeight: 400, marginLeft: 6, fontSize: 12 }}>{row.community_area}</span>
+                        ) : null}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: '0.06em',
+                          color: categoryColor(row.category),
+                        }}
+                      >
+                        {categoryLabel(row.category)}
+                      </span>
+                      <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        {sk ? <StatusPill kind={sk} /> : null}
                       </span>
                     </>
                   ) : (
@@ -655,96 +733,10 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           ) : null}
         </div>
 
-        {/* ── Detail pane (desktop column only; mobile uses the modal below) ── */}
-        {!isMobile ? (
-        <div
-          style={{
-            position: 'sticky',
-            top: 70,
-            background: '#fff',
-            borderRadius: 'var(--card-radius)',
-            boxShadow: 'var(--card-shadow)',
-            minHeight: 200,
-            overflow: 'hidden',
-          }}
-        >
-          {selectedRow ? (
-            <div style={{ padding: '20px 24px' }}>
-              <div
-                style={{
-                  fontFamily: 'Merriweather, Georgia, serif',
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: '#1a1a1a',
-                  lineHeight: 1.2,
-                  marginBottom: 10,
-                }}
-              >
-                {headerTitle}
-              </div>
-              {selectedRow ? (
-                <>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                      fontSize: 11,
-                      letterSpacing: '0.04em',
-                      color: '#888',
-                      marginBottom: 10,
-                    }}
-                  >
-                    <span style={{ color: categoryColor(selectedRow.category), fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      {selectedRow.category === 'complaint' ? '311 Complaint' : selectedRow.category === 'violation' ? 'Violation' : 'Permit'}
-                    </span>
-                    {selectedRow.open_date ? <span> · {formatLocalAsIs(selectedRow.open_date)}</span> : null}
-                  </div>
-                  <div style={{ borderTop: '1px solid #f0ede6', marginBottom: 12 }} />
-                </>
-              ) : null}
-              {selectedRow.category === 'complaint' && selectedRow.complaint ? (
-                <ComplaintDetail
-                  complaint={selectedRow.complaint}
-                  isAdmin={isAdmin}
-                  address={(selectedRow.complaint as { address?: string | null }).address ?? null}
-                  addressSlug={selectedRow.property_slug}
-                />
-              ) : selectedRow.category === 'violation' && selectedRow.violations ? (
-                <ViolationDetail
-                  violations={selectedRow.violations}
-                  address={(selectedRow.violations[0] as { address?: string | null })?.address ?? null}
-                  addressSlug={selectedRow.property_slug}
-                />
-              ) : selectedRow.category === 'permit' && selectedRow.permit ? (
-                <PermitDetail
-                  permit={selectedRow.permit}
-                  address={(selectedRow.permit as { address?: string | null }).address ?? null}
-                  addressSlug={selectedRow.property_slug}
-                />
-              ) : (
-                <div style={{ fontSize: 13, color: '#8a94a0', fontStyle: 'italic' }}>
-                  No details available.
-                </div>
-              )}
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: '40px 24px',
-                textAlign: 'center',
-                color: '#8a94a0',
-                fontSize: 13,
-                lineHeight: 1.6,
-              }}
-            >
-              Select an item to see details.
-            </div>
-          )}
-        </div>
-        ) : null}
       </div>
 
-      {/* ── Mobile detail modal ─────────────────────────────────────── */}
-      {isMobile && selectedRow
+      {/* ── Detail modal (all screen sizes) ─────────────────────────── */}
+      {selectedRow
         ? createPortal(
             <div
               role="dialog"
