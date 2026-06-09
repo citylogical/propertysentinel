@@ -170,8 +170,8 @@ const statBlockStyle: CSSProperties = {
 }
 
 const statValueStyle: CSSProperties = {
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 20,
+  fontFamily: 'var(--sans, "DM Sans", system-ui, sans-serif)',
+  fontSize: 16,
   fontWeight: 600,
   color: '#0f2744',
   lineHeight: 1.1,

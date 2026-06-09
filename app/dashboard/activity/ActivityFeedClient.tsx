@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import ComplaintDetail, { type ComplaintDetailRecord } from '../details/ComplaintDetail'
 import ViolationDetail, { type ViolationDetailRecord } from '../details/ViolationDetail'
 import PermitDetail, { type PermitDetailRecord } from '../details/PermitDetail'
@@ -78,6 +79,16 @@ function formatLocalAsIs(dateStr: string | null): string {
   return `${base} ${h}:${mi} ${ampm}`
 }
 
+// Compact M/D/YY for the mobile row. Uses open_date (fake-UTC wall clock) —
+// slice and parse manually, no tz conversion (same rule as formatLocalAsIs).
+function formatShortMobile(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const m = String(dateStr).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return ''
+  const [, y, mo, dd] = m
+  return `${parseInt(mo, 10)}/${parseInt(dd, 10)}/${y.slice(2)}`
+}
+
 function categoryLabel(cat: Category): string {
   return cat === 'violation' ? 'VIOL' : cat === 'permit' ? 'PERMIT' : '311'
 }
@@ -118,6 +129,18 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
   const [searchInput, setSearchInput] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Track viewport width to switch the table to a compact 3-col layout and
+  // the detail panel to a full-screen modal on narrow screens. matchMedia is
+  // SSR-safe behind the effect (window only touched after mount).
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
 
   // Debounce search input → committed query (300ms)
   useEffect(() => {
@@ -232,7 +255,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(620px, 1fr) 540px',
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(620px, 1fr) 540px',
           gap: 16,
           alignItems: 'start',
         }}
@@ -245,7 +268,8 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           minWidth: 0,
           overflow: 'hidden',
         }}>
-          {/* Filter toolbar — each control sits above its corresponding column */}
+          {/* Filter toolbar — desktop only; hidden on mobile (list uses defaults) */}
+          {!isMobile ? (
           <div
             style={{
               display: 'grid',
@@ -344,31 +368,34 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
               <option value="closed">Closed</option>
             </select>
           </div>
+          ) : null}
 
-          {/* Column headers */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
-              gap: 12,
-              padding: '8px 14px',
-              borderBottom: '2px solid #e5e1d6',
-              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-              fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              color: '#999',
-              textTransform: 'uppercase',
-            }}
-          >
-            <span>Ingest Date</span>
-            <span>Open Date</span>
-            <span>Address</span>
-            <span>Category</span>
-            <span>Type</span>
-            <span>Last Modified</span>
-            <span style={{ textAlign: 'right' }}>Status</span>
-          </div>
+          {/* Column headers — desktop only; mobile rows are self-describing */}
+          {!isMobile ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
+                gap: 12,
+                padding: '8px 14px',
+                borderBottom: '2px solid #e5e1d6',
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                color: '#999',
+                textTransform: 'uppercase',
+              }}
+            >
+              <span>Ingest Date</span>
+              <span>Open Date</span>
+              <span>Address</span>
+              <span>Category</span>
+              <span>Type</span>
+              <span>Last Modified</span>
+              <span style={{ textAlign: 'right' }}>Status</span>
+            </div>
+          ) : null}
 
           {loading && rows.length === 0 ? (
             <div style={{ padding: '32px 16px', textAlign: 'center', color: '#8a94a0', fontSize: 13 }}>
@@ -416,9 +443,11 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                   }}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
-                    gap: 12,
-                    padding: '10px 14px',
+                    gridTemplateColumns: isMobile
+                      ? '64px minmax(0, 1fr) auto'
+                      : '150px 150px minmax(0, 1.4fr) 70px minmax(0, 1.6fr) 150px 70px',
+                    gap: isMobile ? 10 : 12,
+                    padding: isMobile ? '12px 14px' : '10px 14px',
                     borderBottom: '1px solid #f0ede6',
                     borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent',
                     background: isSelected ? '#faf8f3' : 'transparent',
@@ -439,96 +468,131 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                     }
                   }}
                 >
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                      fontSize: 11,
-                      color: '#888',
-                    }}
-                  >
-                    {formatIngestCT(row.ingest_date)}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                      fontSize: 11,
-                      color: '#888',
-                    }}
-                  >
-                    {formatLocalAsIs(row.open_date)}
-                  </span>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {propertyHref ? (
-                      <Link
-                        href={propertyHref}
-                        onClick={(e) => e.stopPropagation()}
+                  {isMobile ? (
+                    <>
+                      <span
                         style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {formatShortMobile(row.open_date)}
+                      </span>
+                      <span
+                        style={{
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                           color: '#1a1a1a',
                           fontWeight: 500,
-                          textDecoration: 'none',
-                          borderBottom: '1px dotted #c4c0b4',
                         }}
                       >
                         {row.property_address}
-                      </Link>
-                    ) : (
-                      <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{row.property_address}</span>
-                    )}
-                    {row.community_area ? (
-                      <span style={{ color: '#999', fontWeight: 400, marginLeft: 6, fontSize: 12 }}>
-                        {row.community_area}
                       </span>
-                    ) : null}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                      fontSize: 10,
-                      fontWeight: 500,
-                      letterSpacing: '0.08em',
-                      color: categoryColor(row.category),
-                    }}
-                  >
-                    {categoryLabel(row.category)}
-                  </span>
-                  <span
-                    style={{
-                      color: '#1a1a1a',
-                      minWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {row.display_type}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                      fontSize: 11,
-                      color: '#888',
-                      minWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {(() => {
-                      // Hide last-modified when it's the same wall-clock instant as
-                      // open date (no real change to report). Compare sliced raw
-                      // strings since both are Chicago-local-as-fake-UTC.
-                      const lm = row.last_modified
-                      const od = row.open_date
-                      // Compare at minute precision (16 chars: YYYY-MM-DDTHH:MM) to
-                      // match what's displayed — created_date and last_modified_date
-                      // can differ by seconds yet render as the same minute.
-                      if (lm && od && String(lm).slice(0, 16) === String(od).slice(0, 16)) return '—'
-                      return formatLocalAsIs(lm)
-                    })()}
-                  </span>
-                  <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    {sk ? <StatusPill kind={sk} /> : null}
-                  </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: '0.06em',
+                          color: categoryColor(row.category),
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {categoryLabel(row.category)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                        }}
+                      >
+                        {formatIngestCT(row.ingest_date)}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                        }}
+                      >
+                        {formatLocalAsIs(row.open_date)}
+                      </span>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {propertyHref ? (
+                          <Link
+                            href={propertyHref}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              color: '#1a1a1a',
+                              fontWeight: 500,
+                              textDecoration: 'none',
+                              borderBottom: '1px dotted #c4c0b4',
+                            }}
+                          >
+                            {row.property_address}
+                          </Link>
+                        ) : (
+                          <span style={{ color: '#1a1a1a', fontWeight: 500 }}>{row.property_address}</span>
+                        )}
+                        {row.community_area ? (
+                          <span style={{ color: '#999', fontWeight: 400, marginLeft: 6, fontSize: 12 }}>
+                            {row.community_area}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 10,
+                          fontWeight: 500,
+                          letterSpacing: '0.08em',
+                          color: categoryColor(row.category),
+                        }}
+                      >
+                        {categoryLabel(row.category)}
+                      </span>
+                      <span
+                        style={{
+                          color: '#1a1a1a',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {row.display_type}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          fontSize: 11,
+                          color: '#888',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {(() => {
+                          const lm = row.last_modified
+                          const od = row.open_date
+                          if (lm && od && String(lm).slice(0, 16) === String(od).slice(0, 16)) return '—'
+                          return formatLocalAsIs(lm)
+                        })()}
+                      </span>
+                      <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        {sk ? <StatusPill kind={sk} /> : null}
+                      </span>
+                    </>
+                  )}
                 </div>
               )
             })
@@ -591,7 +655,8 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
           ) : null}
         </div>
 
-        {/* ── Detail pane ───────────────────────────────────────────── */}
+        {/* ── Detail pane (desktop column only; mobile uses the modal below) ── */}
+        {!isMobile ? (
         <div
           style={{
             position: 'sticky',
@@ -675,7 +740,120 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
             </div>
           )}
         </div>
+        ) : null}
       </div>
+
+      {/* ── Mobile detail modal ─────────────────────────────────────── */}
+      {isMobile && selectedRow
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setSelectedKey(null)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 1000,
+                background: 'rgba(20, 20, 20, 0.45)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: '#fff',
+                  borderTopLeftRadius: 14,
+                  borderTopRightRadius: 14,
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  padding: '18px 18px calc(24px + env(safe-area-inset-bottom))',
+                  position: 'relative',
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setSelectedKey(null)}
+                  style={{
+                    position: 'absolute',
+                    top: 12,
+                    right: 12,
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: '#f0ede6',
+                    color: '#5a5044',
+                    fontSize: 18,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  ×
+                </button>
+                <div
+                  style={{
+                    fontFamily: 'Merriweather, Georgia, serif',
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: '#1a1a1a',
+                    lineHeight: 1.2,
+                    marginBottom: 10,
+                    paddingRight: 40,
+                  }}
+                >
+                  {headerTitle}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                    fontSize: 11,
+                    letterSpacing: '0.04em',
+                    color: '#888',
+                    marginBottom: 10,
+                  }}
+                >
+                  <span style={{ color: categoryColor(selectedRow.category), fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    {selectedRow.category === 'complaint' ? '311 Complaint' : selectedRow.category === 'violation' ? 'Violation' : 'Permit'}
+                  </span>
+                  {selectedRow.open_date ? <span> · {formatLocalAsIs(selectedRow.open_date)}</span> : null}
+                </div>
+                <div style={{ borderTop: '1px solid #f0ede6', marginBottom: 12 }} />
+                {selectedRow.category === 'complaint' && selectedRow.complaint ? (
+                  <ComplaintDetail
+                    complaint={selectedRow.complaint}
+                    isAdmin={isAdmin}
+                    address={(selectedRow.complaint as { address?: string | null }).address ?? null}
+                    addressSlug={selectedRow.property_slug}
+                  />
+                ) : selectedRow.category === 'violation' && selectedRow.violations ? (
+                  <ViolationDetail
+                    violations={selectedRow.violations}
+                    address={(selectedRow.violations[0] as { address?: string | null })?.address ?? null}
+                    addressSlug={selectedRow.property_slug}
+                  />
+                ) : selectedRow.category === 'permit' && selectedRow.permit ? (
+                  <PermitDetail
+                    permit={selectedRow.permit}
+                    address={(selectedRow.permit as { address?: string | null }).address ?? null}
+                    addressSlug={selectedRow.property_slug}
+                  />
+                ) : (
+                  <div style={{ fontSize: 13, color: '#8a94a0', fontStyle: 'italic' }}>
+                    No details available.
+                  </div>
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }
