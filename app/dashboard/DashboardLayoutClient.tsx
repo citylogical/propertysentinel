@@ -88,7 +88,7 @@ export default function DashboardLayoutClient({
             </div>
           </div>
 
-          <div style={headerRightStyle}>
+          <div style={headerRightStyle} className="dashboard-header-right">
             {stats ? (
               <>
                 <div style={statBlockStyle}>

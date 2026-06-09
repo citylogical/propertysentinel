@@ -2199,7 +2199,7 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
   /* Fixed bar for MobileNav */
   .mobile-nav-brand {
     font-family: "Merriweather", Georgia, serif;
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 700;
     color: #ffffff;
     text-decoration: none;
@@ -2217,7 +2217,7 @@ body:has(.app-sidebar.app-sidebar--pinned) .app-layout-main {
   }
 
   .mobile-nav-brand-icon svg {
-    width: 26px;
+    width: 40px;
     height: auto;
     display: block;
   }
@@ -3053,8 +3053,8 @@ button.save-toggle-switch {
   .dashboard-identity-row {
     padding: 16px 16px 12px;
   }
-  .dashboard-identity-row > div:last-child {
-    display: none;
+  .dashboard-header-right {
+    display: none !important;
   }
 }
 

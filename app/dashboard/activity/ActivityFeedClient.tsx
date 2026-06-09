@@ -749,7 +749,9 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                 background: 'rgba(20, 20, 20, 0.45)',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'flex-end',
+                justifyContent: isMobile ? 'flex-end' : 'center',
+                alignItems: isMobile ? 'stretch' : 'center',
+                padding: isMobile ? 0 : 24,
               }}
             >
               <div
@@ -758,11 +760,17 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
                   background: '#fff',
                   borderTopLeftRadius: 14,
                   borderTopRightRadius: 14,
+                  borderBottomLeftRadius: isMobile ? 0 : 14,
+                  borderBottomRightRadius: isMobile ? 0 : 14,
                   maxHeight: '90vh',
+                  width: isMobile ? 'auto' : 'min(560px, 100%)',
                   overflowY: 'auto',
                   WebkitOverflowScrolling: 'touch',
-                  padding: '18px 18px calc(24px + env(safe-area-inset-bottom))',
+                  padding: isMobile
+                    ? '18px 18px calc(24px + env(safe-area-inset-bottom))'
+                    : '24px 28px 28px',
                   position: 'relative',
+                  boxShadow: isMobile ? 'none' : '0 12px 48px rgba(15, 23, 42, 0.2)',
                 }}
               >
                 <button
