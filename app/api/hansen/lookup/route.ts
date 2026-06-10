@@ -21,6 +21,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { fetchHansenRecords, HansenFetchError } from '@/lib/hansen/fetch'
 import { parseHansenResults } from '@/lib/hansen/parse'
 import { upsertHansenData } from '@/lib/hansen/upsert'
+import { normalizeAddress, stripUnitSuffix } from '@/lib/supabase-search'
 
 // Node runtime — the fetch module's cookie jar relies on Response.getSetCookie()
 // (undici), which is not available on the edge runtime.
@@ -92,6 +93,20 @@ export async function POST(request: Request) {
     try {
       const result = await upsertHansenData(parsed)
       console.log('[hansen/lookup] persisted', JSON.stringify(result))
+      const normalizedBase =
+        stripUnitSuffix(normalizeAddress(address)) ?? normalizeAddress(address)
+      if (normalizedBase) {
+        await supabase.from('hansen_lookups').upsert(
+          {
+            searched_address: normalizedBase,
+            status: result.persisted ? 'resolved' : 'empty',
+            bldg_id: result.bldg_id,
+            attempted_at: new Date().toISOString(),
+            resolved_at: new Date().toISOString(),
+          },
+          { onConflict: 'searched_address' }
+        )
+      }
     } catch (e) {
       console.error(
         '[hansen/lookup] upsert failed (response already sent):',

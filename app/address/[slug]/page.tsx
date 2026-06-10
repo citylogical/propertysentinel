@@ -19,6 +19,8 @@ import {
   normalizePin,
 } from '@/lib/supabase-search'
 import { findManualBuilding } from '@/lib/manual-building-addresses'
+import { resolveHansenArchive } from '@/lib/hansen/resolve'
+import HansenResolveTrigger from './HansenResolveTrigger'
 import { getClassDescription } from '@/lib/class-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import EnrichmentHealthCheck from '@/components/EnrichmentHealthCheck'
@@ -162,6 +164,25 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         siblingPinsForPortfolio = await collectPinsForUserRangeAddresses(userRange.allAddresses)
       }
     
+      // Hansen archive — third range source, after manual entries and approved
+      // user ranges. A hit behaves exactly like a user-range hit: fan-out
+      // addresses, range banner, PIN collection, and fetchSiblingPins skipped.
+      // A miss with retry eligibility mounts the client trigger that queries
+      // Hansen live and persists the result for every future visitor.
+      let hasHansenRange = false
+      let hansenAttemptEligible = false
+      if (!hasUserRange && !findManualBuilding(normalizedAddress)) {
+        const hansen = await resolveHansenArchive(normalizedAddress)
+        if (hansen.range) {
+          hasHansenRange = true
+          siblingAddresses = hansen.range.allAddresses
+          addressRange = buildAddressRange(hansen.range.allAddresses)
+          siblingPinsForPortfolio = await collectPinsForUserRangeAddresses(hansen.range.allAddresses)
+        } else {
+          hansenAttemptEligible = hansen.retryEligible
+        }
+      }
+
       const hasDirectPropertyMatch = !!property
     
       let normalizedDataPin: string | null = null
@@ -180,7 +201,7 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
         // values (addressRange / siblingAddresses / siblingPinsForPortfolio) set
         // above are kept as-is. Path C's heuristic sibling resolution is only
         // consulted when no user-range exists.
-        if (hasDirectPropertyMatch && !hasUserRange) {
+        if (hasDirectPropertyMatch && !hasUserRange && !hasHansenRange) {
           const siblings = await fetchSiblingPins(normalizedPin, normalizedAddress)
           addressRange = siblings.addressRange
           siblingAddresses = siblings.siblingAddresses
@@ -332,6 +353,9 @@ export default async function AddressPage({ params, searchParams }: PageProps) {
   return (
     <div className="address-page">
       <RecordSearch address={titularDisplay} slug={decodedSlug} />
+      {hansenAttemptEligible ? (
+        <HansenResolveTrigger normalizedAddress={normalizedAddress} />
+      ) : null}
       <div className="prop-page-shell">
         <PortfolioSaveStatsProvider>
         <div className="prop-main-content">

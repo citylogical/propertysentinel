@@ -15,6 +15,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { HansenParseResult } from './parse'
+import { normalizeAddress } from '@/lib/supabase-search'
 
 export type HansenUpsertResult = {
   bldg_id: string | null
@@ -156,12 +157,14 @@ export async function upsertHansenData(
         const m = raw.match(
           /^(\d+)\s*-\s*(\d+)\s+(.*?)(?:\s+CHICAGO\s+IL\s+\d{5})?\s*$/i
         )
+        const streetRaw = m ? m[3].trim() || null : null
         return {
           bldg_id: bldgId,
           raw_line: raw,
           low_number: m ? parseInt(m[1], 10) : null,
           high_number: m ? parseInt(m[2], 10) : null,
-          street: m ? m[3].trim() || null : null,
+          street: streetRaw,
+          street_normalized: streetRaw ? normalizeAddress(streetRaw) || null : null,
           position: idx + 1,
           fetched_at: fetchedAt,
         }
