@@ -350,10 +350,10 @@ export default async function StatusPage() {
   }
 
   const barHeight = (s: DaySummary['status']) => {
-    if (s === 'success') return 36
-    if (s === 'partial') return 20
-    if (s === 'failure') return 10
-    return 4
+    if (s === 'success') return 80
+    if (s === 'partial') return 44
+    if (s === 'failure') return 22
+    return 8
   }
 
   return (
@@ -364,16 +364,12 @@ export default async function StatusPage() {
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 24px 80px' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 24 }}>
-          <div>
-            <h1 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 28, fontWeight: 700, color: '#001f3f', marginBottom: 8, letterSpacing: '-0.02em' }}>
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginBottom: 12 }}>
+            <h1 style={{ fontFamily: '"Merriweather", Georgia, serif', fontSize: 28, fontWeight: 700, color: '#001f3f', letterSpacing: '-0.02em', margin: 0 }}>
               Chicago 311 Data Status
             </h1>
-            <p style={{ fontSize: 13, color: '#8a94a0', lineHeight: 1.6, maxWidth: 520 }}>
-              Live sync status for the Chicago Open Data Portal 311 feed. Property Sentinel ingests new complaints every 30 minutes.
-            </p>
-          </div>
-          <div style={{
+            <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '9px 16px', borderRadius: 4, flexShrink: 0,
             fontFamily: '"DM Mono", monospace', fontSize: 11, fontWeight: 500,
@@ -388,6 +384,10 @@ export default async function StatusPage() {
             }} />
             {isCurrentlyOperational ? 'Operational' : 'Degraded'}
           </div>
+          </div>
+          <p style={{ fontSize: 13, color: '#8a94a0', lineHeight: 1.6, margin: 0 }}>
+            Live sync status for the Chicago Open Data Portal 311 feed. Property Sentinel ingests new complaints every 30 minutes.
+          </p>
         </div>
 
         {/* Data freshness panel — three rows: last sync, most-recent record + current lag, trailing averages */}
@@ -400,7 +400,7 @@ export default async function StatusPage() {
           }}>
             {/* Row 1 — Last Sync */}
             <div style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
-              Last Sync:{' '}
+              Last sync:{' '}
               <span style={{ color: '#1a1a1a' }}>
                 {formatTimeCT(lastSuccessRunAt)} CT {formatDateCT(lastSuccessRunAt)}
               </span>
@@ -436,7 +436,7 @@ export default async function StatusPage() {
         )}
 
         {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div className="status-stat-grid">
           {[
             {
               label: 'Uptime (90 days)',
@@ -463,7 +463,7 @@ export default async function StatusPage() {
               color: avgLagSeconds != null ? '#2d6a4f' : '#8a94a0',
             },
           ].map(card => (
-            <div key={card.label} style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, padding: '14px 14px 12px' }}>
+            <div key={card.label} className="status-stat-card">
               <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#8a94a0', marginBottom: 8 }}>
                 {card.label}
               </div>
@@ -484,7 +484,7 @@ export default async function StatusPage() {
             <span style={{ fontSize: 11, color: '#8a94a0' }}>Each bar = one day</span>
           </div>
           <div style={{ padding: '20px 20px 14px' }}>
-            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 48, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 96, marginBottom: 8 }}>
               {daySummaries.map((day) => (
                 <div
                   key={day.date}
@@ -506,9 +506,6 @@ export default async function StatusPage() {
                 <span key={l} style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, color: '#8a94a0' }}>{l}</span>
               ))}
             </div>
-            <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#2d6a4f', marginTop: 8 }}>
-              {uptimePct}% uptime
-            </div>
           </div>
           <div style={{ display: 'flex', gap: 20, padding: '10px 20px', borderTop: '1px solid #ddd9d0', background: '#fafaf8' }}>
             {[
@@ -528,8 +525,8 @@ export default async function StatusPage() {
         {/* Incident log */}
         <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 8 }}>
-            <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
-              Incident History
+          <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
+              Incident History (90 Days)
             </span>
             <span style={{ fontSize: 11, color: '#8a94a0' }}>
               All times CT · Status data refreshed: {formatCT(data.cache_computed_at)}
@@ -555,20 +552,20 @@ export default async function StatusPage() {
               : `${formatCT(inc.started_at)} – ${formatTimeCT(inc.last_seen_at)}`
             const occurrenceLabel = `${inc.count} ${inc.count === 1 ? 'occurrence' : 'occurrences'}`
             return (
-              <div key={`${inc.day}-${idx}`} style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 16, alignItems: 'start' }}>
-                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0', paddingTop: 1, lineHeight: 1.5 }}>
+              <div key={`${inc.day}-${idx}`} className="status-incident-row" style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 16, alignItems: 'start' }}>
+                <div className="status-incident-time" style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0', paddingTop: 1, lineHeight: 1.5 }}>
                   {timeRange}
                   <div style={{ fontSize: 9, color: '#b0b6bf', marginTop: 2 }}>{occurrenceLabel}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', marginBottom: 3 }}>
+                  <div className="status-incident-title" style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', marginBottom: 3 }}>
                     {title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8a94a0', lineHeight: 1.5 }}>
+                  <div className="status-incident-body" style={{ fontSize: 11, color: '#8a94a0', lineHeight: 1.5 }}>
                     {truncateError(inc.error_message) ?? defaultBody}
                   </div>
                 </div>
-                <div style={{
+                <div className="status-incident-badge" style={{
                   fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
                   padding: '2px 8px', borderRadius: 3, whiteSpace: 'nowrap' as const,
                   textTransform: 'uppercase' as const, letterSpacing: '0.06em',
@@ -676,6 +673,54 @@ export default async function StatusPage() {
         @keyframes statusPulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(0.7); }
+        }
+
+        /* Stat cards: 4-across on desktop, rigid 2x2 on mobile */
+        .status-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+        .status-stat-card {
+          background: #fff;
+          border: 1px solid #ddd9d0;
+          border-radius: 6px;
+          padding: 14px 14px 12px;
+        }
+        @media (max-width: 640px) {
+          .status-stat-grid {
+            grid-template-columns: repeat(2, 1fr);
+            grid-auto-rows: 104px;
+          }
+          .status-stat-card {
+            height: 104px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+          }
+        }
+
+        /* Incident rows: tighten the time column and kill the title wrap on mobile */
+        @media (max-width: 640px) {
+          .status-incident-row {
+            grid-template-columns: 96px 1fr auto !important;
+            gap: 8px !important;
+            padding: 12px 14px !important;
+          }
+          .status-incident-time {
+            font-size: 9px !important;
+          }
+          .status-incident-title {
+            font-size: 12px !important;
+          }
+          .status-incident-body {
+            font-size: 10px !important;
+          }
+          .status-incident-badge {
+            font-size: 8px !important;
+            padding: 2px 6px !important;
+          }
         }
       `}</style>
           </div>

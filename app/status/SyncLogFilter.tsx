@@ -67,7 +67,7 @@ export default function SyncLogFilter({ runs }: { runs: RunRow[] }) {
   const filtered = runs.filter(r => new Date(r.ran_at).getTime() >= cutoff)
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 32 }}>
+    <div className="status-synclog" style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 32 }}>
       <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#8a94a0' }}>
           Recent Sync Log
@@ -86,7 +86,7 @@ export default function SyncLogFilter({ runs }: { runs: RunRow[] }) {
           ))}
         </select>
       </div>
-      <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12 }}>
+      <div className="status-synclog-headrow" style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12 }}>
         {['Time (CT)', 'Status', 'Records', 'Lag', 'Details'].map(h => (
           <span key={h} style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8a94a0' }}>{h}</span>
         ))}
@@ -110,7 +110,7 @@ export default function SyncLogFilter({ runs }: { runs: RunRow[] }) {
           : 'No records fetched'
         const lagDisplay = run.lag_seconds != null ? formatLag(run.lag_seconds) : '—'
         return (
-          <div key={run.id} style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12, alignItems: 'center' }}>
+          <div key={run.id} className="status-synclog-row" style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12, alignItems: 'center' }}>
             <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0' }}>{formatCT(run.ran_at)}</div>
             <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500, padding: '2px 7px', borderRadius: 3, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-block', ...statusStyle }}>
               {statusLabel}
@@ -123,6 +123,28 @@ export default function SyncLogFilter({ runs }: { runs: RunRow[] }) {
           </div>
         )
       })}
+      <style>{`
+        @media (max-width: 640px) {
+          .status-synclog-headrow,
+          .status-synclog-row {
+            grid-template-columns: 88px 64px 1fr !important;
+            gap: 8px !important;
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+          }
+          /* Hide the Records and Details columns on mobile — keep Time, Status, Lag */
+          .status-synclog-headrow > *:nth-child(3),
+          .status-synclog-headrow > *:nth-child(5),
+          .status-synclog-row > *:nth-child(3),
+          .status-synclog-row > *:nth-child(5) {
+            display: none !important;
+          }
+          .status-synclog-row {
+            padding-top: 12px !important;
+            padding-bottom: 12px !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
