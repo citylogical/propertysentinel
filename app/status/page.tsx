@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
 import { auth } from '@clerk/nextjs/server'
+import SyncLogFilter from './SyncLogFilter'
 
 export const metadata: Metadata = {
   title: 'Chicago 311 Data Status — Property Sentinel',
@@ -56,6 +57,8 @@ type StatusPagePayload = {
   complaint_count_90d: number
   complaint_count_total: number
   avg_lag_seconds: number | null
+  avg_lag_3d_seconds: number | null
+  avg_lag_7d_seconds: number | null
   uptime_pct: number
   daily_history: Array<{
     run_date: string
@@ -67,6 +70,7 @@ type StatusPagePayload = {
     ran_at: string
     status: string
     error_message: string | null
+    source: string
     is_ongoing: boolean
   }>
   recent_runs: RunRow[]
@@ -203,6 +207,61 @@ function fwuidShort(fwuid: string | null | undefined): string {
   return fwuid.slice(0, 16) + '…'
 }
 
+type GroupedIncident = {
+  day: string
+  started_at: string
+  last_seen_at: string
+  count: number
+  error_message: string | null
+  source: string
+  is_ongoing: boolean
+}
+
+// Group consecutive failures into one incident per calendar day (CT). A
+// midnight-spanning outage shows as two incidents by design. Self-inflicted
+// rows (source='self') carry their own message and are grouped the same way.
+function groupIncidentsByDay(
+  incidents: Array<{ ran_at: string; status: string; error_message: string | null; is_ongoing: boolean; source?: string }>
+): GroupedIncident[] {
+  const byDay = new Map<string, GroupedIncident>()
+  for (const inc of incidents) {
+    const dayKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(inc.ran_at))
+    const src = inc.source ?? 'live'
+    const existing = byDay.get(dayKey)
+    if (!existing) {
+      byDay.set(dayKey, {
+        day: dayKey,
+        started_at: inc.ran_at,
+        last_seen_at: inc.ran_at,
+        count: 1,
+        error_message: inc.error_message,
+        source: src,
+        is_ongoing: inc.is_ongoing,
+      })
+    } else {
+      // incidents arrive newest-first; widen the window and keep the
+      // earliest message as representative.
+      if (new Date(inc.ran_at) < new Date(existing.started_at)) {
+        existing.started_at = inc.ran_at
+        existing.error_message = inc.error_message
+      }
+      if (new Date(inc.ran_at) > new Date(existing.last_seen_at)) {
+        existing.last_seen_at = inc.ran_at
+      }
+      existing.count += 1
+      existing.is_ongoing = existing.is_ongoing || inc.is_ongoing
+    }
+  }
+  return Array.from(byDay.values()).sort(
+    (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+  )
+}
+
 function daySummaryFromDailyHistory(row: StatusPagePayload['daily_history'][number]): DaySummary {
   const total = row.run_count
   const failures = row.failure_count
@@ -253,10 +312,19 @@ export default async function StatusPage() {
 
   const daySummaries = data.daily_history.map(daySummaryFromDailyHistory)
 
-  const incidents = data.incidents.map(inc => ({
+  const groupedIncidents = groupIncidentsByDay(data.incidents).map(inc => ({
     ...inc,
     isResolved: !inc.is_ongoing,
   }))
+
+  const avgLag3d =
+    data.avg_lag_3d_seconds != null && Number.isFinite(data.avg_lag_3d_seconds)
+      ? Math.round(data.avg_lag_3d_seconds)
+      : null
+  const avgLag7d =
+    data.avg_lag_7d_seconds != null && Number.isFinite(data.avg_lag_7d_seconds)
+      ? Math.round(data.avg_lag_7d_seconds)
+      : null
 
   const isCurrentlyOperational =
     data.most_recent_run_status === 'success' ||
@@ -322,46 +390,59 @@ export default async function StatusPage() {
           </div>
         </div>
 
-        {/* Latest 311 record lag line */}
+        {/* Data freshness panel — three rows: last sync, most-recent record + current lag, trailing averages */}
         {lastModifiedStr && lastSuccessRunAt && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 20,
-            padding: '10px 16px', marginBottom: 24,
+            padding: '12px 16px', marginBottom: 24,
             background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6,
             fontFamily: '"DM Mono", monospace', fontSize: 11,
+            display: 'flex', flexDirection: 'column', gap: 8,
           }}>
-            <span style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
+            {/* Row 1 — Last Sync */}
+            <div style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
+              Last Sync:{' '}
+              <span style={{ color: '#1a1a1a' }}>
+                {formatTimeCT(lastSuccessRunAt)} CT {formatDateCT(lastSuccessRunAt)}
+              </span>
+            </div>
+
+            {/* Row 2 — Most recent record */}
+            <div style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
               Most recent record:{' '}
               <span style={{ color: '#1a1a1a' }}>
-                {formatSocrataTimeCT(lastModifiedStr)} CT
+                {formatSocrataTimeCT(lastModifiedStr)} CT {formatDateCT(lastModifiedStr)}
               </span>
-            </span>
-            {syncLag != null && (
-              <>
-                <span style={{ color: '#ddd9d0' }}>·</span>
-                <span style={{ color: '#8a94a0' }}>
-                  Current lag:{' '}
-                  <span style={{ color: '#2d6a4f' }}>{formatLag(syncLag)}</span>
-                </span>
-              </>
-            )}
+            </div>
+
+            {/* Row 3 — Current / trailing average lag */}
+            <div style={{ color: '#8a94a0', letterSpacing: '0.04em' }}>
+              Current / trailing average lag:{' '}
+              <span style={{ color: '#2d6a4f' }}>
+                {syncLag != null ? formatLag(syncLag) : '—'}
+              </span>
+              <span style={{ color: '#8a94a0' }}> (current)</span>
+              <span style={{ color: '#ddd9d0' }}>{' / '}</span>
+              <span style={{ color: '#1a1a1a' }}>
+                {avgLag3d != null ? formatLag(avgLag3d) : '—'}
+              </span>
+              <span style={{ color: '#8a94a0' }}> (3-day)</span>
+              <span style={{ color: '#ddd9d0' }}>{' / '}</span>
+              <span style={{ color: '#1a1a1a' }}>
+                {avgLag7d != null ? formatLag(avgLag7d) : '—'}
+              </span>
+              <span style={{ color: '#8a94a0' }}> (7-day)</span>
+            </div>
           </div>
         )}
 
         {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
           {[
             {
               label: 'Uptime (90 days)',
               value: `${uptimePct}%`,
               sub: `${failedRunsCount} incident${failedRunsCount !== 1 ? 's' : ''}`,
               color: '#2d6a4f',
-            },
-            {
-              label: 'Last Sync',
-              value: lastSuccessRunAt ? formatTimeCT(lastSuccessRunAt) : '—',
-              sub: lastSuccessRunAt ? formatDateCT(lastSuccessRunAt) : '—',
-              color: '#1a1a1a',
             },
             {
               label: 'Total Indexed',
@@ -376,7 +457,7 @@ export default async function StatusPage() {
               color: '#1a1a1a',
             },
             {
-              label: 'Avg Lag Time',
+              label: 'Avg Lag Time (90D)',
               value: avgLagSeconds != null ? formatLag(avgLagSeconds) : '—',
               sub: avgLagSeconds != null ? 'modification → database' : 'accumulating…',
               color: avgLagSeconds != null ? '#2d6a4f' : '#8a94a0',
@@ -454,35 +535,52 @@ export default async function StatusPage() {
               All times CT · Status data refreshed: {formatCT(data.cache_computed_at)}
             </span>
           </div>
-          {incidents.length === 0 ? (
+          {groupedIncidents.length === 0 ? (
             <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
               No incidents in the last 90 days.
             </div>
-          ) : incidents.map((inc, idx) => (
-            <div key={`${inc.ran_at}-${idx}`} style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 16, alignItems: 'start' }}>
-              <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0', paddingTop: 1, lineHeight: 1.5 }}>
-                {formatCT(inc.ran_at)}
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', marginBottom: 3 }}>
-                  Chicago Data Portal — 503 Service Unavailable
+          ) : groupedIncidents.map((inc, idx) => {
+            const isSelf = inc.source === 'self'
+            const title = isSelf
+              ? 'Property Sentinel Worker Maintenance'
+              : 'Chicago Data Portal — 503 Service Unavailable'
+            const defaultBody = isSelf
+              ? 'Worker A sync paused during a deployment and restored the same morning. Resume cursor preserved — no records lost.'
+              : 'Socrata API unavailable. Worker A exited gracefully. Resume cursor preserved — no records lost.'
+            // Time range: show start; append end when the outage spanned
+            // multiple polls. Count shows how many polls were affected.
+            const sameInstant = inc.started_at === inc.last_seen_at
+            const timeRange = sameInstant
+              ? formatCT(inc.started_at)
+              : `${formatCT(inc.started_at)} – ${formatTimeCT(inc.last_seen_at)}`
+            const occurrenceLabel = `${inc.count} ${inc.count === 1 ? 'occurrence' : 'occurrences'}`
+            return (
+              <div key={`${inc.day}-${idx}`} style={{ padding: '14px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 16, alignItems: 'start' }}>
+                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0', paddingTop: 1, lineHeight: 1.5 }}>
+                  {timeRange}
+                  <div style={{ fontSize: 9, color: '#b0b6bf', marginTop: 2 }}>{occurrenceLabel}</div>
                 </div>
-                <div style={{ fontSize: 11, color: '#8a94a0', lineHeight: 1.5 }}>
-                  {truncateError(inc.error_message) ?? 'Socrata API unavailable. Worker A exited gracefully. Resume cursor preserved — no records lost.'}
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', marginBottom: 3 }}>
+                    {title}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8a94a0', lineHeight: 1.5 }}>
+                    {truncateError(inc.error_message) ?? defaultBody}
+                  </div>
+                </div>
+                <div style={{
+                  fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
+                  padding: '2px 8px', borderRadius: 3, whiteSpace: 'nowrap' as const,
+                  textTransform: 'uppercase' as const, letterSpacing: '0.06em',
+                  background: inc.isResolved ? 'rgba(45,106,79,0.1)' : 'rgba(192,57,43,0.08)',
+                  border: `1px solid ${inc.isResolved ? 'rgba(45,106,79,0.3)' : 'rgba(192,57,43,0.2)'}`,
+                  color: inc.isResolved ? '#2d6a4f' : '#c0392b',
+                }}>
+                  {inc.isResolved ? 'Resolved' : 'Ongoing'}
                 </div>
               </div>
-              <div style={{
-                fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
-                padding: '2px 8px', borderRadius: 3, whiteSpace: 'nowrap' as const,
-                textTransform: 'uppercase' as const, letterSpacing: '0.06em',
-                background: inc.isResolved ? 'rgba(45,106,79,0.1)' : 'rgba(192,57,43,0.08)',
-                border: `1px solid ${inc.isResolved ? 'rgba(45,106,79,0.3)' : 'rgba(192,57,43,0.2)'}`,
-                color: inc.isResolved ? '#2d6a4f' : '#c0392b',
-              }}>
-                {inc.isResolved ? 'Resolved' : 'Ongoing'}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* CHI311 Aura enrichment status — admin-only */}
@@ -565,74 +663,7 @@ export default async function StatusPage() {
           )
         })()}
 
-        {/* Recent run log — last 24 hours */}
-        <div style={{ background: '#fff', border: '1px solid #ddd9d0', borderRadius: 6, overflow: 'hidden', marginBottom: 32 }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid #ddd9d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>
-              Recent Sync Log
-            </span>
-            <span style={{ fontSize: 11, color: '#8a94a0' }}>Last 24 hours · All times CT</span>
-          </div>
-          <div style={{ padding: '8px 20px', background: '#fafaf8', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12 }}>
-            {['Time (CT)', 'Status', 'Records', 'Lag', 'Details'].map(h => (
-              <span key={h} style={{ fontFamily: '"DM Mono", monospace', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#8a94a0' }}>{h}</span>
-            ))}
-          </div>
-          {recentRuns.length === 0 ? (
-            <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: '#8a94a0' }}>
-              No runs in the last 24 hours.
-            </div>
-          ) : recentRuns.map(run => {
-            const statusStyle = run.status === 'success'
-              ? { background: 'rgba(45,106,79,0.1)', color: '#2d6a4f' }
-              : run.status === 'failure'
-              ? { background: 'rgba(192,57,43,0.08)', color: '#c0392b' }
-              : { background: '#f0f0ed', color: '#8a94a0' }
-
-            const statusLabel = run.status === 'success' ? 'Success'
-              : run.status === 'failure' ? 'Failed'
-              : 'No new'
-
-            // Details column:
-            // - SUCCESS with time range → "Fetched records from 17:45–18:30 3/25/26"
-            // - FAILURE → truncated error message
-            // - NO NEW → "No records fetched"
-            const details = run.status === 'success' && run.min_modified && run.max_modified
-              ? formatModifiedRange(run.min_modified, run.max_modified)
-              : run.status === 'failure'
-              ? (truncateError(run.error_message) ?? '503 — Socrata unavailable')
-              : 'No records fetched'
-
-            // Show lag for all runs where it's stored — no upper-bound filter.
-            // log_import rows have NULL lag so they show '—' naturally.
-            const lagDisplay = run.lag_seconds != null ? formatLag(run.lag_seconds) : '—'
-
-            return (
-              <div key={run.id} style={{ padding: '9px 20px', borderBottom: '1px solid #ddd9d0', display: 'grid', gridTemplateColumns: '180px 80px 70px 70px 1fr', gap: 12, alignItems: 'center' }}>
-                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0' }}>
-                  {formatCT(run.ran_at)}
-                </div>
-                <div style={{
-                  fontFamily: '"DM Mono", monospace', fontSize: 9, fontWeight: 500,
-                  padding: '2px 7px', borderRadius: 3, textAlign: 'center' as const,
-                  textTransform: 'uppercase' as const, letterSpacing: '0.04em',
-                  display: 'inline-block', ...statusStyle,
-                }}>
-                  {statusLabel}
-                </div>
-                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
-                  {run.records_fetched > 0 ? run.records_fetched.toLocaleString() : '—'}
-                </div>
-                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 11, color: '#4a5568' }}>
-                  {lagDisplay}
-                </div>
-                <div style={{ fontFamily: '"DM Mono", monospace', fontSize: 10, color: '#8a94a0' }}>
-                  {details}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <SyncLogFilter runs={recentRuns} />
 
         <p style={{ fontSize: 11, color: '#8a94a0', textAlign: 'center', lineHeight: 1.6 }}>
           Property Sentinel syncs Chicago 311 data every 30 minutes via the{' '}
