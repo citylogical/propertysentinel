@@ -12,6 +12,48 @@ const STREET_TYPES = new Set([
   'WAY', 'PKWY', 'TER', 'CIR', 'HWY',
 ])
 
+// Per-SR-code labels for structured intake fields in the digest description.
+// DUPLICATE of SR_INTAKE_LABELS in app/dashboard/details/ComplaintDetail.tsx —
+// kept inline here to scope tonight's change to this file. TODO: extract to
+// lib/sr-intake-labels.ts and import in both places (the QUESTION_MAP three-way
+// sync is already a maintenance burden; don't grow it without consolidating).
+// `concern` → concern_category, `problem` → problem_category, `description` →
+// complaint_description (only promoted when it's a structured picklist answer,
+// e.g. AAI surface type — never a freeform narrative).
+const SR_INTAKE_LABELS: Record<string, { concern?: string; problem?: string; description?: string }> = {
+  AAI: { concern: 'Alley caved-in', problem: 'Alley flooded', description: 'Surface' },
+  AAD: { concern: 'Cave-in location', problem: 'Sewer structure nearby' },
+  WM3: { concern: 'Leak location', problem: 'Leak visible' },
+  SGA: { concern: 'Locations to bait', problem: 'Backyard service' },
+}
+
+/**
+ * Build a labeled structured-intake description for the digest, e.g.
+ * "Alley caved-in: No; Alley flooded: Yes; Surface: Paved".
+ * Falls back to a bare "concern / problem" join for codes with no label entry,
+ * preserving prior behavior. `rawDesc` (complaint_description) is only appended
+ * when the code defines a `description` label — guarding against promoting a
+ * freeform narrative field to the digest.
+ */
+function buildStructuredDescription(
+  srShortCode: string | null,
+  concern: string | null,
+  problem: string | null,
+  rawDesc: string | null,
+): string | null {
+  const code = String(srShortCode ?? '').toUpperCase()
+  const labels = SR_INTAKE_LABELS[code]
+  if (!labels) {
+    // No label entry — preserve the original bare join.
+    return concern && problem ? `${concern} / ${problem}` : (concern || problem)
+  }
+  const parts: string[] = []
+  if (concern) parts.push(`${labels.concern ?? 'Category'}: ${concern}`)
+  if (problem) parts.push(`${labels.problem ?? 'Detail'}: ${problem}`)
+  if (labels.description && rawDesc) parts.push(`${labels.description}: ${rawDesc}`)
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 type UserBuildingRange = {
   searched_address: string | null
   street1_low: string | null
@@ -444,8 +486,13 @@ export async function GET(request: Request) {
           const desc = c.standard_description?.trim() || null
           const concern = c.concern_category?.trim() || null
           const problem = c.problem_category?.trim() || null
-          const structured = concern && problem ? `${concern} / ${problem}` : (concern || problem)
           const rawDesc = c.complaint_description?.trim() || null
+          // Labeled structured description (e.g. "Alley caved-in: No; Alley
+          // flooded: Yes; Surface: Paved" for AAI). Falls back to a bare
+          // "concern / problem" join for codes with no label entry.
+          const structured = buildStructuredDescription(
+            c.sr_short_code, concern, problem, rawDesc,
+          )
           let description: string | null = null
           if (isSecCode && rawDesc) {
             description = rawDesc
