@@ -97,6 +97,24 @@ const bucketColor: Record<OutcomeBucket, string> = {
   unknown: '#1e3a5f',      // navy
 }
 
+// Per-SR-code labels for the structured intake tags. Keyed by SR short code,
+// then by which enrichment column the value lives in. The Aura intake question
+// text (e.g. "Is alley caved-in?") is the real meaning of the Yes/No / picklist
+// value — without it, "Category: No" is unreadable. Falls back to the generic
+// 'Category' / 'Detail' / 'Surface' labels below when a code has no entry.
+// Question text mirrors the QUESTION_MAP comments in enrich_complaints.py.
+const SR_INTAKE_LABELS: Record<string, { concern?: string; problem?: string; description?: string }> = {
+  // DWM sewer inspections — structured intake, no free-text narrative.
+  AAI: { concern: 'Alley caved-in', problem: 'Alley flooded', description: 'Surface' },
+  AAD: { concern: 'Cave-in location', problem: 'Sewer structure nearby' },
+  WM3: { concern: 'Leak location', problem: 'Leak visible' },
+  // Streets & San structured-intake codes.
+  SGA: { concern: 'Locations to bait', problem: 'Backyard service' },
+}
+
+// Generic fallbacks when a code is absent from SR_INTAKE_LABELS.
+const GENERIC_INTAKE_LABELS = { concern: 'Category', problem: 'Detail', description: 'Surface' }
+
 export default function ComplaintDetail({ complaint: c, isAdmin, address, addressSlug }: Props) {
   const caseStatus = String(c.status ?? '').toLowerCase()
   const isOpen = caseStatus === 'open'
@@ -143,8 +161,23 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address, addres
   // ("Power line" / "Alley" when the description already says "Limb hanging on power
   // lines. blocking the alley") — suppress them for SEC and rely on the description.
   const isSecCode = String(c.sr_short_code ?? '').toUpperCase() === 'SEC'
-  if (!isSecCode && c.concern_category) tags.push({ label: 'Category', value: c.concern_category })
-  if (!isSecCode && c.problem_category) tags.push({ label: 'Detail', value: c.problem_category })
+  const codeKey = String(c.sr_short_code ?? '').toUpperCase()
+  const intakeLabels = SR_INTAKE_LABELS[codeKey] ?? {}
+  if (!isSecCode && c.concern_category) {
+    tags.push({ label: intakeLabels.concern ?? GENERIC_INTAKE_LABELS.concern, value: c.concern_category })
+  }
+  if (!isSecCode && c.problem_category) {
+    tags.push({ label: intakeLabels.problem ?? GENERIC_INTAKE_LABELS.problem, value: c.problem_category })
+  }
+  // For structured-intake codes with no standard_description (SKIP_PARAPHRASE),
+  // the surface-type / freeform answer lives in complaint_description and would
+  // otherwise only surface to admins as the raw blockquote. When the code has a
+  // description label defined (e.g. AAI "Surface"), promote it to a public tag
+  // so GC sees "Surface: Paved" instead of nothing. Only when there's no
+  // standard_description (desc) — paraphrased codes already render desc.
+  if (!isSecCode && !desc && intakeLabels.description && rawDesc) {
+    tags.push({ label: intakeLabels.description, value: rawDesc })
+  }
   // Owner-occupied "Yes" for EAF Vicious Animal means animal resides at address
   // (tenant dog, landlord liability). The admin-only above renders for building-
   // type SRs; this public version is for animal-residence cases only. Both
