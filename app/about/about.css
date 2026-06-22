@@ -1078,3 +1078,8 @@
   border-color: #0f2744;
   background: #ffffff;
 }
+
+.pricing-enterprise {
+  font-weight: 700;
+  font-size: 14px;
+}

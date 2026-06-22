@@ -269,39 +269,9 @@ export default function AboutClient() {
               <h2 className="pricing-section-label">Property Monitoring</h2>
               <p className="pricing-section-sub">
                 Real-time SMS and email alerts for every complaint, violation,
-                and permit at your buildings. Pricing scales with building size,
-                with discounts as buildings get larger.
+                and permit at your properties. Flat $10 per property, per month —
+                with two months free when you pay annually.
               </p>
-            </div>
-
-            <div className="pc2-formula-band">
-              <div className="pc2-formula-title">Pricing formula</div>
-              <div className="pc2-formula-grid">
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">1–2 units</div>
-                  <div className="pc2-fcell-amount">$15<small>/mo</small></div>
-                </div>
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">3–6 units</div>
-                  <div className="pc2-fcell-amount">$25<small>/mo</small></div>
-                </div>
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">7–20 units</div>
-                  <div className="pc2-fcell-amount">$40<small>/mo</small></div>
-                </div>
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">21–50 units</div>
-                  <div className="pc2-fcell-amount">$65<small>/mo</small></div>
-                </div>
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">51–100 units</div>
-                  <div className="pc2-fcell-amount">$95<small>/mo</small></div>
-                </div>
-                <div className="pc2-fcell">
-                  <div className="pc2-fcell-label">100+ units</div>
-                  <div className="pc2-fcell-amount">Custom</div>
-                </div>
-              </div>
             </div>
 
             <div className="pc-cards">
@@ -317,8 +287,8 @@ export default function AboutClient() {
               </div>
               <div className="pc-card pc-card-feat">
                 <div className="pc-tier pc-tier-navy">Premium</div>
-                <div className="pc-price-num">$15<small>+/mo</small></div>
-                <div className="pc-sub">per building, scales with size</div>
+                <div className="pc-price-num">$10<small>/mo</small></div>
+                <div className="pc-sub">starting at $10/mo, discounts for larger portfolios</div>
                 <div className="pc-features">
                   <div>Hourly SMS + email alerts</div>
                   <div>311 complaint descriptions</div>
@@ -332,7 +302,7 @@ export default function AboutClient() {
             <PricingCalculator />
 
             <p className="pricing-enterprise">
-              Portfolios above 50 buildings or 5,000 units —{' '}
+              Portfolios above 50 properties —{' '}
               <a
                 href="#contact"
                 className="pc-footer-link"
@@ -392,133 +362,59 @@ export default function AboutClient() {
 }
 
 function PricingCalculator() {
-  const [units, setUnits] = useState(50)
-  const [buildings, setBuildings] = useState(1)
+  const [properties, setProperties] = useState(10)
 
-  const getTier = useCallback((u: number): { label: string; price: number } => {
-    if (u <= 2) return { label: '1–2 units', price: 15 }
-    if (u <= 6) return { label: '3–6 units', price: 25 }
-    if (u <= 20) return { label: '7–20 units', price: 40 }
-    if (u <= 50) return { label: '21–50 units', price: 65 }
-    return { label: '51–100 units', price: 95 }
-  }, [])
-
-  const tier = getTier(units)
-  const perBuilding = tier.price
-  const total = perBuilding * buildings
-
-  const renderBreakdown = () => {
-    const rows: ReactNode[] = []
-
-    if (buildings === 1) {
-      rows.push(
-        <div key="single" className="pc2-breakdown-row">
-          <span>{tier.label} · per building</span>
-          <span>
-            ${perBuilding}
-            <small>/mo</small>
-          </span>
-        </div>
-      )
-    } else {
-      rows.push(
-        <div key="tier" className="pc2-breakdown-row">
-          <span>{tier.label} · per building</span>
-          <span>${perBuilding}</span>
-        </div>
-      )
-      rows.push(
-        <div key="mult" className="pc2-breakdown-row">
-          <span>× {buildings} buildings</span>
-          <span></span>
-        </div>
-      )
-      rows.push(<div key="div" className="pc2-breakdown-divider" />)
-      rows.push(
-        <div key="total" className="pc2-breakdown-total">
-          <span>Portfolio total</span>
-          <span>
-            ${total}
-            <small>/mo</small>
-          </span>
-        </div>
-      )
+  // Graduated tiers: first 10 @ $10, next 15 (11–25) @ $8, next 25 (26–50) @ $6
+  const computeTiers = (p: number) => {
+    const tiers = [
+      { label: 'First 10 properties', rate: 10, upTo: 10 },
+      { label: 'Properties 11–25', rate: 9, upTo: 25 },
+      { label: 'Properties 26–50', rate: 8, upTo: 50 },
+    ]
+    const lines: { label: string; count: number; rate: number; subtotal: number }[] = []
+    let remaining = p
+    let prevCap = 0
+    for (const t of tiers) {
+      if (remaining <= 0) break
+      const band = t.upTo - prevCap
+      const count = Math.min(remaining, band)
+      lines.push({ label: t.label, count, rate: t.rate, subtotal: count * t.rate })
+      remaining -= count
+      prevCap = t.upTo
     }
-
-    return rows
+    return lines
   }
 
-  const unitsPct = ((units - 1) / (100 - 1)) * 100
-  const bldgsPct = ((buildings - 1) / (50 - 1)) * 100
+  const lines = computeTiers(properties)
+  const total = lines.reduce((sum, l) => sum + l.subtotal, 0)
+  const propsPct = ((properties - 1) / (50 - 1)) * 100
 
   return (
     <div className="pc2-calc">
       <div className="pc2-calc-header">
         <span className="pc2-calc-title">
-          {buildings > 1 ? 'What would my portfolio cost?' : 'What would my building cost?'}
+          {properties === 1 ? 'What would my property cost?' : 'What would my portfolio cost?'}
         </span>
         <span className="pc2-calc-result">
-          ${total}
+          ${total.toLocaleString()}
           <small>/mo</small>
         </span>
       </div>
 
       <div className="pc2-slider-block">
         <div className="pc2-slider-row">
-          <span className="pc2-slider-label">
-            {buildings > 1 ? 'Average units per building' : 'Units in building'}
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={units}
-            onChange={(e) => {
-              const raw = parseInt(e.target.value, 10)
-              if (isNaN(raw)) {
-                setUnits(1)
-              } else {
-                setUnits(Math.max(1, Math.min(100, raw)))
-              }
-            }}
-            className="pc2-slider-num-input"
-          />
-        </div>
-        <input
-          type="range"
-          min={1}
-          max={100}
-          step={1}
-          value={units}
-          onChange={(e) => setUnits(parseInt(e.target.value, 10))}
-          className="pc2-slider-input"
-          style={{
-            background: `linear-gradient(to right, #0f2744 ${unitsPct}%, #ddd9d0 ${unitsPct}%)`,
-          }}
-        />
-        <div className="pc2-slider-marks">
-          <span style={{ left: '0%' }}>1</span>
-          <span style={{ left: '5.05%' }}>6</span>
-          <span style={{ left: '19.19%' }}>20</span>
-          <span style={{ left: '49.49%' }}>50</span>
-          <span style={{ left: '100%' }}>100</span>
-        </div>
-      </div>
-
-      <div className="pc2-slider-block">
-        <div className="pc2-slider-row">
-          <span className="pc2-slider-label">Number of buildings</span>
+          <span className="pc2-slider-label">Number of properties</span>
           <input
             type="number"
             min={1}
             max={50}
-            value={buildings}
+            value={properties}
             onChange={(e) => {
               const raw = parseInt(e.target.value, 10)
               if (isNaN(raw)) {
-                setBuildings(1)
+                setProperties(1)
               } else {
-                setBuildings(Math.max(1, Math.min(50, raw)))
+                setProperties(Math.max(1, Math.min(50, raw)))
               }
             }}
             className="pc2-slider-num-input"
@@ -529,11 +425,11 @@ function PricingCalculator() {
           min={1}
           max={50}
           step={1}
-          value={buildings}
-          onChange={(e) => setBuildings(parseInt(e.target.value, 10))}
+          value={properties}
+          onChange={(e) => setProperties(parseInt(e.target.value, 10))}
           className="pc2-slider-input"
           style={{
-            background: `linear-gradient(to right, #0f2744 ${bldgsPct}%, #ddd9d0 ${bldgsPct}%)`,
+            background: `linear-gradient(to right, #0f2744 ${propsPct}%, #ddd9d0 ${propsPct}%)`,
           }}
         />
         <div className="pc2-slider-marks">
@@ -544,7 +440,24 @@ function PricingCalculator() {
         </div>
       </div>
 
-      <div className="pc2-breakdown">{renderBreakdown()}</div>
+      <div className="pc2-breakdown">
+        {lines.map((l, i) => (
+          <div key={i} className="pc2-breakdown-row">
+            <span>
+              {l.count} {l.count === 1 ? 'property' : 'properties'} @ ${l.rate}
+            </span>
+            <span>${l.subtotal.toLocaleString()}</span>
+          </div>
+        ))}
+        <div className="pc2-breakdown-divider" />
+        <div className="pc2-breakdown-total">
+          <span>{properties === 1 ? 'Property total' : 'Portfolio total'}</span>
+          <span>
+            ${total.toLocaleString()}
+            <small>/mo</small>
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
