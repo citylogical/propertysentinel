@@ -1,6 +1,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { computeEntitlement } from '@/lib/entitlement'
 
 export async function GET() {
   const { userId } = await auth()
@@ -12,7 +13,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('subscribers')
-    .select('email, first_name, last_name, organization, phone, zip, plan, role, created_at')
+    .select('email, first_name, last_name, organization, phone, zip, plan, role, created_at, subscription_status, trial_started_at')
     .eq('clerk_id', userId)
     .maybeSingle()
 
@@ -21,7 +22,17 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ profile: data })
+  const entitlement = computeEntitlement(
+    data
+      ? {
+          plan: data.plan ?? null,
+          subscription_status: (data as { subscription_status?: string | null }).subscription_status ?? null,
+          trial_started_at: (data as { trial_started_at?: string | null }).trial_started_at ?? null,
+        }
+      : null
+  )
+
+  return NextResponse.json({ profile: data, entitlement })
 }
 
 export async function POST(request: Request) {

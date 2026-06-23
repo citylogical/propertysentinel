@@ -4,12 +4,14 @@ import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
+import type { Entitlement } from '@/lib/entitlement'
 
 type HeaderStats = {
   buildings: number
   units: number
   organization: string | null
   is_admin: boolean
+  entitlement: Entitlement | null
 }
 
 // Tabs assembled per-render so the Dashboard tab can be conditionally
@@ -68,6 +70,18 @@ export default function DashboardLayoutClient({
     year: 'numeric',
   })
 
+  const ent = stats?.entitlement ?? null
+  const planLabel = !ent
+    ? null
+    : ent.reason === 'enterprise'
+      ? 'Enterprise'
+      : ent.reason === 'paying'
+        ? 'Premium'
+        : ent.reason === 'trial'
+          ? `Free trial — ${ent.trialDaysLeft ?? 0} day${(ent.trialDaysLeft ?? 0) === 1 ? '' : 's'} left`
+          : 'Free — expired'
+  const showUpgrade = ent ? ent.reason === 'trial' || ent.reason === 'none' : false
+
   return (
     <div className="prop-main-content">
       <header
@@ -81,10 +95,36 @@ export default function DashboardLayoutClient({
       >
         <div className="dashboard-identity-row" style={{ borderBottom: 'none' }}>
           <div className="dashboard-identity-left">
-            <div className="dashboard-logo">PS</div>
+            {/* PS logo intentionally removed for now — markup kept for future image support. */}
+            {/* <div className="dashboard-logo">PS</div> */}
             <div className="dashboard-identity-text">
-              <h1>{orgPrefix}</h1>
-              <div className="dashboard-identity-sub">Last 12 months · {todayStr}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0 }}>{orgPrefix}</h1>
+                {showUpgrade ? (
+                  <button
+                    type="button"
+                    className="plan-badge plan-badge-upgrade"
+                    onClick={() => {
+                      fetch('/api/stripe/checkout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ quantity: 1, return_path: '/dashboard/portfolio' }),
+                      })
+                        .then((r) => r.json())
+                        .then((d: { url?: string; error?: string }) => {
+                          if (d.url) window.location.href = d.url
+                          else window.alert(d.error || 'Could not open checkout.')
+                        })
+                        .catch(() => window.alert('Could not open checkout.'))
+                    }}
+                  >
+                    Upgrade now
+                  </button>
+                ) : null}
+              </div>
+              <div className="dashboard-identity-sub">
+                {planLabel ? `${planLabel} · ` : ''}Last 12 months · {todayStr}
+              </div>
             </div>
           </div>
 

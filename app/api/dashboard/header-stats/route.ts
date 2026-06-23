@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { computeEntitlement } from '@/lib/entitlement'
 
 // Minimal aggregate for the dashboard layout header. Pulls the three values
 // the identity row actually displays — building count, unit count, and the
@@ -17,7 +18,7 @@ export async function GET() {
   const [subscriberRes, propertiesRes] = await Promise.all([
     supabase
       .from('subscribers')
-      .select('organization, role')
+      .select('organization, role, plan, subscription_status, trial_started_at')
       .eq('clerk_id', userId)
       .maybeSingle(),
     supabase
@@ -39,10 +40,21 @@ export async function GET() {
     units = count ?? 0
   }
 
+  const entitlement = computeEntitlement(
+    subscriberRes.data
+      ? {
+          plan: (subscriberRes.data as { plan?: string | null }).plan ?? null,
+          subscription_status: (subscriberRes.data as { subscription_status?: string | null }).subscription_status ?? null,
+          trial_started_at: (subscriberRes.data as { trial_started_at?: string | null }).trial_started_at ?? null,
+        }
+      : null
+  )
+
   return NextResponse.json({
     buildings,
     units,
     organization: (subscriberRes.data?.organization as string | null) ?? null,
     is_admin: subscriberRes.data?.role === 'admin',
+    entitlement,
   })
 }

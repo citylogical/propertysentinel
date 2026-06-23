@@ -5224,3 +5224,56 @@ button.save-toggle-switch {
 .alert-bell-on:hover:not(:disabled) {
   background: rgba(22, 101, 52, 0.08);
 }
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.plan-badge-enterprise {
+  background: #1e293b;
+  color: #fff;
+}
+
+.plan-badge-paying {
+  background: #166534;
+  color: #fff;
+}
+
+.plan-badge-trial {
+  background: #a32d2d;
+  color: #fff;
+}
+
+.plan-badge-lapsed {
+  background: #a32d2d;
+  color: #fff;
+}
+
+.plan-badge-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.plan-badge-upgrade {
+  background: #a05a20;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  transition: background 0.12s;
+}
+
+.plan-badge-upgrade:hover {
+  background: #8a4d1b;
+}

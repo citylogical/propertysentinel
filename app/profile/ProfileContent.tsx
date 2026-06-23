@@ -3,6 +3,8 @@
 import { useUser, useClerk } from '@clerk/nextjs'
 import { UserProfile } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
+import PlanBadge from '@/components/PlanBadge'
+import type { Entitlement } from '@/lib/entitlement'
 
 type SubscriberProfile = {
   email?: string | null
@@ -37,15 +39,17 @@ export default function ProfileContent() {
   const [plan, setPlan] = useState('')
   const [role, setRole] = useState('')
   const [memberSince, setMemberSince] = useState('')
+  const [entitlement, setEntitlement] = useState<Entitlement | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
 
     fetch('/api/profile/update')
       .then((res) => res.json())
-      .then((data: { error?: string; profile?: SubscriberProfile | null }) => {
+      .then((data: { error?: string; profile?: SubscriberProfile | null; entitlement?: Entitlement | null }) => {
         if (data.error) return
         const p = data.profile
+        setEntitlement(data.entitlement ?? null)
         const clerkEmail = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? ''
         setEmail((p?.email && p.email.trim()) || clerkEmail)
         setFirstName(p?.first_name ?? '')
@@ -272,10 +276,30 @@ export default function ProfileContent() {
             }}
           >
             <div>
-              <div style={{ fontSize: 18, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.2 }}>
-                {plan || 'Free'}
-              </div>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{roleLabel}</div>
+              <PlanBadge
+                entitlement={entitlement}
+                onUpgrade={() => {
+                  setBillingLoading(true)
+                  fetch('/api/stripe/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity: 1, return_path: '/profile' }),
+                  })
+                    .then((r) => r.json())
+                    .then((d: { url?: string; error?: string }) => {
+                      if (d.url) window.location.href = d.url
+                      else {
+                        window.alert(d.error || 'Could not open checkout.')
+                        setBillingLoading(false)
+                      }
+                    })
+                    .catch(() => {
+                      window.alert('Could not open checkout.')
+                      setBillingLoading(false)
+                    })
+                }}
+              />
+              <div style={{ fontSize: 12, color: '#666', marginTop: 8 }}>{roleLabel}</div>
             </div>
             {memberSince ? (
               <div style={{ textAlign: 'right' }}>
@@ -293,39 +317,34 @@ export default function ProfileContent() {
                 <div style={{ fontSize: 13, color: '#1a1a1a', marginTop: 2 }}>{memberSince}</div>
               </div>
             ) : null}
-            <button
-              type="button"
-              className="profile-content-billing-btn"
-              disabled={billingLoading}
-              onClick={async () => {
-                setBillingLoading(true)
-                const isPremium = (plan || '').toLowerCase() === 'premium'
-                try {
-                  const endpoint = isPremium ? '/api/stripe/portal' : '/api/stripe/checkout'
-                  const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: isPremium ? undefined : JSON.stringify({ quantity: 1 }),
-                  })
-                  const data = (await res.json()) as { url?: string; error?: string }
-                  if (data.url) {
-                    window.location.href = data.url
-                  } else {
-                    window.alert(data.error || 'Could not open billing.')
+            {entitlement?.reason === 'paying' || entitlement?.reason === 'enterprise' ? (
+              <button
+                type="button"
+                className="profile-content-billing-btn"
+                disabled={billingLoading}
+                onClick={async () => {
+                  setBillingLoading(true)
+                  try {
+                    const res = await fetch('/api/stripe/portal', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                    })
+                    const data = (await res.json()) as { url?: string; error?: string }
+                    if (data.url) {
+                      window.location.href = data.url
+                    } else {
+                      window.alert(data.error || 'Could not open billing.')
+                      setBillingLoading(false)
+                    }
+                  } catch {
+                    window.alert('Could not open billing.')
                     setBillingLoading(false)
                   }
-                } catch {
-                  window.alert('Could not open billing.')
-                  setBillingLoading(false)
-                }
-              }}
-            >
-              {billingLoading
-                ? 'Opening…'
-                : (plan || '').toLowerCase() === 'premium'
-                  ? 'Manage billing'
-                  : 'Upgrade to Premium'}
-            </button>
+                }}
+              >
+                {billingLoading ? 'Opening…' : 'Manage billing'}
+              </button>
+            ) : null}
           </div>
         </div>
 

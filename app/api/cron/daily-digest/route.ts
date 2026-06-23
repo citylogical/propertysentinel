@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
 import { addressToSlug } from '@/lib/formatAddress'
 import { getEnabledCodesForUsers } from '@/lib/sr-preferences'
+import { computeEntitlement } from '@/lib/entitlement'
 
 // Street type tokens used to identify the end of an address proper (everything
 // after one of these is treated as a unit suffix and stripped for matching).
@@ -346,11 +347,28 @@ export async function GET(request: Request) {
       // Get subscriber's clerk_id and email recipients
       const { data: subscriber } = await supabase
         .from('subscribers')
-        .select('clerk_id, organization')
+        .select('clerk_id, organization, role, plan, subscription_status, trial_started_at')
         .eq('id', setting.subscriber_id)
         .maybeSingle()
       if (!subscriber) continue
       const { clerk_id, organization } = subscriber as { clerk_id: string; organization: string | null }
+
+      // Entitlement gate: only entitled accounts receive the digest. Admins
+      // always pass (so test sends to your own account work). Lapsed trials
+      // and never-paid users are skipped — alerts stop when entitlement ends.
+      // Test mode bypasses this so you can send a test digest to any account.
+      if (!testMode) {
+        const digestRole = (subscriber as { role?: string | null }).role ?? ''
+        const digestEnt = computeEntitlement({
+          plan: (subscriber as { plan?: string | null }).plan ?? null,
+          subscription_status: (subscriber as { subscription_status?: string | null }).subscription_status ?? null,
+          trial_started_at: (subscriber as { trial_started_at?: string | null }).trial_started_at ?? null,
+        })
+        if (digestRole !== 'admin' && !digestEnt.entitled) {
+          results.push({ subscriber_id: setting.subscriber_id, status: 'skipped_not_entitled', count: 0 })
+          continue
+        }
+      }
 
       // Per-subscriber enabled SR codes from the batch pre-load. Empty set =
       // nothing enabled (un-seeded or read failure) → no complaints surface,

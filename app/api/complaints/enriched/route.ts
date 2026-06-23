@@ -1,6 +1,7 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { computeEntitlement } from '@/lib/entitlement'
 
 const SELECT_FIELDS =
   'sr_number, sr_short_code, sr_type, status, created_date, ' +
@@ -19,14 +20,26 @@ export async function GET(request: Request) {
   const supabaseAdmin = getSupabaseAdmin()
   const { data: subscriber } = await supabaseAdmin
     .from('subscribers')
-    .select('role')
+    .select('role, plan, subscription_status, trial_started_at')
     .eq('clerk_id', user.id)
     .maybeSingle()
   const subRole = (subscriber as { role?: string | null } | null)?.role != null
     ? String((subscriber as { role?: string | null }).role)
     : ''
-  if (!subscriber || !['admin', 'approved'].includes(subRole)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Admins always pass. Everyone else must be entitled: enterprise, paying, or
+  // within their 30-day trial. Lapsed trials and never-paid users get 403 — the
+  // server never sends paraphrased complaint detail to an unentitled account.
+  const entitlement = computeEntitlement(
+    subscriber
+      ? {
+          plan: (subscriber as { plan?: string | null }).plan ?? null,
+          subscription_status: (subscriber as { subscription_status?: string | null }).subscription_status ?? null,
+          trial_started_at: (subscriber as { trial_started_at?: string | null }).trial_started_at ?? null,
+        }
+      : null
+  )
+  if (subRole !== 'admin' && !entitlement.entitled) {
+    return NextResponse.json({ error: 'Forbidden', reason: 'not_entitled' }, { status: 403 })
   }
 
   const { searchParams } = new URL(request.url)

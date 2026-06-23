@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { addressToSlug } from '@/lib/formatAddress'
 import { getEnabledCodes } from '@/lib/sr-preferences'
+import { computeEntitlement } from '@/lib/entitlement'
 
 // Street type tokens used to identify the end of an address proper (everything
 // after one of these is treated as a unit suffix and stripped for matching).
@@ -185,6 +186,31 @@ export async function GET(request: Request) {
   const user = await currentUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Entitlement gate: admins always pass; everyone else must be entitled
+  // (enterprise, paying, or within their 30-day trial). Lapsed/never-paid
+  // users keep their portfolio rows but the activity feed locks.
+  {
+    const gateSupabase = getSupabaseAdmin()
+    const { data: sub } = await gateSupabase
+      .from('subscribers')
+      .select('role, plan, subscription_status, trial_started_at')
+      .eq('clerk_id', userId)
+      .maybeSingle()
+    const role = (sub as { role?: string | null } | null)?.role ?? ''
+    const ent = computeEntitlement(
+      sub
+        ? {
+            plan: (sub as { plan?: string | null }).plan ?? null,
+            subscription_status: (sub as { subscription_status?: string | null }).subscription_status ?? null,
+            trial_started_at: (sub as { trial_started_at?: string | null }).trial_started_at ?? null,
+          }
+        : null
+    )
+    if (role !== 'admin' && !ent.entitled) {
+      return NextResponse.json({ error: 'Forbidden', reason: 'not_entitled' }, { status: 403 })
+    }
   }
 
   const { searchParams } = new URL(request.url)
