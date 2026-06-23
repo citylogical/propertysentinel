@@ -207,6 +207,21 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin()
 
+  // Stamp the trial clock on the user's first-ever save. The .is(null) guard
+  // makes this idempotent: it fires once (when trial_started_at is still null)
+  // and no-ops on every later save. Existing savers were backfilled to their
+  // real first-save date in a one-time migration, so this only ever stamps
+  // genuine first saves going forward. Non-fatal — must not block the save.
+  try {
+    await supabase
+      .from('subscribers')
+      .update({ trial_started_at: new Date().toISOString() })
+      .eq('clerk_id', userId)
+      .is('trial_started_at', null)
+  } catch (trialErr) {
+    console.error('Trial stamp failed (non-fatal):', trialErr)
+  }
+
   const { data: insertedRow, error } = await supabase
     .from('portfolio_properties')
     .upsert(

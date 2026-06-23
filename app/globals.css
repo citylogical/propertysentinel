@@ -5185,3 +5185,42 @@ button.save-toggle-switch {
     font-size: 28px;
   }
 }
+
+.alert-bell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 5px 10px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.alert-bell:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.alert-bell-off {
+  color: #a32d2d;
+  background: #fcebeb;
+  border: 1px solid #f09595;
+}
+
+.alert-bell-off:hover:not(:disabled) {
+  background: #f7c1c1;
+}
+
+.alert-bell-on {
+  color: #166534;
+  background: none;
+  border: 1px solid transparent;
+  padding: 5px;
+}
+
+.alert-bell-on:hover:not(:disabled) {
+  background: rgba(22, 101, 52, 0.08);
+}
