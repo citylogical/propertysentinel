@@ -1083,3 +1083,27 @@
   font-weight: 700;
   font-size: 14px;
 }
+
+.pc2-subscribe-btn {
+  margin-top: 18px;
+  width: 100%;
+  padding: 12px 16px;
+  background: #0f2744;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.pc2-subscribe-btn:hover {
+  opacity: 0.9;
+}
+
+.pc2-subscribe-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

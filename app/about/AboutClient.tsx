@@ -363,6 +363,7 @@ export default function AboutClient() {
 
 function PricingCalculator() {
   const [properties, setProperties] = useState(10)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   // Graduated tiers: first 10 @ $10, next 15 (11–25) @ $8, next 25 (26–50) @ $6
   const computeTiers = (p: number) => {
@@ -458,6 +459,34 @@ function PricingCalculator() {
           </span>
         </div>
       </div>
+
+      <button
+        type="button"
+        className="pc2-subscribe-btn"
+        disabled={checkoutLoading}
+        onClick={async () => {
+          setCheckoutLoading(true)
+          try {
+            const res = await fetch('/api/stripe/checkout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ quantity: properties }),
+            })
+            const data = (await res.json()) as { url?: string; error?: string }
+            if (data.url) {
+              window.location.href = data.url
+            } else {
+              window.alert(data.error || 'Please sign in to subscribe.')
+              setCheckoutLoading(false)
+            }
+          } catch {
+            window.alert('Could not start checkout.')
+            setCheckoutLoading(false)
+          }
+        }}
+      >
+        {checkoutLoading ? 'Redirecting…' : `Subscribe — $${total.toLocaleString()}/mo`}
+      </button>
     </div>
   )
 }

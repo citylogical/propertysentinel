@@ -22,6 +22,7 @@ export default function ProfileContent() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [billingLoading, setBillingLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSecurityModal, setShowSecurityModal] = useState(false)
@@ -292,6 +293,39 @@ export default function ProfileContent() {
                 <div style={{ fontSize: 13, color: '#1a1a1a', marginTop: 2 }}>{memberSince}</div>
               </div>
             ) : null}
+            <button
+              type="button"
+              className="profile-content-billing-btn"
+              disabled={billingLoading}
+              onClick={async () => {
+                setBillingLoading(true)
+                const isPremium = (plan || '').toLowerCase() === 'premium'
+                try {
+                  const endpoint = isPremium ? '/api/stripe/portal' : '/api/stripe/checkout'
+                  const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: isPremium ? undefined : JSON.stringify({ quantity: 1 }),
+                  })
+                  const data = (await res.json()) as { url?: string; error?: string }
+                  if (data.url) {
+                    window.location.href = data.url
+                  } else {
+                    window.alert(data.error || 'Could not open billing.')
+                    setBillingLoading(false)
+                  }
+                } catch {
+                  window.alert('Could not open billing.')
+                  setBillingLoading(false)
+                }
+              }}
+            >
+              {billingLoading
+                ? 'Opening…'
+                : (plan || '').toLowerCase() === 'premium'
+                  ? 'Manage billing'
+                  : 'Upgrade to Premium'}
+            </button>
           </div>
         </div>
 

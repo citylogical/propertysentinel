@@ -6,8 +6,10 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
  * (empty states vs portfolio/activity). Only profile remains clerk-protected here.
  */
 const isProtectedRoute = createRouteMatcher(['/profile(.*)'])
+const isWebhookRoute = createRouteMatcher(['/api/webhooks/(.*)'])
 
 export default clerkMiddleware(async (auth, req) => {
+  if (isWebhookRoute(req)) return
   if (isProtectedRoute(req)) await auth.protect()
 })
 

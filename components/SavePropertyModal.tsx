@@ -59,8 +59,8 @@ export default function SavePropertyModal({
   )
   const [notes, setNotes] = useState('')
   const [alertsEnabled, setAlertsEnabled] = useState(true)
-  const [plan, setPlan] = useState<string | null>(null)
   const [showAdditional, setShowAdditional] = useState(false)
+  const [plan, setPlan] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -77,9 +77,8 @@ export default function SavePropertyModal({
     setShowAdditional(false)
   }, [isOpen, canonicalAddress, currentAddress, buildingAddressRange, initialAdditionalStreets, assessorSqft, assessorUnits])
 
-  const userId = user?.id ?? null
   useEffect(() => {
-    if (!isOpen || !userId) {
+    if (!isOpen || !user) {
       setPlan(null)
       return
     }
@@ -95,7 +94,7 @@ export default function SavePropertyModal({
     return () => {
       cancelled = true
     }
-  }, [isOpen, userId])
+  }, [isOpen, user])
 
   const handleAddStreet = () => {
     setAdditionalStreets([...additionalStreets, ''])

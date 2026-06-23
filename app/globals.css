@@ -2948,8 +2948,22 @@ button.save-toggle-switch {
 .save-modal-footer {
   padding: 0 20px 16px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
+}
+
+.save-modal-footer-single .save-btn-save {
+  min-width: 240px;
+}
+
+.save-btn-save.save-btn-alerts {
+  background: #166534;
+  border-color: #166534;
+}
+
+.save-btn-save.save-btn-alerts:hover:not(:disabled) {
+  background: #14532d;
+  border-color: #14532d;
 }
 
 .save-btn {

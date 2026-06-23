@@ -23,6 +23,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "resend": "^6.10.0",
+    "stripe": "^22.2.2",
     "svix": "^1.89.0"
   },
   "devDependencies": {
