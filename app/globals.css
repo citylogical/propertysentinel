@@ -2998,6 +2998,69 @@ button.save-toggle-switch {
   color: var(--red, #c0392b);
 }
 
+.save-modal-footer-single {
+  justify-content: center;
+}
+
+.save-modal-footer-single .save-btn-save {
+  min-width: 240px;
+}
+
+.save-btn-save.save-btn-alerts {
+  background: #166534;
+  border-color: #166534;
+}
+
+.save-btn-save.save-btn-alerts:hover:not(:disabled) {
+  background: #14532d;
+  border-color: #14532d;
+}
+
+.save-additional-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  font-family: var(--sans, "Inter", system-ui, sans-serif);
+  text-align: left;
+}
+
+.save-additional-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-mid, #4a5568);
+}
+
+.save-additional-chevron {
+  font-size: 11px;
+  color: var(--text-dim, #8a94a0);
+  transition: transform 0.18s ease;
+}
+
+.save-additional-chevron.open {
+  transform: rotate(180deg);
+}
+
+.save-additional-body {
+  margin-top: 12px;
+}
+
+.save-proration-note {
+  font-size: 11px;
+  color: var(--text-mid, #4a5568);
+  background: rgba(15, 39, 68, 0.04);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
 @media (max-width: 540px) {
   .save-field-row {
     grid-template-columns: 1fr;

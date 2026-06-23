@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUser } from '@clerk/nextjs'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
+import { handleAlertSync, type AlertSyncResult } from '@/lib/handle-alert-sync'
 
 export type SavePropertyModalProps = {
   isOpen: boolean
@@ -57,7 +58,9 @@ export default function SavePropertyModal({
     assessorSqft != null && Number.isFinite(assessorSqft) ? assessorSqft.toLocaleString('en-US') : ''
   )
   const [notes, setNotes] = useState('')
-  const [alertsEnabled, setAlertsEnabled] = useState(false)
+  const [alertsEnabled, setAlertsEnabled] = useState(true)
+  const [plan, setPlan] = useState<string | null>(null)
+  const [showAdditional, setShowAdditional] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -70,8 +73,29 @@ export default function SavePropertyModal({
       assessorSqft != null && Number.isFinite(assessorSqft) ? assessorSqft.toLocaleString('en-US') : ''
     )
     setNotes('')
-    setAlertsEnabled(false)
+    setAlertsEnabled(true)
+    setShowAdditional(false)
   }, [isOpen, canonicalAddress, currentAddress, buildingAddressRange, initialAdditionalStreets, assessorSqft, assessorUnits])
+
+  const userId = user?.id ?? null
+  useEffect(() => {
+    if (!isOpen || !userId) {
+      setPlan(null)
+      return
+    }
+    let cancelled = false
+    fetch('/api/profile/update')
+      .then((res) => res.json())
+      .then((data: { profile?: { plan?: string | null } | null }) => {
+        if (!cancelled) setPlan(data.profile?.plan ?? 'free')
+      })
+      .catch(() => {
+        if (!cancelled) setPlan('free')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, userId])
 
   const handleAddStreet = () => {
     setAdditionalStreets([...additionalStreets, ''])
@@ -121,6 +145,10 @@ export default function SavePropertyModal({
         const data = (await res.json()) as { error?: string }
         throw new Error(data.error || 'Failed to save')
       }
+
+      const data = (await res.json()) as { alert_sync?: AlertSyncResult }
+      const redirecting = await handleAlertSync(data.alert_sync)
+      if (redirecting) return
 
       onClose(true)
     } catch (err: unknown) {
@@ -227,51 +255,67 @@ export default function SavePropertyModal({
 
           <div className="save-divider" />
 
-          <div className="save-field-row">
-            <div className="save-field">
-              <label className="save-field-label" htmlFor="save-units">
-                Units
-              </label>
-              <input
-                id="save-units"
-                className="save-field-input"
-                type="text"
-                value={units}
-                onChange={(e) => setUnits(e.target.value)}
-                placeholder="e.g. 84"
-              />
-            </div>
-            <div className="save-field">
-              <label className="save-field-label" htmlFor="save-sqft">
-                Sqft
-              </label>
-              <input
-                id="save-sqft"
-                className="save-field-input"
-                type="text"
-                value={sqft}
-                onChange={(e) => setSqft(e.target.value)}
-                placeholder="e.g. 66,800"
-              />
-              {assessorSqft != null && Number.isFinite(assessorSqft) && assessorSqft > 0 && (
-                <div className="save-field-hint">From Cook County Assessor</div>
-              )}
-            </div>
-          </div>
+          <button
+            type="button"
+            className="save-additional-toggle"
+            onClick={() => setShowAdditional((s) => !s)}
+            aria-expanded={showAdditional}
+          >
+            <span className="save-additional-title">Additional info</span>
+            <span className={`save-additional-chevron ${showAdditional ? 'open' : ''}`} aria-hidden="true">
+              &#9662;
+            </span>
+          </button>
 
-          <div className="save-field">
-            <label className="save-field-label" htmlFor="save-notes">
-              Notes
-            </label>
-            <textarea
-              id="save-notes"
-              className="save-field-input"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. HOA managed, annual inspection due in March"
-            />
-          </div>
+          {showAdditional && (
+            <div className="save-additional-body">
+              <div className="save-field-row">
+                <div className="save-field">
+                  <label className="save-field-label" htmlFor="save-units">
+                    Units
+                  </label>
+                  <input
+                    id="save-units"
+                    className="save-field-input"
+                    type="text"
+                    value={units}
+                    onChange={(e) => setUnits(e.target.value)}
+                    placeholder="e.g. 84"
+                  />
+                </div>
+                <div className="save-field">
+                  <label className="save-field-label" htmlFor="save-sqft">
+                    Sqft
+                  </label>
+                  <input
+                    id="save-sqft"
+                    className="save-field-input"
+                    type="text"
+                    value={sqft}
+                    onChange={(e) => setSqft(e.target.value)}
+                    placeholder="e.g. 66,800"
+                  />
+                  {assessorSqft != null && Number.isFinite(assessorSqft) && assessorSqft > 0 && (
+                    <div className="save-field-hint">From Cook County Assessor</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="save-field">
+                <label className="save-field-label" htmlFor="save-notes">
+                  Notes
+                </label>
+                <textarea
+                  id="save-notes"
+                  className="save-field-input"
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. HOA managed, annual inspection due in March"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="save-divider" />
 
@@ -290,21 +334,33 @@ export default function SavePropertyModal({
               <span className="save-toggle-knob" />
             </button>
           </div>
+          {alertsEnabled && plan === 'premium' && (
+            <div className="save-proration-note">
+              Adds $10/mo to your subscription, prorated for the rest of this billing cycle.
+            </div>
+          )}
 
           {error && <div className="save-error">{error}</div>}
         </div>
 
-        <div className="save-modal-footer">
-          <button type="button" className="save-btn save-btn-cancel" onClick={() => onClose()}>
-            Cancel
-          </button>
+        <div className="save-modal-footer save-modal-footer-single">
           <button
             type="button"
-            className="save-btn save-btn-save"
+            className={`save-btn save-btn-save${alertsEnabled ? ' save-btn-alerts' : ''}`}
             onClick={handleSave}
             disabled={saveDisabled}
           >
-            {saving ? 'Saving...' : !user ? 'Sign in to save' : 'Save to dashboard'}
+            {saving
+              ? 'Saving…'
+              : !user
+                ? 'Sign in to save'
+                : !alertsEnabled
+                  ? 'Save to dashboard'
+                  : plan === 'enterprise'
+                    ? 'Save & turn on alerts'
+                    : plan === 'premium'
+                      ? 'Save & turn on alerts — adds $10/mo'
+                      : 'Save & turn on alerts — $10/mo'}
           </button>
         </div>
       </div>
