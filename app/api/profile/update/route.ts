@@ -13,7 +13,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('subscribers')
-    .select('email, first_name, last_name, organization, phone, zip, plan, role, created_at, subscription_status, trial_started_at')
+    .select('email, first_name, last_name, organization, phone, zip, plan, role, created_at, subscription_status, trial_started_at, lifetime_saves')
     .eq('clerk_id', userId)
     .maybeSingle()
 
@@ -32,7 +32,11 @@ export async function GET() {
       : null
   )
 
-  return NextResponse.json({ profile: data, entitlement })
+  return NextResponse.json({
+    profile: data,
+    entitlement,
+    lifetime_saves: Number((data as { lifetime_saves?: number | null } | null)?.lifetime_saves ?? 0),
+  })
 }
 
 export async function POST(request: Request) {

@@ -2946,7 +2946,7 @@ button.save-toggle-switch {
 }
 
 .save-modal-footer {
-  padding: 0 20px 16px;
+  padding: 16px 20px;
   display: flex;
   justify-content: center;
   gap: 8px;
@@ -5276,4 +5276,72 @@ button.save-toggle-switch {
 
 .plan-badge-upgrade:hover {
   background: #8a4d1b;
+}
+
+.see-context-nudge {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0f2744;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: text-decoration 0.12s;
+}
+
+.see-context-nudge:hover {
+  text-decoration: underline;
+}
+
+.save-modal-benefits {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.save-modal-benefits li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--text-mid, #4a5568);
+  line-height: 1.4;
+}
+
+.save-modal-benefits li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #166534;
+  font-weight: 700;
+}
+
+.save-modal-benefits-centered {
+  align-items: center;
+}
+
+.save-modal-benefits-centered li {
+  padding-left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.save-modal-benefits-centered li::before {
+  position: static;
+}
+
+.save-modal-header {
+  position: relative;
+}
+
+.save-modal-header .save-modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
 }

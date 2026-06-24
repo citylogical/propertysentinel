@@ -67,6 +67,32 @@ export default function AddressBarButtons({
     }
   }
 
+  // The "See complaint context →" nudge in PropertyFeed dispatches this event.
+  // PropertyFeed is rendered deep inside PropertyDataSections (across a Suspense
+  // boundary), so an event is cleaner than threading a callback down. Signed-in
+  // users get the save flow; signed-out users get redirected to sign-in (the
+  // bookmark button handles that via SignInButton, but the nudge has no wrapper,
+  // so we route here).
+  useEffect(() => {
+    const handler = () => {
+      if (!isLoaded) return
+      if (!isSignedIn) {
+        const returnTo =
+          typeof window !== 'undefined'
+            ? `${window.location.origin}${window.location.pathname}${window.location.search}`
+            : '/'
+        window.location.href = `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`
+        return
+      }
+      // Already saved: the nudge is a no-op (they've saved; enriched context
+      // for entitled non-admins is a separate fast-follow). Only unsaved users
+      // get the save modal from the nudge.
+      if (!isSaved) setSaveModalOpen(true)
+    }
+    window.addEventListener('ps:open-save-modal', handler)
+    return () => window.removeEventListener('ps:open-save-modal', handler)
+  }, [isLoaded, isSignedIn, isSaved])
+
   const returnAfterAuth =
     typeof window !== 'undefined'
       ? `${window.location.origin}${window.location.pathname}${window.location.search}`

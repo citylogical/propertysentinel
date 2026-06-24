@@ -4,6 +4,7 @@ import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
 import { OWNER_RELEVANT_CODES } from '@/lib/sr-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { syncAlertQuantity } from '@/lib/sync-alert-quantity'
+import { computeEntitlement } from '@/lib/entitlement'
 
 function parseOptInt(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null
@@ -207,6 +208,50 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin()
 
+  // Determine whether this is a brand-new save or an update to an existing
+  // saved property. Re-saving the same canonical_address is an update (editing
+  // notes, units, etc.) and must NOT count against the lifetime cap or bump
+  // the counter — only genuinely new properties do.
+  const { data: existingProp } = await supabase
+    .from('portfolio_properties')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('canonical_address', canonical_address)
+    .maybeSingle()
+  const isNewSave = !existingProp
+
+  // Lifetime save cap: anyone not paying/enterprise (trial or lapsed) may save
+  // at most 3 properties EVER — monotonic, never reset by deletes. Admins
+  // bypass. Only enforced on a new save; updates to existing rows are free.
+  if (isNewSave) {
+    const { data: capSub } = await supabase
+      .from('subscribers')
+      .select('role, plan, subscription_status, trial_started_at, lifetime_saves')
+      .eq('clerk_id', userId)
+      .maybeSingle()
+    const capRole = (capSub as { role?: string | null } | null)?.role ?? ''
+    const capEnt = computeEntitlement(
+      capSub
+        ? {
+            plan: (capSub as { plan?: string | null }).plan ?? null,
+            subscription_status: (capSub as { subscription_status?: string | null }).subscription_status ?? null,
+            trial_started_at: (capSub as { trial_started_at?: string | null }).trial_started_at ?? null,
+          }
+        : null
+    )
+    const lifetimeSaves = Number((capSub as { lifetime_saves?: number | null } | null)?.lifetime_saves ?? 0)
+    const uncapped = capRole === 'admin' || capEnt.reason === 'paying' || capEnt.reason === 'enterprise'
+    if (!uncapped && lifetimeSaves >= 3) {
+      return NextResponse.json(
+        {
+          error: "You've used all 3 free property saves. Subscribe for unlimited properties.",
+          reason: 'save_limit_reached',
+        },
+        { status: 403 }
+      )
+    }
+  }
+
   // Stamp the trial clock on the user's first-ever save. The .is(null) guard
   // makes this idempotent: it fires once (when trial_started_at is still null)
   // and no-ops on every later save. Existing savers were backfilled to their
@@ -256,6 +301,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This property is already in your dashboard' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Increment the monotonic lifetime-saves counter, but only for a genuinely
+  // new property (not an update). Never decremented elsewhere — deleting a
+  // property does not free up a save. Non-fatal: a counter miss must not break
+  // the save itself.
+  if (isNewSave) {
+    try {
+      const { data: cur } = await supabase
+        .from('subscribers')
+        .select('lifetime_saves')
+        .eq('clerk_id', userId)
+        .maybeSingle()
+      const next = Number((cur as { lifetime_saves?: number | null } | null)?.lifetime_saves ?? 0) + 1
+      await supabase
+        .from('subscribers')
+        .update({ lifetime_saves: next })
+        .eq('clerk_id', userId)
+    } catch (incErr) {
+      console.error('lifetime_saves increment failed (non-fatal):', incErr)
+    }
   }
 
   if (insertedRow?.id) {

@@ -70,6 +70,12 @@ export default function DashboardLayoutClient({
     year: 'numeric',
   })
 
+  // Chrome (identity header + tabs) shows only for a signed-in user who has
+  // at least one property. Signed-out users and zero-property users get a
+  // bare empty state with no header or tabs. While stats load, withhold chrome
+  // to avoid a flash that then disappears.
+  const showChrome = Boolean(isSignedIn && stats && stats.buildings > 0)
+
   const ent = stats?.entitlement ?? null
   const planLabel = !ent
     ? null
@@ -84,6 +90,7 @@ export default function DashboardLayoutClient({
 
   return (
     <div className="prop-main-content">
+      {showChrome ? (
       <header
         style={{
           borderBottom: '1px solid #e5e1d6',
@@ -190,6 +197,7 @@ export default function DashboardLayoutClient({
           })}
         </div>
       </header>
+      ) : null}
 
       {children}
     </div>

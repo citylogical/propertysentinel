@@ -1,7 +1,6 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import Link from 'next/link'
 import { SignInButton } from '@clerk/nextjs'
 
 type Props = {
@@ -9,104 +8,103 @@ type Props = {
   context: 'portfolio' | 'activity'
 }
 
-export default function DashboardEmptyState({ kind, context }: Props) {
+const UNLOCK_BULLETS = [
+  'Save any Chicago property to unlock its full report — 311 complaint detail, violations, and permits',
+  'Daily alerts the moment a new complaint, violation, or permit is filed at your buildings',
+  'Free for 30 days from your first save — then $10 per property each month',
+]
+
+export default function DashboardEmptyState({ kind }: Props) {
   const isSignedOut = kind === 'signed_out'
-  const isPortfolio = context === 'portfolio'
-
-  const title = isSignedOut
-    ? `Sign in or sign up to view your ${isPortfolio ? 'portfolio' : 'activity feed'}`
-    : isPortfolio
-      ? 'Add your first property to your portfolio'
-      : 'No activity yet — add a property to start tracking'
-
-  const body = isSignedOut
-    ? 'Track 311 complaints, building violations, and permits across every property you own or manage in Chicago.'
-    : isPortfolio
-      ? 'Search any Chicago address and click the bookmark icon to start tracking complaints, violations, and permits.'
-      : 'Once you add properties to your portfolio, every new complaint, violation, and permit shows up here automatically.'
 
   const ctaButtonStyle: CSSProperties = {
     display: 'inline-block',
-    padding: '10px 22px',
+    padding: '11px 24px',
     background: '#0f2744',
     color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     textDecoration: 'none',
-    borderRadius: 4,
+    borderRadius: 6,
     border: 'none',
     cursor: 'pointer',
     fontFamily: 'inherit',
   }
 
   return (
-    <div style={{ padding: '24px 28px' }}>
-      {isPortfolio ? (
-        <div
-          className="dashboard-banner-row"
-          style={{ marginBottom: 16, opacity: 0.5, pointerEvents: 'none' }}
-        >
-          <div className="dashboard-banner dashboard-banner-monitor">
-            <span>
-              <strong>Set up real-time monitoring</strong> — get alerts the moment something hits your portfolio
-            </span>
-            <button type="button" className="dashboard-banner-monitor-btn" disabled>
-              Set up →
-            </button>
-          </div>
-          <div className="dashboard-banner dashboard-banner-right">
-            <div className="dashboard-banner-right-left">
-              <div className="dashboard-banner-count">0</div>
-              <div className="dashboard-banner-count-text">
-                <strong>properties tracked</strong>
-                <br />
-                {isSignedOut ? 'Sign in to start saving properties' : 'Search any address to add your first one'}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        className="dashboard-table-wrap"
-        style={{
-          padding: '64px 24px',
-          textAlign: 'center',
-          background: '#fff',
-        }}
-      >
+    <div style={{ padding: '64px 24px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
         <div
           style={{
             fontFamily: 'Merriweather, Georgia, serif',
-            fontSize: 18,
+            fontSize: 22,
             fontWeight: 600,
             color: '#0f2744',
-            marginBottom: 8,
+            marginBottom: 10,
           }}
         >
-          {title}
+          Add your first property
         </div>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 14,
             color: '#6b7280',
             lineHeight: 1.6,
-            maxWidth: 460,
-            margin: '0 auto 20px',
+            marginBottom: 24,
           }}
         >
-          {body}
+          Track 311 complaints, building violations, and permits across every property you own or manage in Chicago.
         </div>
+
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: '0 auto 28px',
+            textAlign: 'left',
+            maxWidth: 460,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          {UNLOCK_BULLETS.map((b, i) => (
+            <li
+              key={i}
+              style={{
+                display: 'flex',
+                gap: 10,
+                fontSize: 13,
+                color: '#374151',
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ color: '#166534', fontWeight: 700, flexShrink: 0 }}>✓</span>
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+
         {isSignedOut ? (
           <SignInButton mode="modal">
             <button type="button" style={ctaButtonStyle}>
-              Sign in
+              Sign in to get started
             </button>
           </SignInButton>
         ) : (
-          <Link href="/" style={ctaButtonStyle}>
-            {isPortfolio ? 'Search an address' : 'Add a property'}
-          </Link>
+          <button
+            type="button"
+            style={ctaButtonStyle}
+            onClick={() => {
+              // Opens the global search via AppSidebar's Cmd+K listener —
+              // same mechanism as the header "+ Add property" button.
+              window.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
+              )
+            }}
+          >
+            Search an address
+          </button>
         )}
       </div>
     </div>

@@ -281,7 +281,7 @@ export default function AboutClient() {
                 <div className="pc-sub">with signup</div>
                 <div className="pc-features">
                   <div>Portfolio Dashboard</div>
-                  <div>Up to 5 saved properties</div>
+                  <div>Up to 3 saved properties</div>
                   <div>Address range/Super parcel creation</div>
                 </div>
               </div>

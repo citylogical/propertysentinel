@@ -51,7 +51,11 @@ export default function SavePropertyModal({
   const [error, setError] = useState<string | null>(null)
 
   const [displayName, setDisplayName] = useState(() => formatAddressForDisplay(canonicalAddress))
-  const [addressRange, setAddressRange] = useState(() => formatAddressForDisplay(canonicalAddress))
+  const [addressRange, setAddressRange] = useState(() =>
+    buildingAddressRange?.trim()
+      ? buildingAddressRange.trim()
+      : formatAddressForDisplay(canonicalAddress)
+  )
   const [additionalStreets, setAdditionalStreets] = useState<string[]>(initialAdditionalStreets || [])
   const [units, setUnits] = useState<string>(assessorUnits?.toString() || '')
   const [sqft, setSqft] = useState<string>(
@@ -59,14 +63,20 @@ export default function SavePropertyModal({
   )
   const [notes, setNotes] = useState('')
   const [alertsEnabled, setAlertsEnabled] = useState(true)
-  const [showAdditional, setShowAdditional] = useState(false)
   const [plan, setPlan] = useState<string | null>(null)
+  const [showAdditional, setShowAdditional] = useState(false)
+  const [entReason, setEntReason] = useState<string | null>(null)
+  const [lifetimeSaves, setLifetimeSaves] = useState<number>(0)
 
   useEffect(() => {
     if (!isOpen) return
     setError(null)
     setDisplayName(formatAddressForDisplay(canonicalAddress))
-    setAddressRange(formatAddressForDisplay(canonicalAddress))
+    setAddressRange(
+      buildingAddressRange?.trim()
+        ? buildingAddressRange.trim()
+        : formatAddressForDisplay(canonicalAddress)
+    )
     setAdditionalStreets(initialAdditionalStreets?.length ? [...initialAdditionalStreets] : [])
     setUnits(assessorUnits?.toString() || '')
     setSqft(
@@ -85,11 +95,22 @@ export default function SavePropertyModal({
     let cancelled = false
     fetch('/api/profile/update')
       .then((res) => res.json())
-      .then((data: { profile?: { plan?: string | null } | null }) => {
-        if (!cancelled) setPlan(data.profile?.plan ?? 'free')
+      .then((data: {
+        profile?: { plan?: string | null } | null
+        entitlement?: { reason?: string | null } | null
+        lifetime_saves?: number | null
+      }) => {
+        if (cancelled) return
+        setPlan(data.profile?.plan ?? 'free')
+        setEntReason(data.entitlement?.reason ?? 'none')
+        setLifetimeSaves(Number(data.lifetime_saves ?? 0))
       })
       .catch(() => {
-        if (!cancelled) setPlan('free')
+        if (!cancelled) {
+          setPlan('free')
+          setEntReason('none')
+          setLifetimeSaves(0)
+        }
       })
     return () => {
       cancelled = true
@@ -112,6 +133,29 @@ export default function SavePropertyModal({
 
   const handleSave = async () => {
     if (!user || !displayName.trim()) return
+
+    // Free/trial user out of lifetime saves: the click is a subscribe CTA,
+    // not a save. Route to checkout instead of attempting a save that would 403.
+    const isPayer = entReason === 'paying' || entReason === 'enterprise'
+    if (!isPayer && 3 - lifetimeSaves <= 0) {
+      try {
+        const res = await fetch('/api/stripe/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quantity: 1,
+            return_path: window.location.pathname + window.location.search,
+          }),
+        })
+        const data = (await res.json()) as { url?: string; error?: string }
+        if (data.url) window.location.href = data.url
+        else setError(data.error || 'Could not open checkout.')
+      } catch {
+        setError('Could not open checkout.')
+      }
+      return
+    }
+
     setSaving(true)
     setError(null)
 
@@ -172,11 +216,17 @@ export default function SavePropertyModal({
         aria-modal="true"
       >
         <div className="save-modal-header">
-          <div>
-            <div id="save-modal-title" className="save-modal-title">
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div id="save-modal-title" className="save-modal-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0f2744" stroke="#0f2744" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
               Save to dashboard
             </div>
-            <div className="save-modal-sub">{formatAddressForDisplay(canonicalAddress)}</div>
+            <ul className="save-modal-benefits save-modal-benefits-centered">
+              <li>Complete 311 complaint context</li>
+              <li>Daily alerts of new activity</li>
+            </ul>
           </div>
           <button type="button" className="save-modal-close" onClick={() => onClose()} aria-label="Close">
             &times;
@@ -318,7 +368,7 @@ export default function SavePropertyModal({
 
           <div className="save-divider" />
 
-          <div className="save-toggle-row">
+          <div className="save-toggle-row" style={{ display: 'none' }}>
             <div>
               <div className="save-toggle-label">Enable alerts</div>
               <div className="save-toggle-sub">SMS + email for new complaints, violations, permits</div>
@@ -345,21 +395,23 @@ export default function SavePropertyModal({
         <div className="save-modal-footer save-modal-footer-single">
           <button
             type="button"
-            className={`save-btn save-btn-save${alertsEnabled ? ' save-btn-alerts' : ''}`}
+            className="save-btn save-btn-save save-btn-alerts"
             onClick={handleSave}
             disabled={saveDisabled}
           >
-            {saving
-              ? 'Saving…'
-              : !user
-                ? 'Sign in to save'
-                : !alertsEnabled
-                  ? 'Save to dashboard'
-                  : plan === 'enterprise'
-                    ? 'Save & turn on alerts'
-                    : plan === 'premium'
-                      ? 'Save & turn on alerts — adds $10/mo'
-                      : 'Save & turn on alerts — $10/mo'}
+            {(() => {
+              if (saving) return 'Saving…'
+              if (!user) return 'Sign in to save'
+              const isPayer = entReason === 'paying' || entReason === 'enterprise'
+              if (isPayer) {
+                return <><strong>Save</strong> · $10/month</>
+              }
+              const remaining = Math.max(0, 3 - lifetimeSaves)
+              if (remaining === 0) {
+                return 'Subscribe to save'
+              }
+              return <><strong>Save</strong> · {remaining} of 3 remaining</>
+            })()}
           </button>
         </div>
       </div>

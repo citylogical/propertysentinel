@@ -701,7 +701,7 @@ export default function PropertyFeed({
                 }
 
                 return (
-                  <div key={c.sr_number} className="complaint">
+                  <div key={c.sr_number} className="complaint" style={{ alignItems: 'flex-start' }}>
                     <div>
                       <div className="complaint-type-name">{c.sr_type ?? '—'}</div>
                       <div className="complaint-dept">
@@ -715,8 +715,19 @@ export default function PropertyFeed({
                       </div>
                       <div className="complaint-sr">#{c.sr_number}</div>
                     </div>
-                    <div className={`status-badge ${statusClass}`}>
-                      {isOpen(c.status) ? 'Open' : 'Completed'}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+                      <div className={`status-badge ${statusClass}`}>
+                        {isOpen(c.status) ? 'Open' : 'Completed'}
+                      </div>
+                      <button
+                        type="button"
+                        className="see-context-nudge"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('ps:open-save-modal'))
+                        }}
+                      >
+                        See complaint context →
+                      </button>
                     </div>
                   </div>
                 )
