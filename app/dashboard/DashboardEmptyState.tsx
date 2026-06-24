@@ -88,7 +88,7 @@ export default function DashboardEmptyState({ kind }: Props) {
         {isSignedOut ? (
           <SignInButton mode="modal">
             <button type="button" style={ctaButtonStyle}>
-              Sign in to get started
+              Sign-up to get started
             </button>
           </SignInButton>
         ) : null}
