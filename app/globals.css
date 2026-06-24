@@ -5345,3 +5345,118 @@ button.save-toggle-switch {
   top: 0;
   right: 0;
 }
+
+.addprop-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 39, 68, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.addprop-modal {
+  position: relative;
+  background: #fff;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 560px;
+  padding: 32px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.addprop-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #8a94a0;
+  cursor: pointer;
+}
+
+.addprop-split {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.addprop-half {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 12px 20px;
+  gap: 8px;
+}
+
+.addprop-divider {
+  width: 1px;
+  background: #e5e1d6;
+  margin: 8px 0;
+  align-self: stretch;
+}
+
+.addprop-half-title {
+  font-family: Merriweather, Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f2744;
+}
+
+.addprop-half-sub {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+
+.addprop-search-btn {
+  margin-top: 4px;
+  padding: 9px 18px;
+  background: #166534;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addprop-search-btn:hover {
+  background: #14532d;
+}
+
+.addprop-import-btn {
+  margin-top: 4px;
+  display: inline-block;
+  padding: 9px 18px;
+  background: #d6e4f3;
+  color: #1e3a5f;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.addprop-import-btn:hover {
+  background: #1e3a5f;
+  color: #fff;
+}
+
+.addprop-import-note {
+  font-size: 11px;
+  color: #8a94a0;
+  line-height: 1.45;
+  margin-top: 8px;
+}

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
 import type { Entitlement } from '@/lib/entitlement'
+import AddPropertyModal from './AddPropertyModal'
 
 type HeaderStats = {
   buildings: number
@@ -41,6 +42,13 @@ export default function DashboardLayoutClient({
   const pathname = usePathname()
   const { isSignedIn, isLoaded: clerkLoaded } = useUser()
   const [stats, setStats] = useState<HeaderStats | null>(null)
+  const [addPropOpen, setAddPropOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setAddPropOpen(true)
+    window.addEventListener('ps:open-add-property', handler)
+    return () => window.removeEventListener('ps:open-add-property', handler)
+  }, [])
 
   useEffect(() => {
     if (!clerkLoaded) return
@@ -153,13 +161,7 @@ export default function DashboardLayoutClient({
             <button
               type="button"
               style={addPropertyBtnStyle}
-              onClick={() => {
-                // Re-uses the existing Cmd+K bind to open the add-property flow.
-                // PortfolioTable / search modal listens for this event.
-                window.dispatchEvent(
-                  new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
-                )
-              }}
+              onClick={() => setAddPropOpen(true)}
             >
               + Add property
             </button>
@@ -200,6 +202,8 @@ export default function DashboardLayoutClient({
       ) : null}
 
       {children}
+
+      <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
     </div>
   )
 }

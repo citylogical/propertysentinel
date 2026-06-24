@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUser } from '@clerk/nextjs'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
-import { handleAlertSync, type AlertSyncResult } from '@/lib/handle-alert-sync'
 
 export type SavePropertyModalProps = {
   isOpen: boolean
@@ -131,35 +130,41 @@ export default function SavePropertyModal({
     setAdditionalStreets(updated)
   }
 
+  const routeToCheckout = async () => {
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: 1,
+          return_path: window.location.pathname + window.location.search,
+        }),
+      })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (data.url) {
+        window.location.href = data.url
+        return true
+      }
+      setError(data.error || 'Could not open checkout.')
+    } catch {
+      setError('Could not open checkout.')
+    }
+    return false
+  }
+
   const handleSave = async () => {
     if (!user || !displayName.trim()) return
-
-    // Free/trial user out of lifetime saves: the click is a subscribe CTA,
-    // not a save. Route to checkout instead of attempting a save that would 403.
-    const isPayer = entReason === 'paying' || entReason === 'enterprise'
-    if (!isPayer && 3 - lifetimeSaves <= 0) {
-      try {
-        const res = await fetch('/api/stripe/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            quantity: 1,
-            return_path: window.location.pathname + window.location.search,
-          }),
-        })
-        const data = (await res.json()) as { url?: string; error?: string }
-        if (data.url) window.location.href = data.url
-        else setError(data.error || 'Could not open checkout.')
-      } catch {
-        setError('Could not open checkout.')
-      }
-      return
-    }
 
     setSaving(true)
     setError(null)
 
     try {
+      // Always attempt the save. The server is the authority on the cap —
+      // admins, payers, and under-cap trial users save successfully; a
+      // genuinely capped user gets a 403 with reason 'save_limit_reached',
+      // which is the ONLY case that routes to checkout. This avoids the
+      // client guessing the cap (which mis-fired for admins) and guarantees
+      // a permitted save actually saves.
       const res = await fetch('/api/dashboard/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,14 +189,22 @@ export default function SavePropertyModal({
         }),
       })
 
+      if (res.status === 403) {
+        const data = (await res.json()) as { reason?: string; error?: string }
+        if (data.reason === 'save_limit_reached') {
+          // Genuinely capped — convert to a subscribe action.
+          const redirecting = await routeToCheckout()
+          if (redirecting) return
+          setSaving(false)
+          return
+        }
+        throw new Error(data.error || 'Failed to save')
+      }
+
       if (!res.ok) {
         const data = (await res.json()) as { error?: string }
         throw new Error(data.error || 'Failed to save')
       }
-
-      const data = (await res.json()) as { alert_sync?: AlertSyncResult }
-      const redirecting = await handleAlertSync(data.alert_sync)
-      if (redirecting) return
 
       onClose(true)
     } catch (err: unknown) {

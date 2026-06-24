@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
 import { OWNER_RELEVANT_CODES } from '@/lib/sr-codes'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { syncAlertQuantity } from '@/lib/sync-alert-quantity'
 import { computeEntitlement } from '@/lib/entitlement'
 
 function parseOptInt(v: unknown): number | null {
@@ -371,14 +370,5 @@ export async function POST(request: Request) {
     }
   }
 
-  let alertSync: Awaited<ReturnType<typeof syncAlertQuantity>> | null = null
-  if (alerts_enabled) {
-    try {
-      alertSync = await syncAlertQuantity(supabase, userId)
-    } catch (syncErr) {
-      console.error('Alert quantity sync failed (non-fatal):', syncErr)
-    }
-  }
-
-  return NextResponse.json({ success: true, id: insertedRow?.id, alert_sync: alertSync })
+  return NextResponse.json({ success: true, id: insertedRow?.id })
 }

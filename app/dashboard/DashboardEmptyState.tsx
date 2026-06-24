@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { SignInButton } from '@clerk/nextjs'
 
 type Props = {
@@ -8,10 +8,10 @@ type Props = {
   context: 'portfolio' | 'activity'
 }
 
-const UNLOCK_BULLETS = [
-  'Save any Chicago property to unlock its full report — 311 complaint detail, violations, and permits',
-  'Daily alerts the moment a new complaint, violation, or permit is filed at your buildings',
-  'Free for 30 days from your first save — then $10 per property each month',
+const UNLOCK_BULLETS: ReactNode[] = [
+  <>Save any Chicago property to unlock its full report — <strong>311 complaint detail, violations, and permits</strong></>,
+  <><strong>Daily alerts</strong> the moment a new complaint, violation, or permit is filed at your buildings</>,
+  <><strong>Free for 30 days</strong> from your first save — then $10 per property each month</>,
 ]
 
 export default function DashboardEmptyState({ kind }: Props) {
@@ -32,29 +32,29 @@ export default function DashboardEmptyState({ kind }: Props) {
   }
 
   return (
-    <div style={{ padding: '64px 24px', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ minHeight: '80vh', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
-        <div
-          style={{
-            fontFamily: 'Merriweather, Georgia, serif',
-            fontSize: 22,
-            fontWeight: 600,
-            color: '#0f2744',
-            marginBottom: 10,
-          }}
-        >
-          Add your first property
-        </div>
-        <div
-          style={{
-            fontSize: 14,
-            color: '#6b7280',
-            lineHeight: 1.6,
-            marginBottom: 24,
-          }}
-        >
-          Track 311 complaints, building violations, and permits across every property you own or manage in Chicago.
-        </div>
+        {!isSignedOut ? (
+          <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('ps:open-add-property'))}
+              style={{
+                padding: '11px 22px',
+                background: '#166534',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Add your first property
+            </button>
+          </div>
+        ) : null}
 
         <ul
           style={{
@@ -91,21 +91,7 @@ export default function DashboardEmptyState({ kind }: Props) {
               Sign in to get started
             </button>
           </SignInButton>
-        ) : (
-          <button
-            type="button"
-            style={ctaButtonStyle}
-            onClick={() => {
-              // Opens the global search via AppSidebar's Cmd+K listener —
-              // same mechanism as the header "+ Add property" button.
-              window.dispatchEvent(
-                new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
-              )
-            }}
-          >
-            Search an address
-          </button>
-        )}
+        ) : null}
       </div>
     </div>
   )
