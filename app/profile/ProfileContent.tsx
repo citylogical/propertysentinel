@@ -299,7 +299,6 @@ export default function ProfileContent() {
                     })
                 }}
               />
-              <div style={{ fontSize: 12, color: '#666', marginTop: 8 }}>{roleLabel}</div>
             </div>
             {memberSince ? (
               <div style={{ textAlign: 'right' }}>
@@ -362,13 +361,15 @@ export default function ProfileContent() {
             type="button"
             onClick={() => setShowSecurityModal(true)}
             style={{
-              background: 'transparent',
-              border: 'none',
+              background: '#eef1f5',
+              border: '1px solid #dde3ec',
               color: '#1e3a5f',
-              padding: 0,
+              padding: '8px 16px',
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: 'inherit',
               fontSize: 13,
+              fontWeight: 500,
             }}
           >
             Manage sign-in & security →
@@ -377,13 +378,15 @@ export default function ProfileContent() {
             type="button"
             onClick={() => signOut({ redirectUrl: '/' })}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#888',
-              padding: 0,
+              background: '#fcebeb',
+              border: '1px solid #f0c9c9',
+              color: '#a32d2d',
+              padding: '8px 16px',
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: 'inherit',
               fontSize: 13,
+              fontWeight: 500,
             }}
           >
             Sign out

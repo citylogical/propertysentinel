@@ -5460,3 +5460,25 @@ button.save-toggle-switch {
   line-height: 1.45;
   margin-top: 8px;
 }
+
+.profile-content-billing-btn {
+  background: #eef1f5;
+  color: #1e3a5f;
+  border: 1px solid #dde3ec;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.profile-content-billing-btn:hover:not(:disabled) {
+  background: #e2e7ee;
+}
+
+.profile-content-billing-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

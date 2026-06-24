@@ -79,21 +79,21 @@ export async function POST(req: Request) {
   }
 
   if (evt.type === 'user.updated') {
-    const { id, email_addresses, phone_numbers, first_name, last_name, public_metadata } = evt.data
+    const { id, email_addresses } = evt.data
     const email = email_addresses[0]?.email_address ?? null
-    const phone = phone_numbers?.[0]?.phone_number ?? null
-    const organization = (public_metadata as Record<string, unknown>)?.organization as string | null ?? null
 
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-    if (email) updates.email = email
-    if (first_name !== undefined) updates.first_name = first_name
-    if (last_name !== undefined) updates.last_name = last_name
-    if (phone !== undefined) updates.phone = phone
-    if (organization !== undefined) updates.organization = organization
+    // Only sync the email from Clerk. first_name, last_name, organization,
+    // phone, and zip are owned by the profile page (stored in Supabase, never
+    // written to Clerk), so they come through this event as null and would
+    // WIPE the real values if we wrote them. Email is the only profile field
+    // Clerk is the source of truth for, so it's the only thing we sync here.
+    if (!email) {
+      return new Response('ok', { status: 200 })
+    }
 
     const { error } = await supabaseAdmin
       .from('subscribers')
-      .update(updates)
+      .update({ email, updated_at: new Date().toISOString() })
       .eq('clerk_id', id)
 
     if (error) {
