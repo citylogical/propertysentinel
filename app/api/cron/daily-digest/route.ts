@@ -26,6 +26,7 @@ const SR_INTAKE_LABELS: Record<string, { concern?: string; problem?: string; des
   AAD: { concern: 'Cave-in location', problem: 'Sewer structure nearby' },
   WM3: { concern: 'Leak location', problem: 'Leak visible' },
   SGA: { concern: 'Locations to bait', problem: 'Backyard service' },
+  SDR: { concern: 'Location' },
 }
 
 /**
