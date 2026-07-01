@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getAllAddresses } from '@/lib/portfolio-stats'
 import { addressToSlug } from '@/lib/formatAddress'
 import { getEnabledCodesForUsers } from '@/lib/sr-preferences'
+import { SR_INTAKE_LABELS } from '@/lib/sr-catalog'
 import { computeEntitlement } from '@/lib/entitlement'
 
 // Street type tokens used to identify the end of an address proper (everything
@@ -21,13 +22,7 @@ const STREET_TYPES = new Set([
 // `concern` → concern_category, `problem` → problem_category, `description` →
 // complaint_description (only promoted when it's a structured picklist answer,
 // e.g. AAI surface type — never a freeform narrative).
-const SR_INTAKE_LABELS: Record<string, { concern?: string; problem?: string; description?: string }> = {
-  AAI: { concern: 'Alley caved-in', problem: 'Alley flooded', description: 'Surface' },
-  AAD: { concern: 'Cave-in location', problem: 'Sewer structure nearby' },
-  WM3: { concern: 'Leak location', problem: 'Leak visible' },
-  SGA: { concern: 'Locations to bait', problem: 'Backyard service' },
-  SDR: { concern: 'Location' },
-}
+// SR_INTAKE_LABELS imported from @/lib/sr-catalog — single source of truth.
 
 /**
  * Build a labeled structured-intake description for the digest, e.g.
@@ -868,18 +863,26 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (m) => map[m] ?? m)
 }
 
+// created_date is Chicago local time stored with a FALSE +00:00 marker (verified
+// against Socrata's created_hour: a 7 PM CT complaint stores as "19:38:02+00").
+// It is NOT true UTC despite the suffix. To display correctly: slice off the
+// false offset, re-append 'Z' to force UTC parsing, then format with
+// timeZone: 'UTC' so the stored wall-clock digits render unchanged — no
+// double-offset. Mirrors formatSocrataTimeCT on /status and the slice-based
+// formatOpenDateTime in ComplaintDetail/_shared.
 function formatChicagoTime(iso: string): string {
   try {
-    const d = new Date(iso)
-    return d.toLocaleString('en-US', {
-      timeZone: 'America/Chicago',
+    const clean = String(iso).slice(0, 19)
+    const d = new Date(clean + 'Z')
+    if (Number.isNaN(d.getTime())) return iso
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-      timeZoneName: 'short',
-    })
+    }).format(d) + ' CDT'
   } catch {
     return iso
   }

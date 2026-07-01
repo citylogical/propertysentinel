@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { ClosedPill, StatusPill, formatDate, monoLabel } from './_shared'
 import { DEPARTMENT_BY_CODE } from '@/lib/sr-codes'
+import { SR_INTAKE_LABELS } from '@/lib/sr-catalog'
 
 // Local date+time formatter for the header open date. created_date is Chicago
 // local time stored without a tz marker (Supabase shows +00:00), so we slice
@@ -103,17 +104,8 @@ const bucketColor: Record<OutcomeBucket, string> = {
 // value — without it, "Category: No" is unreadable. Falls back to the generic
 // 'Category' / 'Detail' / 'Surface' labels below when a code has no entry.
 // Question text mirrors the QUESTION_MAP comments in enrich_complaints.py.
-const SR_INTAKE_LABELS: Record<string, { concern?: string; problem?: string; description?: string }> = {
-  // DWM sewer inspections — structured intake, no free-text narrative.
-  AAI: { concern: 'Alley caved-in', problem: 'Alley flooded', description: 'Surface' },
-  AAD: { concern: 'Cave-in location', problem: 'Sewer structure nearby' },
-  WM3: { concern: 'Leak location', problem: 'Leak visible' },
-  // Streets & San structured-intake codes.
-  SGA: { concern: 'Locations to bait', problem: 'Backyard service' },
-  SDR: { concern: 'Location' },
-}
-
-// Generic fallbacks when a code is absent from SR_INTAKE_LABELS.
+// Generic fallbacks when a code is absent from SR_INTAKE_LABELS (imported from
+// @/lib/sr-catalog — the single source of truth for intake labels).
 const GENERIC_INTAKE_LABELS = { concern: 'Category', problem: 'Detail', description: 'Surface' }
 
 export default function ComplaintDetail({ complaint: c, isAdmin, address, addressSlug }: Props) {
