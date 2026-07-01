@@ -149,18 +149,14 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address, addres
   if (isAdmin && c.owner_occupied) tags.push({ label: 'Owner occupied', value: c.owner_occupied })
   // Categorical intake fields are public — they describe the complaint shape, not the
   // complainant. For structured-intake SR types (e.g. SGA Rodent Baiting) these are
-  // the primary signal in the absence of a free-text description. For SEC (Tree
-  // Emergency) the picklists are restatements of the freeform complaint_description
-  // ("Power line" / "Alley" when the description already says "Limb hanging on power
-  // lines. blocking the alley") — suppress them for SEC and rely on the description.
-  const isSecCode = String(c.sr_short_code ?? '').toUpperCase() === 'SEC'
+  // the primary signal in the absence of a free-text description.
   const codeKey = String(c.sr_short_code ?? '').toUpperCase()
   const intakeLabels = SR_INTAKE_LABELS[codeKey] ?? {}
-  if (!isSecCode && c.concern_category) {
+  if (c.concern_category) {
     tags.push({ label: intakeLabels.concern ?? GENERIC_INTAKE_LABELS.concern, value: c.concern_category })
   }
-  if (!isSecCode && c.problem_category) {
-    tags.push({ label: intakeLabels.problem ?? GENERIC_INTAKE_LABELS.problem, value: c.problem_category })
+  if (c.problem_category && intakeLabels.problem) {
+    tags.push({ label: intakeLabels.problem, value: c.problem_category })
   }
   // For structured-intake codes with no standard_description (SKIP_PARAPHRASE),
   // the surface-type / freeform answer lives in complaint_description and would
@@ -168,7 +164,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address, addres
   // description label defined (e.g. AAI "Surface"), promote it to a public tag
   // so GC sees "Surface: Paved" instead of nothing. Only when there's no
   // standard_description (desc) — paraphrased codes already render desc.
-  if (!isSecCode && !desc && intakeLabels.description && rawDesc) {
+  if (!desc && intakeLabels.description && rawDesc) {
     tags.push({ label: intakeLabels.description, value: rawDesc })
   }
   // Owner-occupied "Yes" for EAF Vicious Animal means animal resides at address
@@ -289,17 +285,6 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address, addres
         >
           {desc}
         </div>
-      ) : isSecCode && rawDesc ? (
-        <div
-          style={{
-            fontSize: 13,
-            color: '#1a1a1a',
-            lineHeight: 1.4,
-            marginBottom: 12,
-          }}
-        >
-          {rawDesc}
-        </div>
       ) : !c.concern_category && !c.problem_category && !c.final_outcome ? (
         <div
           style={{
@@ -313,7 +298,7 @@ export default function ComplaintDetail({ complaint: c, isAdmin, address, addres
           No description available
         </div>
       ) : null}
-      {!isSecCode && isAdmin && rawDesc && rawDesc !== desc ? (
+      {isAdmin && rawDesc && rawDesc !== desc ? (
         <div
           style={{
             fontSize: 11,

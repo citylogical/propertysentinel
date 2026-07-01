@@ -490,13 +490,6 @@ export async function GET(request: Request) {
           // For structured-intake codes (SGA, WM3, AAD, AAI) standard_description
           // is null but concern_category/problem_category carry the signal.
           // Join the two structured fields with " / " when both present.
-          //
-          // SEC (Tree Emergency) is an exception: the picklist fields are
-          // restatements of the freeform complaint_description, not adding
-          // signal. For SEC, prefer the freeform field directly so the
-          // digest reads "Limb hanging on power lines. blocking the alley"
-          // instead of "Power line / Alley".
-          const isSecCode = String(c.sr_short_code ?? '').toUpperCase() === 'SEC'
           const desc = c.standard_description?.trim() || null
           const concern = c.concern_category?.trim() || null
           const problem = c.problem_category?.trim() || null
@@ -508,9 +501,7 @@ export async function GET(request: Request) {
             c.sr_short_code, concern, problem, rawDesc,
           )
           let description: string | null = null
-          if (isSecCode && rawDesc) {
-            description = rawDesc
-          } else if (desc && structured) {
+          if (desc && structured) {
             description = `${desc} — ${structured}`
           } else if (desc) {
             description = desc

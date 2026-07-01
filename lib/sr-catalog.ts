@@ -389,7 +389,7 @@ export const CATALOG: SrCatalogEntry[] = [
   },
   {
     srShortCode: 'SEC', srType: 'Tree Emergency', workTypeId: '08qt0000000CadSAAS',
-    department: SS, portfolioOnly: true, paraphrase: false, labelVerified: true,
+    department: SS, portfolioOnly: true, paraphrase: true, labelVerified: true,
     fields: [
       { field: 'concern_category', questionId: 'a1Yt0000000LiaTEAS', column: 'concern_category', label: 'Obstructing', kind: 'picklist' },
       // problem_category is nominally "actual location of tree" but the live
