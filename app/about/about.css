@@ -1280,7 +1280,8 @@
    .pc5-slider::-webkit-slider-thumb {
      -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
      border-radius: 50%; background: var(--navy, #0f2744); border: 2px solid #fff;
-     box-shadow: 0 1px 4px rgba(15, 39, 68, 0.3); cursor: pointer; margin-top: -6px;
+     box-shadow: 0 1px 4px rgba(15, 39, 68, 0.3); cursor: pointer;
+     margin-top: -2px;
    }
    .pc5-slider::-moz-range-thumb {
      width: 18px; height: 18px; border-radius: 50%; background: var(--navy, #0f2744);
@@ -1368,3 +1369,182 @@
      .pc5-controls { flex-direction: column; }
      .pc5-cards { grid-template-columns: 1fr; }
    }
+
+/* ── Pricing tweaks: annual savings, struck per-unit ── */
+
+/* Green −20% pill when annual is active */
+.pc5-bill.on .pc5-bill-pill {
+  color: #4ade80;
+}
+
+/* Annual savings line under the price */
+.pc5-saving {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4ade80;
+  margin-top: 6px;
+  letter-spacing: 0.01em;
+}
+
+/* Struck-through list per-unit rate before the effective annual rate */
+.pc5-perunit-strike {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Email Jim modal (pcm-) ── */
+.pcm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 39, 68, 0.4);
+  animation: pcmFade 0.15s ease;
+}
+@keyframes pcmFade { from { opacity: 0; } to { opacity: 1; } }
+
+.pcm-modal {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(15, 39, 68, 0.28);
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 26px 28px 24px;
+  animation: pcmPop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pcmPop {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.pcm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.pcm-title {
+  font-family: "Merriweather", Georgia, serif;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--navy, #0f2744);
+}
+.pcm-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: #f2f0eb;
+  color: var(--text, #1a1a1a);
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pcm-close:hover { background: #e6e2d8; }
+
+.pcm-lede {
+  font-size: 13px;
+  color: var(--text-mid, #4a5568);
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.pcm-field { margin-bottom: 14px; }
+.pcm-label {
+  display: block;
+  font-family: var(--mono, "DM Mono", monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim, #8a94a0);
+  margin-bottom: 6px;
+}
+.pcm-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text, #1a1a1a);
+  background: #fafaf6;
+  border: 1px solid var(--border, #ddd9d0);
+  border-radius: 8px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pcm-input:focus { border-color: var(--navy, #0f2744); background: #fff; }
+.pcm-textarea { resize: vertical; line-height: 1.5; }
+
+.pcm-send {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: #166534;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.pcm-send:hover { background: #12562c; }
+.pcm-send-off { opacity: 0.45; cursor: not-allowed; pointer-events: auto; }
+
+/* ── Email Jim modal: success + error states ── */
+.pcm-success {
+  text-align: center;
+  padding: 20px 8px 8px;
+}
+.pcm-success-check {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: #166534;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pcm-success-check svg {
+  width: 22px;
+  height: 22px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pcm-success-title {
+  font-family: "Merriweather", Georgia, serif;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--navy, #0f2744);
+  margin-bottom: 8px;
+}
+.pcm-success-text {
+  font-size: 13.5px;
+  color: var(--text-mid, #4a5568);
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+.pcm-error {
+  font-size: 12.5px;
+  color: #b8302a;
+  line-height: 1.4;
+  margin-bottom: 10px;
+  text-align: center;
+}

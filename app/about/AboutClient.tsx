@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 
 /* ────────────────────────────────────────────────────────────────────
@@ -312,15 +313,16 @@ function PricingShowcase({
 }) {
   const [annual, setAnnual] = useState(true)
   const [units, setUnits] = useState(100)
+  const [showEmailModal, setShowEmailModal] = useState(false)
 
   const PORTFOLIO_TIERS = [
-    { price: 25, cap: 10, perUnit: '$2.50' },
-    { price: 50, cap: 20, perUnit: '$2.50' },
-    { price: 100, cap: 40, perUnit: '$2.50' },
-    { price: 250, cap: 100, perUnit: '$2.50' },
-    { price: 500, cap: 225, perUnit: '$2.22' },
-    { price: 750, cap: 375, perUnit: '$2.00' },
-    { price: 1000, cap: 550, perUnit: '$1.82' },
+    { price: 25, cap: 10, perUnitNum: 2.5 },
+    { price: 50, cap: 20, perUnitNum: 2.5 },
+    { price: 100, cap: 40, perUnitNum: 2.5 },
+    { price: 250, cap: 100, perUnitNum: 2.5 },
+    { price: 500, cap: 225, perUnitNum: 2.22 },
+    { price: 750, cap: 375, perUnitNum: 2.0 },
+    { price: 1000, cap: 550, perUnitNum: 1.82 },
   ]
   const ANNUAL_MULT = 0.8
   const SLIDER_MAX = 600
@@ -357,6 +359,13 @@ function PricingShowcase({
     )
   }
 
+  // Portfolio price-block values (only meaningful when !isMax)
+  const t = !isMax ? PORTFOLIO_TIERS[tierIdx as number] : null
+  const listMo = t ? t.price : 0
+  const shownMo = t ? (annual ? Math.round(listMo * ANNUAL_MULT) : listMo) : 0
+  const savingYr = t ? listMo * 12 - shownMo * 12 : 0
+  const effPerUnit = t ? shownMo / t.cap : 0
+
   return (
     <div className="pc5">
       <div className="pc5-hero">
@@ -369,12 +378,13 @@ function PricingShowcase({
             </>
           ) : (
             <>
-              {' '}— <span className="pc5-hero-price">let&apos;s talk</span>
+              {' '}&mdash; <span className="pc5-hero-price">let&apos;s talk</span>
             </>
           )}
         </h1>
         <p className="pc5-hero-sub">
-          Cure a complaint before the city even sends an inspector.
+          Cure a complaint before the city even sends an inspector. Simple flat
+          pricing.
         </p>
       </div>
 
@@ -414,7 +424,7 @@ function PricingShowcase({
             className={annual ? 'pc5-bill on' : 'pc5-bill'}
             onClick={() => setAnnual(true)}
           >
-            Annual <span className="pc5-bill-pill">−20%</span>
+            Annual <span className="pc5-bill-pill">&minus;20%</span>
           </button>
         </div>
       </div>
@@ -433,8 +443,8 @@ function PricingShowcase({
             <div className="pc5-price-note">Forever. No account required.</div>
           </div>
           <ul className="pc5-feats">
-            <li>Property search — every Chicago address</li>
-            <li>Super-parcel view</li>
+            <li>Search every Cook County address</li>
+            <li>Super-parcel &amp; multi-address resolutions</li>
             <li>Full complaint, permit &amp; violation history</li>
           </ul>
           <button
@@ -460,34 +470,39 @@ function PricingShowcase({
                   <span className="pc5-price pc5-white pc5-talk">550+ units</span>
                 </div>
                 <div className="pc5-price-note pc5-note-white">
-                  Beyond the tiers — see Max →
+                  Beyond the tiers &mdash; see Max &rarr;
                 </div>
               </>
             ) : (
               <>
                 <div className="pc5-price-line">
                   <span className="pc5-price pc5-white">
-                    $
-                    {(annual
-                      ? Math.round(PORTFOLIO_TIERS[tierIdx].price * ANNUAL_MULT)
-                      : PORTFOLIO_TIERS[tierIdx].price
-                    ).toLocaleString()}
+                    ${shownMo.toLocaleString()}
                   </span>
                   <span className="pc5-per pc5-per-white">/mo</span>
                   {annual && (
                     <span className="pc5-strike">
-                      ${PORTFOLIO_TIERS[tierIdx].price.toLocaleString()}
+                      ${listMo.toLocaleString()}
                     </span>
                   )}
                 </div>
+                {annual && (
+                  <div className="pc5-saving">
+                    Saving ${savingYr.toLocaleString()}/yr
+                  </div>
+                )}
                 <div className="pc5-price-note pc5-note-white">
-                  up to {PORTFOLIO_TIERS[tierIdx].cap} units · ~
-                  {PORTFOLIO_TIERS[tierIdx].perUnit}/unit
-                  {annual
-                    ? ` · $${Math.round(
-                        PORTFOLIO_TIERS[tierIdx].price * ANNUAL_MULT * 12
-                      ).toLocaleString()}/yr`
-                    : ''}
+                  up to {t!.cap} units ·{' '}
+                  {annual ? (
+                    <>
+                      <span className="pc5-perunit-strike">
+                        ${t!.perUnitNum.toFixed(2)}
+                      </span>{' '}
+                      ${effPerUnit.toFixed(2)}/unit
+                    </>
+                  ) : (
+                    <>${t!.perUnitNum.toFixed(2)}/unit</>
+                  )}
                 </div>
               </>
             )}
@@ -503,8 +518,7 @@ function PricingShowcase({
             className="pc5-btn pc5-btn-green"
             onClick={() =>
               isMax
-                ? (window.location.href =
-                    'mailto:jim@propertysentinel.io?subject=Property%20Sentinel%20Max%20plan')
+                ? setShowEmailModal(true)
                 : (window.location.href = `/sign-up?plan=portfolio&units=${units}`)
             }
           >
@@ -535,10 +549,7 @@ function PricingShowcase({
           <button
             type="button"
             className="pc5-btn pc5-btn-blue"
-            onClick={() =>
-              (window.location.href =
-                'mailto:jim@propertysentinel.io?subject=Property%20Sentinel%20Max%20plan')
-            }
+            onClick={() => setShowEmailModal(true)}
           >
             Email Jim
           </button>
@@ -546,11 +557,215 @@ function PricingShowcase({
       </div>
 
       <p className="pc5-footnote">
-        Every Chicago address is free to search — unlimited lookups, no account
-        required. Paid plans add real-time monitoring across your portfolio. No
-        per-seat fees, no monthly minimum.
+        Every Chicago address is free to search, no account required. Paid plans
+        add real-time monitoring and analytics across your portfolio. Flat
+        pricing. No per-seat or other hidden fees.
       </p>
+
+      {showEmailModal && (
+        <EmailJimModal
+          onClose={() => setShowEmailModal(false)}
+          defaultUnits={units}
+        />
+      )}
     </div>
+  )
+}
+
+function EmailJimModal({
+  onClose,
+  defaultUnits,
+}: {
+  onClose: () => void
+  defaultUnits: number
+}) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [org, setOrg] = useState('')
+  const [unitCount, setUnitCount] = useState(String(defaultUnits))
+  const [message, setMessage] = useState(
+    "I'm interested in portfolio monitoring services!"
+  )
+  const [mounted, setMounted] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  useEffect(() => setMounted(true), [])
+
+  const canSend = name.trim() !== '' && email.trim() !== ''
+
+  const handleSend = async () => {
+    if (!canSend) return
+    setStatus('sending')
+    setErrorMsg('')
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, org, units: unitCount, message }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErrorMsg(data.error || `Request failed (${res.status})`)
+        setStatus('error')
+        console.error('Contact send failed:', res.status, data)
+        return
+      }
+      setStatus('sent')
+    } catch (err) {
+      console.error('Contact send threw:', err)
+      setErrorMsg('Network error — please try again.')
+      setStatus('error')
+    }
+  }
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div className="pcm-overlay" onClick={onClose}>
+      <div
+        className="pcm-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Contact Jim"
+      >
+        <div className="pcm-head">
+          <div className="pcm-title">Email Jim</div>
+          <button
+            type="button"
+            className="pcm-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        {status === 'sent' ? (
+          <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
+            <div
+              aria-hidden="true"
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                background: '#e8f5e9',
+                color: '#166534',
+                fontSize: 24,
+                lineHeight: '48px',
+                margin: '0 auto 16px',
+              }}
+            >
+              ✓
+            </div>
+            <h3
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: '#1a1a1a',
+                margin: '0 0 8px',
+              }}
+            >
+              Email sent
+            </h3>
+            <p style={{ fontSize: 14, color: '#4a5568', margin: '0 0 24px' }}>
+              Thanks — we&apos;ll get back to you ASAP.
+            </p>
+            <button type="button" className="pcm-send" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="pcm-lede">
+              Tell me about your portfolio and I&apos;ll be in touch personally.
+            </p>
+
+            <div className="pcm-field">
+              <label className="pcm-label">Name</label>
+              <input
+                className="pcm-input"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+              />
+            </div>
+
+            <div className="pcm-field">
+              <label className="pcm-label">Email</label>
+              <input
+                className="pcm-input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+              />
+            </div>
+
+            <div className="pcm-field">
+              <label className="pcm-label">Organization</label>
+              <input
+                className="pcm-input"
+                type="text"
+                value={org}
+                onChange={(e) => setOrg(e.target.value)}
+                placeholder="Company or portfolio name"
+              />
+            </div>
+
+            <div className="pcm-field">
+              <label className="pcm-label">Number of units</label>
+              <input
+                className="pcm-input"
+                type="number"
+                min={1}
+                value={unitCount}
+                onChange={(e) => setUnitCount(e.target.value)}
+                placeholder="e.g. 600"
+              />
+            </div>
+
+            <div className="pcm-field">
+              <label className="pcm-label">Message</label>
+              <textarea
+                className="pcm-input pcm-textarea"
+                rows={3}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+            </div>
+
+            {status === 'error' && errorMsg ? (
+              <p
+                style={{
+                  color: '#c0392b',
+                  fontSize: 13,
+                  margin: '0 0 12px',
+                  lineHeight: 1.45,
+                }}
+              >
+                {errorMsg}
+              </p>
+            ) : null}
+
+            <button
+              type="button"
+              className={
+                canSend && status !== 'sending'
+                  ? 'pcm-send'
+                  : 'pcm-send pcm-send-off'
+              }
+              disabled={!canSend || status === 'sending'}
+              onClick={handleSend}
+            >
+              {status === 'sending' ? 'Sending…' : 'Send email'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -821,23 +1036,15 @@ function FeaturesShowcase() {
         </div>
         <div className="fts-rest-row">
           <h3>Every department, tracked</h3>
-          <p>
+          <p suppressHydrationWarning>
             The owning department decides the clock, the cost, and whether the
-            fine is real. We tag it on every complaint &mdash;{' '}
-            <b>
-              Buildings, Streets &amp; Sanitation, Water Management, BACP,
-              Public Health
-            </b>
-            , and beyond.
+            fine is real. We tag it on every complaint &mdash; <b>Buildings, Streets &amp; Sanitation, Water Management, BACP, Public Health</b>, and beyond.
           </p>
         </div>
         <div className="fts-rest-row">
           <h3>Violations and permits, too</h3>
-          <p>
-            Complaints are the early warning. We also track{' '}
-            <b>DOB violations and permit filings</b> at the address level &mdash;
-            with real current status, not the city&rsquo;s inspection-history
-            maze.
+          <p suppressHydrationWarning>
+            Complaints are the early warning. We also track <b>DOB violations and permit filings</b> at the address level &mdash; with real current status, not the city&rsquo;s inspection-history maze.
           </p>
         </div>
       </div>
