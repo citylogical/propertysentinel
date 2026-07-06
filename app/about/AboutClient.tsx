@@ -49,7 +49,11 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     chip: { text: 'OPEN', cls: 'open' },
     addr: '4953 W DRUMMOND PL',
     desc: 'Unpermitted home renovation',
-    rows: [{ k: 'Handled by', v: 'DOB – Buildings', a: 'dept' }],
+    rows: [
+      { k: 'Handled by', v: 'DOB – Buildings', a: 'dept' },
+      { k: 'Target Resolution', v: '30 days', a: 'target' },
+      { k: 'Avg Resolution', v: '34 days' },
+    ],
     steps: [
       { s: 'Complaint Filed', dot: 'done', t: 'MAY 14, 2026', tc: 'date' },
       { s: 'Dispatch Inspector', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
@@ -99,7 +103,7 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     addr: '8051 S INGLESIDE AVE',
     desc: 'Mold growth in walls and radiators — unit 2',
     rows: [
-      { k: 'Handled by', v: 'Buildings', a: 'dept' },
+      { k: 'Handled by', v: 'DOB – Buildings', a: 'dept' },
       { k: 'Target Resolution', v: '15 days', a: 'target' },
       { k: 'Avg Resolution', v: '18 days' },
     ],
@@ -824,6 +828,8 @@ function FeaturesShowcase() {
           Every complaint,
           <br />
           the way the city sees it
+          <br />
+          <span className="pc5-hero-price">and before they act</span>
         </h2>
         <p className="fts-sub">
           Right now, you only find out about a 311 complaint after an inspector
