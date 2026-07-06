@@ -1,112 +1,177 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 /* ────────────────────────────────────────────────────────────────────
-   FEATURE DATA (static — these don't need a database)
+   COMPLAINT SHOWCASE DATA — real SRs from complaints_311
    ──────────────────────────────────────────────────────────────────── */
 
-type Feature = {
-  category: string
-  headline: string
-  description: string
-  example: { title: string; lines: string[] }
+type ComplaintRow = { k: string; v: string; a?: 'dept' | 'target' }
+type ComplaintStep = {
+  s: string
+  dot: 'done' | 'current' | 'new' | 'closed'
+  t: string
+  tc: 'date' | 'current' | 'new'
+  dim?: boolean
+  a?: boolean
+}
+type ComplaintTab = {
+  key: string
+  label: string
+  icon: ReactNode
+  date: string
+  type: string
+  sr: string
+  chip: { text: string; cls: 'open' | 'closed' }
+  addr: string
+  desc: string
+  nature?: string
+  rows: ComplaintRow[]
+  steps: ComplaintStep[]
 }
 
-const FEATURES: Feature[] = [
+const COMPLAINT_TABS: ComplaintTab[] = [
   {
-    category: '311 complaints',
-    headline: 'Know the moment it’s filed',
-    description:
-      'Every complaint ingested within 30 minutes. Heating, rodents, building violations, shared housing — 13M records, searchable by address.',
-    example: {
-      title: '5540 S Hyde Park Blvd',
-      lines: [
-        'Building Violation — Mar 4, 2026 · Open',
-        'Heating Complaint — Jan 12, 2026 · Completed',
-        'Rodent Baiting — Nov 8, 2025 · Completed',
-        '134 total complaints on record',
-      ],
-    },
+    key: 'nopermit',
+    label: 'No Permit',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6" />
+        <path d="M9.5 12.5l5 5M14.5 12.5l-5 5" />
+      </svg>
+    ),
+    date: 'May 14, 2026 4:21 PM',
+    type: 'NO BUILDING PERMIT AND CONSTRUCTION VIOLATION',
+    sr: '#SR26-00905168',
+    chip: { text: 'OPEN', cls: 'open' },
+    addr: '4953 W DRUMMOND PL',
+    desc: 'Unpermitted home renovation',
+    rows: [{ k: 'Handled by', v: 'DOB – Buildings', a: 'dept' }],
+    steps: [
+      { s: 'Complaint Filed', dot: 'done', t: 'MAY 14, 2026', tc: 'date' },
+      { s: 'Dispatch Inspector', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Closed', dot: 'new', t: 'NEW', tc: 'new', dim: true },
+    ],
   },
   {
-    category: 'Building resolution',
-    headline: 'One building, one record',
-    description:
-      'Multiple addresses, multiple PINs — resolved automatically into a single unified property view.',
-    example: {
-      title: '1112–1134 N La Salle & 153–163 W Elm',
-      lines: [
-        '12 PINs resolved across 2 street addresses',
-        'All complaints unified regardless of entrance',
-        'Assessed values summed: $6.6M implied',
-        'No other tool does this',
-      ],
-    },
+    key: 'shvr',
+    label: 'Shared Housing',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M3 10.5 12 3l9 7.5" />
+        <path d="M5 9.5V21h14V9.5" />
+        <path d="M10 21v-5h4v5" />
+      </svg>
+    ),
+    date: 'Jul 5, 2026 11:47 PM',
+    type: 'SHARED HOUSING/VACATION RENTAL COMPLAINT',
+    sr: '#SR26-01324242',
+    chip: { text: 'OPEN', cls: 'open' },
+    addr: '5936 S DR MARTIN LUTHER KING JR DR',
+    desc: 'Short-term rental — illegal fireworks reported',
+    rows: [
+      { k: 'Handled by', v: 'BACP', a: 'dept' },
+      { k: 'Target Resolution', v: '7 days', a: 'target' },
+      { k: 'Avg Resolution', v: '5 days' },
+    ],
+    steps: [
+      { s: 'Complaint Filed', dot: 'done', t: 'JUL 5, 2026', tc: 'date' },
+      { s: 'Investigation/Inspection', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Perform Work', dot: 'new', t: 'NEW', tc: 'new', dim: true },
+    ],
   },
   {
-    category: 'Violations & permits',
-    headline: 'The full enforcement picture',
-    description:
-      'Inspector comments, inspection grouping, 540-day expiration tracking. Stop work orders flagged immediately.',
-    example: {
-      title: 'Inspection #14923847',
-      lines: [
-        'Failed porch — wood deteriorated beyond repair',
-        'Handrails missing, rear staircase 2nd–3rd floor',
-        'Stop work order issued — permit #100924618',
-        'Cure deadline: 15 days from notice',
-      ],
-    },
+    key: 'building',
+    label: 'Building',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M4 21V5l8-3 8 3v16" />
+        <path d="M9 9h1M9 13h1M14 9h1M14 13h1M10 21v-4h4v4" />
+      </svg>
+    ),
+    date: 'Jul 6, 2026 9:11 AM',
+    type: 'BUILDING VIOLATION',
+    sr: '#SR26-01326147',
+    chip: { text: 'OPEN', cls: 'open' },
+    addr: '8051 S INGLESIDE AVE',
+    desc: 'Mold growth in walls and radiators — unit 2',
+    rows: [
+      { k: 'Handled by', v: 'Buildings', a: 'dept' },
+      { k: 'Target Resolution', v: '15 days', a: 'target' },
+      { k: 'Avg Resolution', v: '18 days' },
+    ],
+    steps: [
+      { s: 'Complaint Filed', dot: 'done', t: 'JUL 6, 2026', tc: 'date' },
+      { s: 'Investigation/Inspection', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Perform Work', dot: 'new', t: 'NEW', tc: 'new', dim: true },
+    ],
   },
   {
-    category: 'STR intelligence',
-    headline: '76% have a compliance gap',
-    description:
-      'Airbnb listings cross-referenced against BACP registrations, the Prohibited Buildings List, and SHVR complaints.',
-    example: {
-      title: '70 E Cedar St · Prohibited Building',
-      lines: [
-        '14 Airbnb listings detected within 150m',
-        '7 SHVR complaints filed, 1 currently open',
-        'Registration R22000094076 expired Oct 2024',
-        'Operator likely unaware of filing',
-      ],
-    },
+    key: 'sanitation',
+    label: 'Sanitation',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+        <path d="M10 10v6M14 10v6" />
+      </svg>
+    ),
+    date: 'Jul 6, 2026 7:22 AM',
+    type: 'SANITATION CODE VIOLATION',
+    sr: '#SR26-01325263',
+    chip: { text: 'OPEN', cls: 'open' },
+    addr: '12052 S PERRY AVE',
+    desc: 'High grass and weeds in rear yard',
+    rows: [
+      { k: 'Handled by', v: 'Streets and Sanitation', a: 'dept' },
+      { k: 'Target Resolution', v: '3 days', a: 'target' },
+      { k: 'Avg Resolution', v: '4 days' },
+    ],
+    steps: [
+      { s: 'Complaint Filed', dot: 'done', t: 'JUL 6, 2026', tc: 'date' },
+      { s: 'Investigation/Inspection', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Perform Work', dot: 'new', t: 'NEW', tc: 'new', dim: true },
+    ],
   },
   {
-    category: 'Assessment data',
-    headline: 'Two years ahead of the county',
-    description:
-      '2025 assessed values for all 1.86M parcels. The Cook County website still shows 2023.',
-    example: {
-      title: 'PIN 17-04-207-086-1001',
-      lines: [
-        '2025 Mailed Total: $28,450',
-        'Class 299 — Condo, 10% assessment level',
-        'Implied Market Value: $284,500',
-        'CCAO website still shows 2023: $24,100',
-      ],
-    },
-  },
-  {
-    category: 'Monitoring',
-    headline: 'Your building, watched',
-    description:
-      'Save any property. Weekly digests free. Hourly SMS alerts on premium. The window between filing and inspection is everything.',
-    example: {
-      title: 'Weekly digest — 344 W Concord Pl',
-      lines: [
-        '2 new 311 complaints filed this week',
-        '1 permit status changed to ISSUED',
-        'No new violations',
-        'Upgrade to Premium for hourly SMS alerts',
-      ],
-    },
+    key: 'dumping',
+    label: 'Fly Dumping',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M1 15h13V7h4l4 4v4h-2" />
+        <circle cx="6" cy="18" r="2" />
+        <circle cx="17" cy="18" r="2" />
+        <path d="M8 18h7" />
+      </svg>
+    ),
+    date: 'Jul 6, 2026 9:58 AM',
+    type: 'FLY DUMPING COMPLAINT',
+    sr: '#SR26-01326708',
+    chip: { text: 'OPEN', cls: 'open' },
+    addr: '5932 S LA SALLE ST',
+    desc: 'Illegal dumping in alleyway',
+    rows: [
+      { k: 'Handled by', v: 'Streets and Sanitation', a: 'dept' },
+      { k: 'Target Resolution', v: '7 days', a: 'target' },
+      { k: 'Avg Resolution', v: '6 days' },
+    ],
+    steps: [
+      { s: 'Complaint Filed', dot: 'done', t: 'JUL 6, 2026', tc: 'date' },
+      { s: 'Investigation/Inspection', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Perform Work', dot: 'new', t: 'NEW', tc: 'new', dim: true },
+    ],
   },
 ]
 
+const FTS_ANNOTATIONS: { side: 'l' | 'r'; anchor: string; label: string }[] = [
+  { side: 'l', anchor: '[data-ftsa="type"]', label: 'Complaint type & SR number' },
+  { side: 'r', anchor: '[data-ftsa="chip"]', label: 'Live status, synced every 30 min' },
+  { side: 'l', anchor: '[data-ftsa="desc"]', label: "The complaint's context" },
+  { side: 'r', anchor: '[data-ftsa="dept"]', label: 'Owning department' },
+  { side: 'r', anchor: '[data-ftsa="target"]', label: 'Resolution benchmarks' },
+  { side: 'l', anchor: '[data-ftsa="step"]', label: 'Stage-by-stage workflow' },
+]
 /* ────────────────────────────────────────────────────────────────────
    TYPES
    ──────────────────────────────────────────────────────────────────── */
@@ -119,13 +184,11 @@ type Tab = 'features' | 'pricing' | 'contact'
 
 export default function AboutClient() {
   const [activeTab, setActiveTab] = useState<Tab>('features')
-  const [featureModal, setFeatureModal] = useState<number | null>(null)
 
   // (Pricing state moved into PricingCalculator component)
 
   const switchTab = useCallback((tab: Tab) => {
     setActiveTab(tab)
-    setFeatureModal(null)
   }, [])
 
   // Keyboard left/right arrow navigation
@@ -147,7 +210,6 @@ export default function AboutClient() {
             return tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length]
           }
         })
-        setFeatureModal(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -190,132 +252,14 @@ export default function AboutClient() {
       {/* ── Features ── */}
       {activeTab === 'features' && (
         <div key="features" className="about-panel about-features-panel">
-          <div className="about-features-grid">
-            {FEATURES.map((f, i) => (
-              <div
-                key={i}
-                className="about-feature-card"
-                onClick={() => setFeatureModal(featureModal === i ? null : i)}
-              >
-                <div className="about-feature-cat">{f.category}</div>
-                <div className="about-feature-headline">{f.headline}</div>
-                <div className="about-feature-desc">{f.description}</div>
-              </div>
-            ))}
-          </div>
-
-          {featureModal !== null && (
-            <div
-              className="about-modal-overlay"
-              onClick={() => setFeatureModal(null)}
-            >
-              <div
-                className="about-modal"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="about-modal-top">
-                  <div className="about-modal-cat">
-                    {FEATURES[featureModal].category}
-                  </div>
-                  <button
-                    type="button"
-                    className="about-modal-close"
-                    onClick={() => setFeatureModal(null)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="about-modal-title">
-                  {FEATURES[featureModal].example.title}
-                </div>
-                <div className="about-modal-lines">
-                  {FEATURES[featureModal].example.lines.map((line, j) => (
-                    <div key={j} className="about-modal-line">
-                      <span className="about-modal-dot" />
-                      <span>{line}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          <FeaturesShowcase />
         </div>
       )}
 
       {/* ── Pricing ── */}
       {activeTab === 'pricing' && (
         <div key="pricing" className="about-panel about-pricing-panel">
-          <div className="pricing-monitoring-section">
-            <div className="page-intro-callout">
-              <p className="pricing-intro">
-                Every Chicago address is free to search — unlimited lookups,
-                complete complaint, violation, permit, and assessment history.{' '}
-                <strong>No account required.</strong> If you&apos;re a researcher
-                or journalist,{' '}
-                <a
-                  href="#contact"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    switchTab('contact')
-                  }}
-                >
-                  reach out
-                </a>{' '}
-                for a premium account.
-              </p>
-            </div>
-
-            <div className="pricing-section-header pricing-section-header-centered">
-              <h2 className="pricing-section-label">Property Monitoring</h2>
-              <p className="pricing-section-sub">
-                Real-time SMS and email alerts for every complaint, violation,
-                and permit at your properties. Flat $10 per property, per month —
-                with two months free when you pay annually.
-              </p>
-            </div>
-
-            <div className="pc-cards">
-              <div className="pc-card">
-                <div className="pc-tier pc-tier-dim">Free account</div>
-                <div className="pc-price-num">Free</div>
-                <div className="pc-sub">with signup</div>
-                <div className="pc-features">
-                  <div>Portfolio Dashboard</div>
-                  <div>Up to 3 saved properties</div>
-                  <div>Address range/Super parcel creation</div>
-                </div>
-              </div>
-              <div className="pc-card pc-card-feat">
-                <div className="pc-tier pc-tier-navy">Premium</div>
-                <div className="pc-price-num">$10<small>/mo</small></div>
-                <div className="pc-sub">starting at $10/mo, discounts for larger portfolios</div>
-                <div className="pc-features">
-                  <div>Hourly SMS + email alerts</div>
-                  <div>311 complaint descriptions</div>
-                  <div>Per-unit complaint context</div>
-                  <div>City inspection timeline tracking</div>
-                  <div>Short-term rental listings</div>
-                </div>
-              </div>
-            </div>
-
-            <PricingCalculator />
-
-            <p className="pricing-enterprise">
-              Portfolios above 50 properties —{' '}
-              <a
-                href="#contact"
-                className="pc-footer-link"
-                onClick={(e) => {
-                  e.preventDefault()
-                  switchTab('contact')
-                }}
-              >
-                reach out
-              </a>{' '}
-              for enterprise pricing
-            </p>
-          </div>
+          <PricingShowcase onSwitchTab={switchTab} />
         </div>
       )}
 
@@ -361,132 +305,542 @@ export default function AboutClient() {
   )
 }
 
-function PricingCalculator() {
-  const [properties, setProperties] = useState(10)
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
+function PricingShowcase({
+  onSwitchTab,
+}: {
+  onSwitchTab: (tab: Tab) => void
+}) {
+  const [annual, setAnnual] = useState(true)
+  const [units, setUnits] = useState(100)
 
-  // Graduated tiers: first 10 @ $10, next 15 (11–25) @ $8, next 25 (26–50) @ $6
-  const computeTiers = (p: number) => {
-    const tiers = [
-      { label: 'First 10 properties', rate: 10, upTo: 10 },
-      { label: 'Properties 11–25', rate: 9, upTo: 25 },
-      { label: 'Properties 26–50', rate: 8, upTo: 50 },
-    ]
-    const lines: { label: string; count: number; rate: number; subtotal: number }[] = []
-    let remaining = p
-    let prevCap = 0
-    for (const t of tiers) {
-      if (remaining <= 0) break
-      const band = t.upTo - prevCap
-      const count = Math.min(remaining, band)
-      lines.push({ label: t.label, count, rate: t.rate, subtotal: count * t.rate })
-      remaining -= count
-      prevCap = t.upTo
+  const PORTFOLIO_TIERS = [
+    { price: 25, cap: 10, perUnit: '$2.50' },
+    { price: 50, cap: 20, perUnit: '$2.50' },
+    { price: 100, cap: 40, perUnit: '$2.50' },
+    { price: 250, cap: 100, perUnit: '$2.50' },
+    { price: 500, cap: 225, perUnit: '$2.22' },
+    { price: 750, cap: 375, perUnit: '$2.00' },
+    { price: 1000, cap: 550, perUnit: '$1.82' },
+  ]
+  const ANNUAL_MULT = 0.8
+  const SLIDER_MAX = 600
+
+  const tierForUnits = (u: number): number | null => {
+    if (u > 550) return null
+    for (let i = 0; i < PORTFOLIO_TIERS.length; i++) {
+      if (u <= PORTFOLIO_TIERS[i].cap) return i
     }
-    return lines
+    return null
   }
 
-  const lines = computeTiers(properties)
-  const total = lines.reduce((sum, l) => sum + l.subtotal, 0)
-  const propsPct = ((properties - 1) / (50 - 1)) * 100
+  const tierIdx = tierForUnits(units)
+  const isMax = tierIdx === null
+  const fillPct = (units / SLIDER_MAX) * 100
+
+  const heroPrice = isMax
+    ? null
+    : annual
+    ? Math.round(PORTFOLIO_TIERS[tierIdx as number].price * ANNUAL_MULT)
+    : PORTFOLIO_TIERS[tierIdx as number].price
+
+  const Buildings = ({ n, tone }: { n: 1 | 2 | 3; tone: 'navy' | 'white' }) => {
+    const fill = tone === 'white' ? '#ffffff' : '#0f2744'
+    const bars: ReactNode[] = []
+    if (n >= 1) bars.push(<rect key={0} x={0} y={6} width="7" height="14" rx="1" fill={fill} />)
+    if (n >= 2) bars.push(<rect key={1} x={9} y={0} width="7" height="20" rx="1" fill={fill} />)
+    if (n >= 3) bars.push(<rect key={2} x={18} y={9} width="7" height="11" rx="1" fill={fill} />)
+    const w = n === 1 ? 7 : n === 2 ? 16 : 25
+    return (
+      <svg width={w} height="20" viewBox={`0 0 ${w} 20`} aria-hidden="true">
+        {bars}
+      </svg>
+    )
+  }
 
   return (
-    <div className="pc2-calc">
-      <div className="pc2-calc-header">
-        <span className="pc2-calc-title">
-          {properties === 1 ? 'What would my property cost?' : 'What would my portfolio cost?'}
-        </span>
-        <span className="pc2-calc-result">
-          ${total.toLocaleString()}
-          <small>/mo</small>
-        </span>
+    <div className="pc5">
+      <div className="pc5-hero">
+        <h1 className="pc5-hero-title">
+          One fine costs more than a year of watching
+          {heroPrice !== null ? (
+            <>
+              {' '}at{' '}
+              <span className="pc5-hero-price">${heroPrice.toLocaleString()}/mo</span>
+            </>
+          ) : (
+            <>
+              {' '}— <span className="pc5-hero-price">let&apos;s talk</span>
+            </>
+          )}
+        </h1>
+        <p className="pc5-hero-sub">
+          Cure a complaint before the city even sends an inspector.
+        </p>
       </div>
 
-      <div className="pc2-slider-block">
-        <div className="pc2-slider-row">
-          <span className="pc2-slider-label">Number of properties</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={properties}
-            onChange={(e) => {
-              const raw = parseInt(e.target.value, 10)
-              if (isNaN(raw)) {
-                setProperties(1)
-              } else {
-                setProperties(Math.max(1, Math.min(50, raw)))
-              }
-            }}
-            className="pc2-slider-num-input"
-          />
-        </div>
-        <input
-          type="range"
-          min={1}
-          max={50}
-          step={1}
-          value={properties}
-          onChange={(e) => setProperties(parseInt(e.target.value, 10))}
-          className="pc2-slider-input"
-          style={{
-            background: `linear-gradient(to right, #0f2744 ${propsPct}%, #ddd9d0 ${propsPct}%)`,
-          }}
-        />
-        <div className="pc2-slider-marks">
-          <span style={{ left: '0%' }}>1</span>
-          <span style={{ left: '18.37%' }}>10</span>
-          <span style={{ left: '48.98%' }}>25</span>
-          <span style={{ left: '100%' }}>50</span>
-        </div>
-      </div>
-
-      <div className="pc2-breakdown">
-        {lines.map((l, i) => (
-          <div key={i} className="pc2-breakdown-row">
-            <span>
-              {l.count} {l.count === 1 ? 'property' : 'properties'} @ ${l.rate}
-            </span>
-            <span>${l.subtotal.toLocaleString()}</span>
+      <div className="pc5-controls">
+        <div className="pc5-slider-pill">
+          <span className="pc5-slider-label">Portfolio size</span>
+          <div className="pc5-slider-track-wrap">
+            <input
+              type="range"
+              min={1}
+              max={SLIDER_MAX}
+              step={1}
+              value={units}
+              onChange={(e) => setUnits(parseInt(e.target.value, 10))}
+              className="pc5-slider"
+              aria-label="Portfolio unit count"
+              style={{
+                background: `linear-gradient(to right, #0f2744 ${fillPct}%, #e6e2d8 ${fillPct}%)`,
+              }}
+            />
           </div>
-        ))}
-        <div className="pc2-breakdown-divider" />
-        <div className="pc2-breakdown-total">
-          <span>{properties === 1 ? 'Property total' : 'Portfolio total'}</span>
-          <span>
-            ${total.toLocaleString()}
-            <small>/mo</small>
+          <span className="pc5-slider-count">
+            {units >= SLIDER_MAX ? '550+ units' : `${units} units`}
           </span>
         </div>
+
+        <div className="pc5-billing">
+          <button
+            type="button"
+            className={annual ? 'pc5-bill' : 'pc5-bill on'}
+            onClick={() => setAnnual(false)}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            className={annual ? 'pc5-bill on' : 'pc5-bill'}
+            onClick={() => setAnnual(true)}
+          >
+            Annual <span className="pc5-bill-pill">−20%</span>
+          </button>
+        </div>
       </div>
 
-      <button
-        type="button"
-        className="pc2-subscribe-btn"
-        disabled={checkoutLoading}
-        onClick={async () => {
-          setCheckoutLoading(true)
-          try {
-            const res = await fetch('/api/stripe/checkout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ quantity: properties }),
-            })
-            const data = (await res.json()) as { url?: string; error?: string }
-            if (data.url) {
-              window.location.href = data.url
-            } else {
-              window.alert(data.error || 'Please sign in to subscribe.')
-              setCheckoutLoading(false)
+      <div className="pc5-cards">
+        {/* BASIC — FREE */}
+        <div className="pc5-card">
+          <div className="pc5-card-top">
+            <Buildings n={1} tone="navy" />
+          </div>
+          <div className="pc5-tier-name">Basic</div>
+          <div className="pc5-price-area">
+            <div className="pc5-price-line">
+              <span className="pc5-price">Free</span>
+            </div>
+            <div className="pc5-price-note">Forever. No account required.</div>
+          </div>
+          <ul className="pc5-feats">
+            <li>Property search — every Chicago address</li>
+            <li>Super-parcel view</li>
+            <li>Full complaint, permit &amp; violation history</li>
+          </ul>
+          <button
+            type="button"
+            className="pc5-btn"
+            onClick={() => (window.location.href = '/')}
+          >
+            Search now
+          </button>
+        </div>
+
+        {/* PORTFOLIO — dark, featured, slider-driven */}
+        <div className={'pc5-card pc5-card-dark' + (!isMax ? ' pc5-active' : '')}>
+          <div className="pc5-card-top">
+            <Buildings n={2} tone="white" />
+            <span className="pc5-popular">Most popular</span>
+          </div>
+          <div className="pc5-tier-name pc5-white">Portfolio</div>
+          <div className="pc5-price-area">
+            {isMax ? (
+              <>
+                <div className="pc5-price-line">
+                  <span className="pc5-price pc5-white pc5-talk">550+ units</span>
+                </div>
+                <div className="pc5-price-note pc5-note-white">
+                  Beyond the tiers — see Max →
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="pc5-price-line">
+                  <span className="pc5-price pc5-white">
+                    $
+                    {(annual
+                      ? Math.round(PORTFOLIO_TIERS[tierIdx].price * ANNUAL_MULT)
+                      : PORTFOLIO_TIERS[tierIdx].price
+                    ).toLocaleString()}
+                  </span>
+                  <span className="pc5-per pc5-per-white">/mo</span>
+                  {annual && (
+                    <span className="pc5-strike">
+                      ${PORTFOLIO_TIERS[tierIdx].price.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="pc5-price-note pc5-note-white">
+                  up to {PORTFOLIO_TIERS[tierIdx].cap} units · ~
+                  {PORTFOLIO_TIERS[tierIdx].perUnit}/unit
+                  {annual
+                    ? ` · $${Math.round(
+                        PORTFOLIO_TIERS[tierIdx].price * ANNUAL_MULT * 12
+                      ).toLocaleString()}/yr`
+                    : ''}
+                </div>
+              </>
+            )}
+          </div>
+          <ul className="pc5-feats pc5-feats-white">
+            <li>Everything in Basic, unlimited properties</li>
+            <li>Real-time 311, violation &amp; permit alerts</li>
+            <li>Full portfolio dashboard &amp; owner views</li>
+            <li>Dashboard customization &amp; full-suite support</li>
+          </ul>
+          <button
+            type="button"
+            className="pc5-btn pc5-btn-green"
+            onClick={() =>
+              isMax
+                ? (window.location.href =
+                    'mailto:jim@propertysentinel.io?subject=Property%20Sentinel%20Max%20plan')
+                : (window.location.href = `/sign-up?plan=portfolio&units=${units}`)
             }
-          } catch {
-            window.alert('Could not start checkout.')
-            setCheckoutLoading(false)
-          }
-        }}
-      >
-        {checkoutLoading ? 'Redirecting…' : `Subscribe — $${total.toLocaleString()}/mo`}
-      </button>
+          >
+            {isMax ? 'Talk to Jim' : 'Try for free'}
+          </button>
+        </div>
+
+        {/* MAX */}
+        <div className={'pc5-card pc5-card-muted' + (isMax ? ' pc5-active' : '')}>
+          <div className="pc5-card-top">
+            <Buildings n={3} tone="navy" />
+          </div>
+          <div className="pc5-tier-name">Max</div>
+          <div className="pc5-price-area">
+            <div className="pc5-price-line">
+              <span className="pc5-price pc5-talk">Let&apos;s talk</span>
+            </div>
+            <div className="pc5-price-note">
+              550+ units · a flat rate for your whole portfolio
+            </div>
+          </div>
+          <ul className="pc5-feats">
+            <li>Everything in Portfolio</li>
+            <li>Volume rate below $1.80/unit</li>
+            <li>Onboarding &amp; dedicated support</li>
+            <li>Data licensing &amp; API access</li>
+          </ul>
+          <button
+            type="button"
+            className="pc5-btn pc5-btn-blue"
+            onClick={() =>
+              (window.location.href =
+                'mailto:jim@propertysentinel.io?subject=Property%20Sentinel%20Max%20plan')
+            }
+          >
+            Email Jim
+          </button>
+        </div>
+      </div>
+
+      <p className="pc5-footnote">
+        Every Chicago address is free to search — unlimited lookups, no account
+        required. Paid plans add real-time monitoring across your portfolio. No
+        per-seat fees, no monthly minimum.
+      </p>
+    </div>
+  )
+}
+
+function FeaturesShowcase() {
+  const [tab, setTab] = useState(0)
+  const [fading, setFading] = useState(false)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+
+  const positionAnnotations = useCallback(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    if (typeof window !== 'undefined' && window.innerWidth <= 1060) return
+    const stageTop = stage.getBoundingClientRect().top
+    stage.querySelectorAll<HTMLElement>('.fts-ann').forEach((ann) => {
+      const sel = ann.dataset.anchor
+      const anchor = sel ? stage.querySelector<HTMLElement>(sel) : null
+      if (!anchor) {
+        ann.style.display = 'none'
+        return
+      }
+      ann.style.display = 'flex'
+      const r = anchor.getBoundingClientRect()
+      ann.style.top = `${r.top + r.height / 2 - stageTop - ann.offsetHeight / 2}px`
+    })
+  }, [])
+
+  useEffect(() => {
+    positionAnnotations()
+    window.addEventListener('resize', positionAnnotations)
+    const fonts = (document as { fonts?: { ready?: Promise<unknown> } }).fonts
+    if (fonts?.ready) {
+      fonts.ready.then(() => positionAnnotations()).catch(() => {})
+    }
+    return () => window.removeEventListener('resize', positionAnnotations)
+  }, [positionAnnotations])
+
+  useEffect(() => {
+    if (!fading) positionAnnotations()
+  }, [tab, fading, positionAnnotations])
+
+  const switchComplaint = (i: number) => {
+    if (i === tab || fading) return
+    setFading(true)
+    window.setTimeout(() => {
+      setTab(i)
+      setFading(false)
+    }, 180)
+  }
+
+  const d = COMPLAINT_TABS[tab]
+
+  return (
+    <div className="fts">
+      <div className="fts-head">
+        <h2 className="fts-title">
+          Every complaint,
+          <br />
+          the way the city sees it
+        </h2>
+        <p className="fts-sub">
+          Right now, you only find out about a 311 complaint after an inspector
+          shows up. Property Sentinel serves you the complaint&apos;s{' '}
+          <strong>actual context</strong>, relevant department, and workflow
+          timeline — refreshed every 30 minutes.
+        </p>
+      </div>
+
+      <div className="fts-tabs" role="tablist" aria-label="Complaint types">
+        <div className="fts-tabtrack">
+          {COMPLAINT_TABS.map((t, i) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={i === tab}
+              className={i === tab ? 'fts-tab on' : 'fts-tab'}
+              onClick={() => switchComplaint(i)}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="fts-stage" ref={stageRef}>
+        {FTS_ANNOTATIONS.map((a) => (
+          <div
+            key={a.label}
+            className={a.side === 'l' ? 'fts-ann fts-ann--l' : 'fts-ann fts-ann--r'}
+            data-anchor={a.anchor}
+            aria-hidden="true"
+          >
+            {a.side === 'l' ? (
+              <>
+                <span>{a.label}</span>
+                <i className="fts-ann-line" />
+              </>
+            ) : (
+              <>
+                <i className="fts-ann-line" />
+                <span>{a.label}</span>
+              </>
+            )}
+          </div>
+        ))}
+
+        <div className="fts-modal">
+          <div className="fts-m-head">
+            <div className="fts-m-title">Activity Details</div>
+            <button className="fts-m-close" type="button" aria-hidden="true" tabIndex={-1}>
+              ✕
+            </button>
+          </div>
+          <div className="fts-m-meta">
+            <b>311 COMPLAINT</b> <span>· {d.date}</span>
+          </div>
+          <hr className="fts-hr" />
+          <div className={fading ? 'fts-fade out' : 'fts-fade'}>
+            <div className="fts-m-typerow">
+              <div className="fts-m-type" data-ftsa="type">
+                {d.type} <span>· {d.sr}</span>
+              </div>
+              <span
+                className={
+                  d.chip.cls === 'open' ? 'fts-chip fts-chip--open' : 'fts-chip fts-chip--closed'
+                }
+                data-ftsa="chip"
+              >
+                {d.chip.text}
+              </span>
+            </div>
+            <div className="fts-m-addr">
+              <span className="lbl">Complaint address:</span>{' '}
+              <a href="#" onClick={(e) => e.preventDefault()}>
+                {d.addr}
+              </a>
+            </div>
+            <div className="fts-m-desc" data-ftsa="desc">
+              {d.desc}
+            </div>
+            {d.nature && (
+              <div className="fts-m-nature">
+                <span className="lbl">Nature of violation:</span> <b>{d.nature}</b>
+              </div>
+            )}
+            <div className="fts-m-rows">
+              {d.rows.map((r) => (
+                <div
+                  key={r.k}
+                  className="fts-m-row"
+                  {...(r.a ? { 'data-ftsa': r.a } : {})}
+                >
+                  <span className="k">{r.k}</span>
+                  <span className="v">{r.v}</span>
+                </div>
+              ))}
+            </div>
+            <hr className="fts-hr" />
+            <div className="fts-m-worklbl">WORKFLOW</div>
+            <div>
+              {d.steps.map((st) => (
+                <div
+                  key={st.s}
+                  className={st.dim ? 'fts-step dim' : 'fts-step'}
+                  {...(st.a ? { 'data-ftsa': 'step' } : {})}
+                >
+                  <span className={`fts-dot fts-dot--${st.dot}`} />
+                  <span className="s">{st.s}</span>
+                  <span className={`t t--${st.tc}`}>{st.t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="fts-grid">
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <h3>Complaint context</h3>
+          <p>
+            The reason the complaint was actually made — not just the one-line
+            category code in the public dataset.
+          </p>
+        </div>
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 3" />
+            </svg>
+          </div>
+          <h3>Resolution benchmarks</h3>
+          <p>
+            Target and average resolution time for every complaint type, so you
+            know how long the clock runs.
+          </p>
+        </div>
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 12h4l2-7 4 14 2-7h4" />
+            </svg>
+          </div>
+          <h3>Workflow tracking</h3>
+          <p>
+            Watch a complaint move from filed to inspection to resolution —
+            stage by stage, as the city updates it.
+          </p>
+        </div>
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <path d="M22 6 12 13 2 6" />
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+            </svg>
+          </div>
+          <h3>Real-time alerts</h3>
+          <p>
+            In your inbox within one refresh cycle of the city logging it —
+            instant or as a daily digest.
+          </p>
+        </div>
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 21h18M5 21V7l7-4 7 4v14" />
+              <path d="M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1" />
+            </svg>
+          </div>
+          <h3>Full parcel history</h3>
+          <p>
+            Complaints, violations, and permits going back years — tied to the
+            parcel and owner of record.
+          </p>
+        </div>
+        <div className="fts-feat">
+          <div className="ico">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="9" rx="1" />
+              <rect x="14" y="3" width="7" height="5" rx="1" />
+              <rect x="14" y="12" width="7" height="9" rx="1" />
+              <rect x="3" y="16" width="7" height="5" rx="1" />
+            </svg>
+          </div>
+          <h3>Portfolio dashboard</h3>
+          <p>
+            Every address you manage on one screen, ranked by what needs your
+            attention right now.
+          </p>
+        </div>
+      </div>
+
+      <div className="fts-rest">
+        <h2>The rest of the picture</h2>
+        <div className="fts-rest-row">
+          <h3>Only what&apos;s owner-relevant</h3>
+          <p>
+            Chicago&apos;s 311 system has <b>more than 110 complaint types</b>.
+            Only <b>29</b> ever land on a building owner as something to act on
+            — those are on by default, and the rest never reach your inbox.
+          </p>
+        </div>
+        <div className="fts-rest-row">
+          <h3>Every department, tracked</h3>
+          <p>
+            The owning department decides the clock, the cost, and whether the
+            fine is real. We tag it on every complaint &mdash;{' '}
+            <b>
+              Buildings, Streets &amp; Sanitation, Water Management, BACP,
+              Public Health
+            </b>
+            , and beyond.
+          </p>
+        </div>
+        <div className="fts-rest-row">
+          <h3>Violations and permits, too</h3>
+          <p>
+            Complaints are the early warning. We also track{' '}
+            <b>DOB violations and permit filings</b> at the address level &mdash;
+            with real current status, not the city&rsquo;s inspection-history
+            maze.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
