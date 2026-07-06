@@ -1235,12 +1235,22 @@
 .fts-rest-row p b { font-weight: 600; color: var(--text, #1a1a1a); }
 
 @media (max-width: 1060px) { .fts-ann { display: none; } }
-@media (max-width: 720px) {
-  .fts-title { font-size: 31px; }
-  .fts-tabtrack { flex-wrap: wrap; justify-content: center; border-radius: 22px; }
-  .fts-modal { padding: 24px 20px; min-height: 0; }
-  .fts-grid { grid-template-columns: 1fr; gap: 32px; margin-top: 56px; }
-  .fts-rest { margin-top: 64px; }
+@media (max-width: 900px) {
+  .about-panel.about-features-panel { max-width: 100%; padding-left: 16px; padding-right: 16px; }
+  .fts { padding: 4px 0 0; }
+  .fts-title { font-size: clamp(28px, 8vw, 40px); }
+  .fts-sub { font-size: 15px; }
+  .fts-tabs { margin-bottom: 36px; }
+  .fts-tabtrack { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; border-radius: 20px; max-width: 100%; }
+  .fts-tab { font-size: 13px; padding: 8px 13px; }
+  .fts-stage { max-width: 100%; }
+  .fts-ann { display: none; }
+  .fts-modal { width: 100%; padding: 24px 20px; min-height: 0; border-radius: 14px; }
+  .fts-m-title { font-size: 23px; }
+  .fts-m-type { font-size: 11.5px; }
+  .fts-m-desc { font-size: 15.5px; }
+  .fts-grid { grid-template-columns: 1fr; gap: 30px; margin-top: 52px; }
+  .fts-rest { margin-top: 60px; }
   .fts-rest-row { grid-template-columns: 1fr; gap: 8px; }
 }
 

@@ -825,11 +825,9 @@ function FeaturesShowcase() {
     <div className="fts">
       <div className="fts-head">
         <h2 className="fts-title">
-          Every complaint,
+          See every complaint
           <br />
-          the way the city sees it
-          <br />
-          <span className="pc5-hero-price">and before they act</span>
+          <span className="pc5-hero-price">before the city acts</span>
         </h2>
         <p className="fts-sub">
           Right now, you only find out about a 311 complaint after an inspector
