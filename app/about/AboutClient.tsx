@@ -24,6 +24,7 @@ type ComplaintTab = {
   date: string
   type: string
   sr: string
+  heading: string
   chip: { text: string; cls: 'open' | 'closed' }
   addr: string
   desc: string
@@ -44,6 +45,7 @@ const COMPLAINT_TABS: ComplaintTab[] = [
       </svg>
     ),
     date: 'May 14, 2026 4:21 PM',
+    heading: 'No Building Permit & Construction Violation',
     type: 'NO BUILDING PERMIT AND CONSTRUCTION VIOLATION',
     sr: '#SR26-00905168',
     chip: { text: 'OPEN', cls: 'open' },
@@ -56,7 +58,7 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     ],
     steps: [
       { s: 'Complaint Filed', dot: 'done', t: 'MAY 14, 2026', tc: 'date' },
-      { s: 'Dispatch Inspector', dot: 'current', t: 'CURRENT', tc: 'current', a: true },
+      { s: 'Dispatch Inspector', dot: 'current', t: 'JUNE 11, 2026', tc: 'current', a: true },
       { s: 'Closed', dot: 'new', t: 'NEW', tc: 'new', dim: true },
     ],
   },
@@ -71,6 +73,7 @@ const COMPLAINT_TABS: ComplaintTab[] = [
       </svg>
     ),
     date: 'Jul 5, 2026 11:47 PM',
+    heading: 'Shared Housing / Vacation Rental',
     type: 'SHARED HOUSING/VACATION RENTAL COMPLAINT',
     sr: '#SR26-01324242',
     chip: { text: 'OPEN', cls: 'open' },
@@ -97,6 +100,7 @@ const COMPLAINT_TABS: ComplaintTab[] = [
       </svg>
     ),
     date: 'Jul 6, 2026 9:11 AM',
+    heading: 'Building Violation',
     type: 'BUILDING VIOLATION',
     sr: '#SR26-01326147',
     chip: { text: 'OPEN', cls: 'open' },
@@ -118,11 +122,13 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     label: 'Sanitation',
     icon: (
       <svg viewBox="0 0 24 24">
-        <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
-        <path d="M10 10v6M14 10v6" />
+        <path d="M3 21h18" />
+        <path d="M8 21c0-5-1-8-4-11M8 21c0-4 1.5-6.5 4-8" />
+        <path d="M13 21c0-6 1-9.5 4.5-13M13 21c0-4.5 2-7 5.5-8.5" />
       </svg>
     ),
     date: 'Jul 6, 2026 7:22 AM',
+    heading: 'Sanitation Code Violation',
     type: 'SANITATION CODE VIOLATION',
     sr: '#SR26-01325263',
     chip: { text: 'OPEN', cls: 'open' },
@@ -144,13 +150,12 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     label: 'Fly Dumping',
     icon: (
       <svg viewBox="0 0 24 24">
-        <path d="M1 15h13V7h4l4 4v4h-2" />
-        <circle cx="6" cy="18" r="2" />
-        <circle cx="17" cy="18" r="2" />
-        <path d="M8 18h7" />
+        <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+        <path d="M10 10v6M14 10v6" />
       </svg>
     ),
     date: 'Jul 6, 2026 9:58 AM',
+    heading: 'Fly Dumping',
     type: 'FLY DUMPING COMPLAINT',
     sr: '#SR26-01326708',
     chip: { text: 'OPEN', cls: 'open' },
@@ -168,6 +173,10 @@ const COMPLAINT_TABS: ComplaintTab[] = [
     ],
   },
 ]
+
+const N = COMPLAINT_TABS.length
+const LOOP: ComplaintTab[] = [...COMPLAINT_TABS, ...COMPLAINT_TABS, ...COMPLAINT_TABS]
+const START = N
 
 const FTS_ANNOTATIONS: { side: 'l' | 'r'; anchor: string; label: string }[] = [
   { side: 'l', anchor: '[data-ftsa="type"]', label: 'Complaint type & SR number' },
@@ -228,17 +237,7 @@ export default function AboutClient() {
   ]
 
   return (
-    <>
-      {/* ── Header ── */}
-      <div className="property-identity-row">
-        <div className="property-identity-left">
-          <h1 className="property-identity-address">About</h1>
-          <div className="property-identity-citystate">
-            for Chicago property owners, operators, tradesmen, and residents
-          </div>
-        </div>
-      </div>
-
+    <>     
       <div className="about-tabs-row">
         {TABS.map((t) => (
           <button
@@ -773,10 +772,22 @@ function EmailJimModal({
   )
 }
 
-function FeaturesShowcase() {
-  const [tab, setTab] = useState(0)
+export function FeaturesShowcase({
+  autoplayMs = 5000,
+  idleResumeMs = 6000,
+}: { autoplayMs?: number; idleResumeMs?: number }) {
+  const [pos, setPos] = useState(START)
   const [fading, setFading] = useState(false)
+  const [paused, setPaused] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const posRef = useRef(START)
+  const swapTimer = useRef<number | undefined>(undefined)
+  const resumeTimer = useRef<number | undefined>(undefined)
+  const drag = useRef({ down: false, moved: false, captured: false, startX: 0, startScroll: 0, pid: 0 })
+
+  const logical = ((pos % N) + N) % N
+  const d = COMPLAINT_TABS[logical]
 
   const positionAnnotations = useCallback(() => {
     const stage = stageRef.current
@@ -806,20 +817,157 @@ function FeaturesShowcase() {
     return () => window.removeEventListener('resize', positionAnnotations)
   }, [positionAnnotations])
 
+  const centerTo = useCallback((absIndex: number, smooth: boolean) => {
+    const track = trackRef.current
+    if (!track || typeof track.scrollTo !== 'function') return
+    const items = track.querySelectorAll<HTMLElement>('.fts-tab')
+    const el = items[absIndex]
+    if (!el) return
+    const target = el.offsetLeft - (track.clientWidth - el.offsetWidth) / 2
+    track.scrollTo({ left: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' })
+  }, [])
+
+  useEffect(() => {
+    centerTo(posRef.current, false)
+    const onResize = () => centerTo(posRef.current, false)
+    window.addEventListener('resize', onResize)
+    const fonts = (document as { fonts?: { ready?: Promise<unknown> } }).fonts
+    if (fonts?.ready) {
+      fonts.ready.then(() => centerTo(posRef.current, false)).catch(() => {})
+    }
+    return () => window.removeEventListener('resize', onResize)
+  }, [centerTo])
+
   useEffect(() => {
     if (!fading) positionAnnotations()
-  }, [tab, fading, positionAnnotations])
+  }, [pos, fading, positionAnnotations])
 
-  const switchComplaint = (i: number) => {
-    if (i === tab || fading) return
-    setFading(true)
-    window.setTimeout(() => {
-      setTab(i)
-      setFading(false)
-    }, 180)
+  const goTo = useCallback(
+    (absIndex: number) => {
+      if (swapTimer.current) window.clearTimeout(swapTimer.current)
+      setFading(true)
+      centerTo(absIndex, true)
+      swapTimer.current = window.setTimeout(() => {
+        posRef.current = absIndex
+        setPos(absIndex)
+        setFading(false)
+      }, 180)
+    },
+    [centerTo],
+  )
+
+  useEffect(() => {
+    if (paused) return
+    const id = window.setInterval(() => {
+      let p = posRef.current
+      if (p < N || p >= 2 * N) {
+        const norm = N + (((p % N) + N) % N)
+        posRef.current = norm
+        setPos(norm)
+        centerTo(norm, false)
+        p = norm
+      }
+      goTo(p + 1)
+    }, autoplayMs)
+    return () => window.clearInterval(id)
+  }, [paused, autoplayMs, centerTo, goTo])
+
+  const registerInteraction = useCallback(() => {
+    setPaused(true)
+    if (resumeTimer.current) window.clearTimeout(resumeTimer.current)
+    resumeTimer.current = window.setTimeout(() => setPaused(false), idleResumeMs)
+  }, [idleResumeMs])
+
+  useEffect(
+    () => () => {
+      if (resumeTimer.current) window.clearTimeout(resumeTimer.current)
+      if (swapTimer.current) window.clearTimeout(swapTimer.current)
+    },
+    [],
+  )
+
+  const selectAbs = (absIndex: number) => {
+    registerInteraction()
+    if (absIndex === posRef.current || fading) {
+      centerTo(absIndex, true)
+      return
+    }
+    goTo(absIndex)
   }
 
-  const d = COMPLAINT_TABS[tab]
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') {
+      registerInteraction()
+      return
+    }
+    const track = trackRef.current
+    if (!track) return
+    drag.current = {
+      down: true,
+      moved: false,
+      captured: false,
+      startX: e.clientX,
+      startScroll: track.scrollLeft,
+      pid: e.pointerId,
+    }
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = drag.current
+    if (!st.down) return
+    const dx = e.clientX - st.startX
+    if (!st.moved && Math.abs(dx) > 4) {
+      st.moved = true
+      const track = trackRef.current
+      if (track) {
+        try {
+          track.setPointerCapture(st.pid)
+          st.captured = true
+        } catch {
+          /* noop */
+        }
+      }
+      registerInteraction()
+    }
+    if (st.moved) {
+      const track = trackRef.current
+      if (track) track.scrollLeft = st.startScroll - dx
+    }
+  }
+  const nearestAbsToCenter = () => {
+    const track = trackRef.current
+    if (!track) return posRef.current
+    const items = track.querySelectorAll<HTMLElement>('.fts-tab')
+    const mid = track.scrollLeft + track.clientWidth / 2
+    let best = posRef.current
+    let bestD = Infinity
+    items.forEach((el, idx) => {
+      const c = el.offsetLeft + el.offsetWidth / 2
+      const dd = Math.abs(c - mid)
+      if (dd < bestD) {
+        bestD = dd
+        best = idx
+      }
+    })
+    return best
+  }
+  const onPointerUp = () => {
+    const st = drag.current
+    const wasDrag = st.moved
+    if (st.captured) {
+      const track = trackRef.current
+      try {
+        track?.releasePointerCapture(st.pid)
+      } catch {
+        /* noop */
+      }
+    }
+    st.down = false
+    st.captured = false
+    if (wasDrag) goTo(nearestAbsToCenter())
+  }
+  const onPointerLeave = () => {
+    drag.current.down = false
+  }
 
   return (
     <div className="fts">
@@ -835,24 +983,6 @@ function FeaturesShowcase() {
           <strong>actual context</strong>, relevant department, and workflow
           timeline — refreshed every 30 minutes.
         </p>
-      </div>
-
-      <div className="fts-tabs" role="tablist" aria-label="Complaint types">
-        <div className="fts-tabtrack">
-          {COMPLAINT_TABS.map((t, i) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={i === tab}
-              className={i === tab ? 'fts-tab on' : 'fts-tab'}
-              onClick={() => switchComplaint(i)}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="fts-stage" ref={stageRef}>
@@ -877,71 +1007,113 @@ function FeaturesShowcase() {
           </div>
         ))}
 
-        <div className="fts-modal">
-          <div className="fts-m-head">
-            <div className="fts-m-title">Activity Details</div>
-            <button className="fts-m-close" type="button" aria-hidden="true" tabIndex={-1}>
-              ✕
-            </button>
-          </div>
-          <div className="fts-m-meta">
-            <b>311 COMPLAINT</b> <span>· {d.date}</span>
-          </div>
-          <hr className="fts-hr" />
-          <div className={fading ? 'fts-fade out' : 'fts-fade'}>
-            <div className="fts-m-typerow">
-              <div className="fts-m-type" data-ftsa="type">
-                {d.type} <span>· {d.sr}</span>
+        <div className="fts-card-col">
+          <div className="fts-modal">
+            <span
+              className={
+                d.chip.cls === 'open'
+                  ? 'fts-m-status fts-chip fts-chip--open'
+                  : 'fts-m-status fts-chip fts-chip--closed'
+              }
+              data-ftsa="chip"
+            >
+              {d.chip.text}
+            </span>
+            <div className={fading ? 'fts-fade out' : 'fts-fade'}>
+              <div className="fts-m-title" data-ftsa="type">
+                {d.heading}
               </div>
-              <span
-                className={
-                  d.chip.cls === 'open' ? 'fts-chip fts-chip--open' : 'fts-chip fts-chip--closed'
-                }
-                data-ftsa="chip"
-              >
-                {d.chip.text}
-              </span>
-            </div>
-            <div className="fts-m-addr">
-              <span className="lbl">Complaint address:</span>{' '}
-              <a href="#" onClick={(e) => e.preventDefault()}>
-                {d.addr}
-              </a>
-            </div>
-            <div className="fts-m-desc" data-ftsa="desc">
-              {d.desc}
-            </div>
-            {d.nature && (
-              <div className="fts-m-nature">
-                <span className="lbl">Nature of violation:</span> <b>{d.nature}</b>
+              <div className="fts-m-meta">
+                <b>{d.sr}</b> <span>· {d.date}</span>
               </div>
-            )}
-            <div className="fts-m-rows">
-              {d.rows.map((r) => (
-                <div
-                  key={r.k}
-                  className="fts-m-row"
-                  {...(r.a ? { 'data-ftsa': r.a } : {})}
-                >
-                  <span className="k">{r.k}</span>
-                  <span className="v">{r.v}</span>
+              <hr className="fts-hr" />
+              <div className="fts-m-toprow">
+                <div className="fts-m-addr">
+                  <span className="lbl">Complaint address:</span>{' '}
+                  <a href="#" onClick={(e) => e.preventDefault()}>
+                    {d.addr}
+                  </a>
                 </div>
-              ))}
+              </div>
+              <div className="fts-m-desc" data-ftsa="desc">
+                {d.desc}
+              </div>
+              {d.nature && (
+                <div className="fts-m-nature">
+                  <span className="lbl">Nature of violation:</span> <b>{d.nature}</b>
+                </div>
+              )}
+              <div className="fts-m-rows">
+                {d.rows.map((r) => (
+                  <div
+                    key={r.k}
+                    className="fts-m-row"
+                    {...(r.a ? { 'data-ftsa': r.a } : {})}
+                  >
+                    <span className="k">{r.k}</span>
+                    <span className="v">{r.v}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="fts-m-workflow">
+                <hr className="fts-hr" />
+                <div className="fts-m-worklbl">WORKFLOW</div>
+                <div>
+                  {d.steps.map((st) => (
+                    <div
+                      key={st.s}
+                      className={st.dim ? 'fts-step dim' : 'fts-step'}
+                      {...(st.a ? { 'data-ftsa': 'step' } : {})}
+                    >
+                      <span className={`fts-dot fts-dot--${st.dot}`} />
+                      <span className="s">{st.s}</span>
+                      <span className={`t t--${st.tc}`}>{st.t}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <hr className="fts-hr" />
-            <div className="fts-m-worklbl">WORKFLOW</div>
-            <div>
-              {d.steps.map((st) => (
-                <div
-                  key={st.s}
-                  className={st.dim ? 'fts-step dim' : 'fts-step'}
-                  {...(st.a ? { 'data-ftsa': 'step' } : {})}
-                >
-                  <span className={`fts-dot fts-dot--${st.dot}`} />
-                  <span className="s">{st.s}</span>
-                  <span className={`t t--${st.tc}`}>{st.t}</span>
-                </div>
-              ))}
+          </div>
+
+          <div className="fts-tabs">
+            <div
+              className="fts-tabtrack"
+              ref={trackRef}
+              role="tablist"
+              aria-label="Complaint types"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerLeave}
+              onTouchStart={registerInteraction}
+            >
+              {LOOP.map((t, j) => {
+                const isNext = j === pos + 1
+                const cls =
+                  (j === pos ? 'fts-tab on' : 'fts-tab') +
+                  (isNext ? (paused ? ' queuing queuing-paused' : ' queuing') : '')
+                return (
+                  <button
+                    key={`${t.key}-${j}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={j === pos}
+                    aria-hidden={j % N === logical && j !== pos ? true : undefined}
+                    tabIndex={j >= START && j < START + N ? 0 : -1}
+                    className={cls}
+                    style={
+                      isNext ? ({ ['--fill-ms']: `${autoplayMs}ms` } as React.CSSProperties) : undefined
+                    }
+                    onClick={() => {
+                      if (drag.current.moved) return
+                      selectAbs(j)
+                    }}
+                  >
+                    {t.icon}
+                    {t.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -969,8 +1141,7 @@ function FeaturesShowcase() {
           </div>
           <h3>Resolution benchmarks</h3>
           <p>
-            Target and average resolution time for every complaint type, so you
-            know how long the clock runs.
+            Target resolution time from the city and average resolution time calculated by us based on our hourly refreshed data.
           </p>
         </div>
         <div className="fts-feat">
@@ -1007,7 +1178,7 @@ function FeaturesShowcase() {
           </div>
           <h3>Full parcel history</h3>
           <p>
-            Complaints, violations, and permits going back years — tied to the
+            All complaints, violations, and permits on digital record — tied to the
             parcel and owner of record.
           </p>
         </div>
@@ -1048,7 +1219,7 @@ function FeaturesShowcase() {
         <div className="fts-rest-row">
           <h3>Violations and permits, too</h3>
           <p suppressHydrationWarning>
-            Complaints are the early warning. We also track <b>DOB violations and permit filings</b> at the address level &mdash; with real current status, not the city&rsquo;s inspection-history maze.
+            Complaints are the early warning. We also track <b>DOB violations and permit filings </b> at the address level &mdash;  with real current status, not the city&rsquo;s inspection-history maze.
           </p>
         </div>
       </div>
