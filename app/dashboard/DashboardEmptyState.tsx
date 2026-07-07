@@ -11,7 +11,7 @@ type Props = {
 const UNLOCK_BULLETS: ReactNode[] = [
   <>Save any Chicago property to unlock its full report — <strong>311 complaint detail, violations, and permits</strong></>,
   <><strong>Daily alerts</strong> the moment a new complaint, violation, or permit is filed at your buildings</>,
-  <><strong>Free for 30 days</strong> from your first save — then $10 per property each month</>,
+  <><strong>Free for 30 days</strong> from your first save — then flat pricing per unit per month</>,
 ]
 
 export default function DashboardEmptyState({ kind }: Props) {

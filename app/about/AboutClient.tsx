@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
+import { useAuth, useClerk } from '@clerk/nextjs'
 
 /* ────────────────────────────────────────────────────────────────────
    COMPLAINT SHOWCASE DATA — real SRs from complaints_311
@@ -317,6 +318,8 @@ function PricingShowcase({
   const [annual, setAnnual] = useState(true)
   const [units, setUnits] = useState(100)
   const [showEmailModal, setShowEmailModal] = useState(false)
+  const { isSignedIn } = useAuth()
+  const { openSignIn } = useClerk()
 
   const PORTFOLIO_TIERS = [
     { price: 25, cap: 10, perUnitNum: 2.5 },
@@ -519,11 +522,18 @@ function PricingShowcase({
           <button
             type="button"
             className="pc5-btn pc5-btn-green"
-            onClick={() =>
-              isMax
-                ? setShowEmailModal(true)
-                : (window.location.href = `/sign-up?plan=portfolio&units=${units}`)
-            }
+            onClick={() => {
+              if (isMax) {
+                setShowEmailModal(true)
+              } else if (isSignedIn) {
+                window.location.href = '/dashboard'
+              } else {
+                openSignIn({
+                  forceRedirectUrl: '/dashboard',
+                  signUpForceRedirectUrl: '/dashboard',
+                })
+              }
+            }}
           >
             {isMax ? 'Talk to Jim' : 'Try for free'}
           </button>
@@ -1029,7 +1039,7 @@ export function FeaturesShowcase({
               <hr className="fts-hr" />
               <div className="fts-m-toprow">
                 <div className="fts-m-addr">
-                  <span className="lbl">Complaint address:</span>{' '}
+                  <span className="lbl">Address:</span>{' '}
                   <a href="#" onClick={(e) => e.preventDefault()}>
                     {d.addr}
                   </a>
