@@ -81,12 +81,10 @@ export default function DashboardLayoutClient({
     }
   }, [clerkLoaded, isSignedIn])
 
+  // No synchronous reset on sign-out (React Compiler lint): stale stats are
+  // harmless because every consumer is already gated on isSignedIn.
   useEffect(() => {
-    if (!clerkLoaded) return
-    if (!isSignedIn) {
-      setStats(null)
-      return
-    }
+    if (!clerkLoaded || !isSignedIn) return
     let cancelled = false
     fetch('/api/dashboard/header-stats')
       .then((r) => r.json())
@@ -125,7 +123,6 @@ export default function DashboardLayoutClient({
         : ent.reason === 'trial'
           ? `Free trial — ${ent.trialDaysLeft ?? 0} day${(ent.trialDaysLeft ?? 0) === 1 ? '' : 's'} left`
           : 'Free — expired'
-  const showUpgrade = ent ? ent.reason === 'trial' || ent.reason === 'none' : false
 
   return (
     <div className="prop-main-content">
@@ -146,27 +143,6 @@ export default function DashboardLayoutClient({
             <div className="dashboard-identity-text">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h1 style={{ margin: 0 }}>{orgPrefix}</h1>
-                {showUpgrade ? (
-                  <button
-                    type="button"
-                    className="plan-badge plan-badge-upgrade"
-                    onClick={() => {
-                      fetch('/api/stripe/checkout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ quantity: 1, return_path: '/dashboard/portfolio' }),
-                      })
-                        .then((r) => r.json())
-                        .then((d: { url?: string; error?: string }) => {
-                          if (d.url) window.location.href = d.url
-                          else window.alert(d.error || 'Could not open checkout.')
-                        })
-                        .catch(() => window.alert('Could not open checkout.'))
-                    }}
-                  >
-                    Upgrade now
-                  </button>
-                ) : null}
               </div>
               <div className="dashboard-identity-sub">
                 {planLabel ? `${planLabel} · ` : ''}Last 12 months · {todayStr}
