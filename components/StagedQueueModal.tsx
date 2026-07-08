@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
+import { loadStripe } from '@stripe/stripe-js'
+import type { StripeEmbeddedCheckout } from '@stripe/stripe-js'
 import {
   bandForUnits,
   bandIndexForUnits,
@@ -52,13 +54,16 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const [unitsDraft, setUnitsDraft] = useState<Record<string, string>>({})
   const [nameDraft, setNameDraft] = useState<Record<string, string>>({})
   const [notice, setNotice] = useState<string | null>(null)
-  // Wizard: 'queue' (review/edit rows) → 'plan' (pick a band → Stripe).
+  // Wizard: 'queue' (review/edit rows) → 'plan' (pick a band) → 'checkout'
+  // (Stripe embedded checkout mounted in place — the user never leaves).
   // Entitled accounts never see 'plan' — the commit route promotes directly.
-  const [step, setStep] = useState<'queue' | 'plan'>('queue')
+  const [step, setStep] = useState<'queue' | 'plan' | 'checkout'>('queue')
   const [billing, setBilling] = useState<'yearly' | 'monthly'>('yearly')
   const [planChoice, setPlanChoice] = useState<'recommended' | 'custom'>('recommended')
   const [customTierIdx, setCustomTierIdx] = useState(0)
   const [committing, setCommitting] = useState(false)
+  const [checkoutSecret, setCheckoutSecret] = useState<string | null>(null)
+  const checkoutMountRef = useRef<HTMLDivElement | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const showNotice = useCallback((text: string) => {
@@ -81,6 +86,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     setBilling('yearly')
     setPlanChoice('recommended')
     setCommitting(false)
+    setCheckoutSecret(null)
     fetch('/api/dashboard/stage?list=1')
       .then((res) => res.json())
       .then((data: { rows?: StagedRow[]; staged_count?: number }) => {
@@ -245,12 +251,12 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
           tier: chosenTier,
           interval: billing,
           staged_ids: selectedRows.map((r) => r.id),
-          return_path: '/dashboard/portfolio',
         }),
       })
-      const data = (await res.json()) as { url?: string; error?: string }
-      if (data.url) {
-        window.location.href = data.url
+      const data = (await res.json()) as { client_secret?: string; error?: string }
+      if (data.client_secret) {
+        setCheckoutSecret(data.client_secret)
+        setStep('checkout')
         return
       }
       showNotice(data.error || 'Could not open checkout — try again')
@@ -260,6 +266,46 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
       setCommitting(false)
     }
   }
+
+  // Mount Stripe's embedded checkout when the step opens; destroy it when the
+  // user backs out or the modal closes (Stripe allows one instance per page).
+  useEffect(() => {
+    if (step !== 'checkout' || !checkoutSecret) return
+    let disposed = false
+    let embedded: StripeEmbeddedCheckout | null = null
+    ;(async () => {
+      const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      if (!pk) throw new Error('missing publishable key')
+      const stripeJs = await loadStripe(pk)
+      if (!stripeJs) throw new Error('stripe-js failed to load')
+      const instance = await stripeJs.createEmbeddedCheckoutPage({
+        clientSecret: checkoutSecret,
+        onComplete: () => {
+          // Give the webhook a beat to promote the rows before landing on
+          // the portfolio.
+          setTimeout(() => {
+            window.location.assign('/dashboard/portfolio?checkout=success')
+          }, 1600)
+        },
+      })
+      if (disposed) {
+        instance.destroy()
+        return
+      }
+      embedded = instance
+      if (checkoutMountRef.current) instance.mount(checkoutMountRef.current)
+    })().catch((err) => {
+      console.error('Embedded checkout failed to load:', err)
+      if (!disposed) {
+        showNotice('Could not load checkout — try again')
+        setStep('plan')
+      }
+    })
+    return () => {
+      disposed = true
+      embedded?.destroy()
+    }
+  }, [step, checkoutSecret, showNotice])
 
   if (!isOpen) return null
   if (typeof window === 'undefined') return null
@@ -276,10 +322,18 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         <div style={headerStyle}>
           <div>
             <div id="staged-queue-title" style={titleStyle}>
-              {step === 'plan' ? 'Choose your plan' : 'Review added properties'}
+              {step === 'checkout'
+                ? 'Start your free trial'
+                : step === 'plan'
+                  ? 'Choose your plan'
+                  : 'Review added properties'}
             </div>
             <div style={headerSubStyle}>
-              {step === 'plan' ? (
+              {step === 'checkout' && chosenBand ? (
+                <>
+                  {bandLabel(chosenBand)} · {priceText(chosenBand)} · $0 due today
+                </>
+              ) : step === 'plan' || step === 'checkout' ? (
                 <>
                   {selectedRows.length} propert{selectedRows.length === 1 ? 'y' : 'ies'} ·{' '}
                   {totalUnits.toLocaleString()} unit{totalUnits === 1 ? '' : 's'} · 30-day free
@@ -299,7 +353,22 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         </div>
 
         <div style={bodyStyle}>
-          {step === 'plan' ? (
+          {step === 'checkout' ? (
+            <div>
+              <button
+                type="button"
+                style={{ ...backLinkStyle, marginBottom: 12 }}
+                onClick={() => {
+                  setCheckoutSecret(null)
+                  setStep('plan')
+                }}
+              >
+                &larr; Back to plan
+              </button>
+              {/* Stripe embedded checkout mounts here. */}
+              <div ref={checkoutMountRef} style={{ minHeight: 460 }} />
+            </div>
+          ) : step === 'plan' ? (
             <div>
               <div style={planTopRowStyle}>
                 <button type="button" style={backLinkStyle} onClick={() => setStep('queue')}>
@@ -496,7 +565,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
           )}
         </div>
 
-        {step === 'plan' ? (
+        {step === 'checkout' ? null : step === 'plan' ? (
           <div style={footerStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={summaryStyle}>

@@ -24,7 +24,6 @@ export async function POST(request: Request) {
     tier?: unknown
     interval?: unknown
     staged_ids?: unknown
-    return_path?: unknown
   }
   try {
     body = await request.json()
@@ -46,10 +45,6 @@ export async function POST(request: Request) {
   if (stagedIds.length === 0) {
     return NextResponse.json({ error: 'No properties selected' }, { status: 400 })
   }
-  const returnPath =
-    typeof body.return_path === 'string' && body.return_path.startsWith('/')
-      ? body.return_path
-      : '/dashboard/portfolio'
 
   const supabase = getSupabaseAdmin()
 
@@ -119,16 +114,18 @@ export async function POST(request: Request) {
       .eq('clerk_id', userId)
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://propertysentinel.io'
-
+  // Embedded checkout: the queue modal mounts Stripe's iframe in place, so
+  // the user never leaves the flow. redirect_on_completion: 'never' hands
+  // completion back to the client's onComplete callback instead of a
+  // return_url round-trip.
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
+    ui_mode: 'embedded_page',
+    redirect_on_completion: 'never',
     customer: customerId,
     line_items: [{ price: price.id, quantity: 1 }],
     payment_method_collection: 'always',
     allow_promotion_codes: true,
-    success_url: `${appUrl}${returnPath}${returnPath.includes('?') ? '&' : '?'}checkout=success`,
-    cancel_url: `${appUrl}${returnPath}${returnPath.includes('?') ? '&' : '?'}checkout=cancelled`,
     metadata: { clerk_id: userId, portfolio_tier: String(tier), portfolio_interval: interval },
     subscription_data: {
       trial_period_days: 30,
@@ -136,7 +133,7 @@ export async function POST(request: Request) {
     },
   })
 
-  if (!session.url) {
+  if (!session.client_secret) {
     return NextResponse.json({ error: 'Could not create checkout session' }, { status: 500 })
   }
 
@@ -158,5 +155,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Could not prepare checkout' }, { status: 500 })
   }
 
-  return NextResponse.json({ url: session.url })
+  return NextResponse.json({ client_secret: session.client_secret })
 }
