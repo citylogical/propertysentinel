@@ -188,10 +188,16 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         : null
       : customTierIdx + 1
 
+  // Effective rate at the top of the band, e.g. $250/mo ÷ 100 units = $2.50/unit.
+  const perUnitText = (b: PortfolioBand) => {
+    const rate = (billing === 'yearly' ? b.annualMonthly : b.monthly) / b.cap
+    return `$${Number.isInteger(rate) ? rate : rate.toFixed(2)}/unit`
+  }
+
   const priceText = (b: PortfolioBand) =>
     billing === 'yearly'
-      ? `$${b.annualMonthly.toLocaleString()}/mo billed annually ($${(b.annualMonthly * 12).toLocaleString()}/yr)`
-      : `$${b.monthly.toLocaleString()}/mo`
+      ? `$${b.annualMonthly.toLocaleString()}/mo billed annually ($${(b.annualMonthly * 12).toLocaleString()}/yr), ${perUnitText(b)}`
+      : `$${b.monthly.toLocaleString()}/mo, ${perUnitText(b)}`
 
   // The server is the authority on entitlement: entitled accounts get their
   // rows promoted directly (no Stripe); everyone else advances to the plan
@@ -295,9 +301,29 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         <div style={bodyStyle}>
           {step === 'plan' ? (
             <div>
-              <button type="button" style={backLinkStyle} onClick={() => setStep('queue')}>
-                &larr; Back to queue
-              </button>
+              <div style={planTopRowStyle}>
+                <button type="button" style={backLinkStyle} onClick={() => setStep('queue')}>
+                  &larr; Back to queue
+                </button>
+                {recommendedIdx !== null && (
+                  <div style={billingToggleWrapStyle} role="group" aria-label="Billing interval">
+                    <button
+                      type="button"
+                      style={billing === 'yearly' ? billingOnStyle : billingOffStyle}
+                      onClick={() => setBilling('yearly')}
+                    >
+                      Annual · save 20%
+                    </button>
+                    <button
+                      type="button"
+                      style={billing === 'monthly' ? billingOnStyle : billingOffStyle}
+                      onClick={() => setBilling('monthly')}
+                    >
+                      Monthly
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {recommendedIdx === null ? (
                 <div style={maxPanelStyle}>
@@ -315,23 +341,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 </div>
               ) : (
                 <>
-                  <div style={billingToggleWrapStyle} role="group" aria-label="Billing interval">
-                    <button
-                      type="button"
-                      style={billing === 'yearly' ? billingOnStyle : billingOffStyle}
-                      onClick={() => setBilling('yearly')}
-                    >
-                      Annual · save 20%
-                    </button>
-                    <button
-                      type="button"
-                      style={billing === 'monthly' ? billingOnStyle : billingOffStyle}
-                      onClick={() => setBilling('monthly')}
-                    >
-                      Monthly
-                    </button>
-                  </div>
-
                   <label style={planRowStyle(planChoice === 'recommended')}>
                     <input
                       type="radio"
@@ -673,11 +682,18 @@ const removeBtnStyle: CSSProperties = {
 
 // --- Plan step ---
 
+const planTopRowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 16,
+  marginBottom: 16,
+}
+
 const backLinkStyle: CSSProperties = {
   background: 'none',
   border: 'none',
   padding: 0,
-  marginBottom: 14,
   fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 12,
   fontWeight: 500,
@@ -685,17 +701,21 @@ const backLinkStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
+// Segmented control: recessed cream track, raised navy pill for the active
+// interval so the toggle reads at a glance.
 const billingToggleWrapStyle: CSSProperties = {
   display: 'inline-flex',
-  border: '1px solid #ddd9d0',
-  borderRadius: 6,
-  overflow: 'hidden',
-  marginBottom: 16,
+  gap: 3,
+  padding: 3,
+  background: '#e8e4dc',
+  borderRadius: 8,
+  boxShadow: 'inset 0 1px 2px rgba(15, 39, 68, 0.12)',
 }
 
 const billingBtnBase: CSSProperties = {
   padding: '7px 14px',
   border: 'none',
+  borderRadius: 6,
   fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 12,
   fontWeight: 600,
@@ -706,11 +726,12 @@ const billingOnStyle: CSSProperties = {
   ...billingBtnBase,
   background: '#0f2744',
   color: '#ffffff',
+  boxShadow: '0 1px 3px rgba(15, 39, 68, 0.35)',
 }
 
 const billingOffStyle: CSSProperties = {
   ...billingBtnBase,
-  background: '#ffffff',
+  background: 'transparent',
   color: '#4a5568',
 }
 
