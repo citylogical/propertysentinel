@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { stripe } from '@/lib/stripe'
+import { promoteStagedRowsForSession } from '@/lib/staged-promotion'
 import type Stripe from 'stripe'
 
 export const runtime = 'nodejs'
@@ -77,6 +78,10 @@ export async function POST(req: Request) {
           }
           await syncSubscription(sub)
         }
+        // Activation flow: promote the staged rows stamped with this session
+        // into the portfolio. No-op for sessions that didn't come from the
+        // queue (nothing is stamped with their id).
+        await promoteStagedRowsForSession(supabaseAdmin, session.id)
         break
       }
       case 'customer.subscription.updated':

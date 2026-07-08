@@ -219,9 +219,14 @@ export async function DELETE(request: Request) {
 
   const supabase = getSupabaseAdmin()
 
-  // Only queue-state rows are deletable; a row mid-checkout or already
-  // promoted is managed by the commit flow, not the address-page toggle.
-  let query = supabase.from('staged_properties').delete().eq('clerk_id', userId).eq('status', 'staged')
+  // Queue-state rows are deletable, including pending_checkout (an abandoned
+  // checkout leaves rows there; deleting one simply means the webhook finds
+  // nothing to promote for it). Promoted rows are history — not deletable.
+  let query = supabase
+    .from('staged_properties')
+    .delete()
+    .eq('clerk_id', userId)
+    .in('status', ['staged', 'pending_checkout'])
   if (id) {
     query = query.eq('id', id)
   } else {
