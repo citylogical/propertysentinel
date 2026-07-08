@@ -5,7 +5,16 @@
       "Bash(timeout 30 npm run dev)",
       "Bash(cmd.exe /c \"rmdir /S /Q C:\\\\Users\\\\jrmcm\\\\Documents\\\\propertysentinel\\\\.next\")",
       "Bash(cmd.exe /c \"tasklist | findstr node\" 2>&1)",
-      "Bash(cmd.exe /c \"tasklist /FI \\\\\"IMAGENAME eq node.exe\\\\\"\" 2>&1)"
+      "Bash(cmd.exe /c \"tasklist /FI \\\\\"IMAGENAME eq node.exe\\\\\"\" 2>&1)",
+      "Bash(node -e \"const p=require\\('C:/Users/jrmcm/Documents/propertysentinel/package.json'\\); console.log\\(p.dependencies.next, p.dependencies['@clerk/nextjs'], p.dependencies.stripe\\)\")",
+      "Bash(node -e \"const p=require\\('C:/Users/jrmcm/Documents/propertysentinel/package.json'\\); console.log\\(JSON.stringify\\({scripts:p.scripts, dev:Object.keys\\(p.devDependencies||{}\\), deps:Object.keys\\(p.dependencies||{}\\)},null,1\\)\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(npx tsx *)",
+      "Bash(rm -f scripts/.verify-bundle.cjs)",
+      "Bash(npx eslint *)",
+      "Bash(node scripts/verify-addressbar.mjs)",
+      "Bash(grep -Ev \"^\\\\s*$|warning\")"
     ]
   }
 }
