@@ -1,9 +1,10 @@
 'use client'
 
 import { SignInButton, useUser } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import BuildingDetectionModal from '@/components/BuildingDetectionModal'
-import UnsavePropertyModal from '@/components/UnsavePropertyModal'
+import StagedQueueModal from '@/components/StagedQueueModal'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 
 export type PortfolioSaveData = {
@@ -40,7 +41,8 @@ export default function AddressBarButtons({
   saveData,
 }: Props) {
   const { isSignedIn, isLoaded } = useUser()
-  const [unsaveModalOpen, setUnsaveModalOpen] = useState(false)
+  const router = useRouter()
+  const [queueModalOpen, setQueueModalOpen] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
   const [isStaged, setIsStaged] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -72,7 +74,7 @@ export default function AddressBarButtons({
       .catch(() => {})
   }, [isSignedIn, saveData.canonicalAddress])
 
-  useEffect(() => {
+  const checkStaged = useCallback(() => {
     if (!isSignedIn) {
       setIsStaged(false)
       return
@@ -83,6 +85,10 @@ export default function AddressBarButtons({
       .then((data: { staged?: boolean }) => setIsStaged(!!data.staged))
       .catch(() => {})
   }, [isSignedIn, saveData.canonicalAddress])
+
+  useEffect(() => {
+    checkStaged()
+  }, [checkStaged])
 
   // One-click staging: snapshot the full save payload the page already
   // computed. No modal, no cap, no trial stamp — commitment happens later in
@@ -125,33 +131,15 @@ export default function AddressBarButtons({
     }
   }, [adding, saveData, slug, showBlurb])
 
-  const unstageProperty = useCallback(async () => {
-    if (adding || !saveData.canonicalAddress) return
-    setAdding(true)
-    try {
-      const res = await fetch(
-        `/api/dashboard/stage?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`,
-        { method: 'DELETE' }
-      )
-      if (res.ok) {
-        setIsStaged(false)
-        showBlurb('Removed from dashboard')
-      } else {
-        showBlurb('Could not remove — try again')
-      }
-    } catch {
-      showBlurb('Could not remove — try again')
-    } finally {
-      setAdding(false)
-    }
-  }, [adding, saveData.canonicalAddress, showBlurb])
-
+  // Saved → the property is in the portfolio; the button is a shortcut to the
+  // dashboard. Staged → open the queue modal (removal happens there). Neither
+  // → one-click stage.
   const handleAddClick = () => {
     if (!isLoaded || !isSignedIn) return
     if (isSaved) {
-      setUnsaveModalOpen(true)
+      router.push('/dashboard/portfolio')
     } else if (isStaged) {
-      void unstageProperty()
+      setQueueModalOpen(true)
     } else {
       void stageProperty()
     }
@@ -186,24 +174,28 @@ export default function AddressBarButtons({
       ? `${window.location.origin}${window.location.pathname}${window.location.search}`
       : '/'
 
-  // "+" is the universal add-to-list glyph; it flips to a check once the
-  // property is staged (in the dashboard queue) or saved (in the portfolio).
-  const addIcon =
-    isStaged || isSaved ? (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    ) : (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden>
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-    )
+  // Three states: saved in the portfolio → the classic filled bookmark
+  // (click goes to the dashboard); staged in the queue → green check (click
+  // opens the queue modal); neither → "+", the universal add-to-list glyph.
+  const addIcon = isSaved ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" stroke="#fff" strokeWidth="2" aria-hidden>
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  ) : isStaged ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
 
   const addTitle = isSaved
-    ? 'Saved to your portfolio — click to manage'
+    ? 'Saved to your portfolio — view dashboard'
     : isStaged
-      ? 'In your dashboard — click to remove'
+      ? 'Added — review your queue'
       : 'Add to dashboard'
 
   return (
@@ -300,14 +292,13 @@ export default function AddressBarButtons({
         </span>
       </div>
 
-      <UnsavePropertyModal
-        isOpen={unsaveModalOpen}
-        onClose={(didUnsave) => {
-          setUnsaveModalOpen(false)
-          if (didUnsave) setIsSaved(false)
+      <StagedQueueModal
+        isOpen={queueModalOpen}
+        onClose={() => {
+          setQueueModalOpen(false)
+          // This property may have been removed inside the modal — recheck.
+          checkStaged()
         }}
-        displayName={saveData.buildingAddressRange || saveData.currentAddress}
-        canonicalAddress={saveData.canonicalAddress}
       />
     </>
   )
