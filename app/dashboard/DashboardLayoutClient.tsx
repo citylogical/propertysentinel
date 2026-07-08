@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
 import type { Entitlement } from '@/lib/entitlement'
+import StagedQueueModal from '@/components/StagedQueueModal'
 import AddPropertyModal from './AddPropertyModal'
 
 type HeaderStats = {
@@ -43,12 +44,42 @@ export default function DashboardLayoutClient({
   const { isSignedIn, isLoaded: clerkLoaded } = useUser()
   const [stats, setStats] = useState<HeaderStats | null>(null)
   const [addPropOpen, setAddPropOpen] = useState(false)
+  const [stagedCount, setStagedCount] = useState(0)
+  const [queueOpen, setQueueOpen] = useState(false)
 
   useEffect(() => {
     const handler = () => setAddPropOpen(true)
     window.addEventListener('ps:open-add-property', handler)
     return () => window.removeEventListener('ps:open-add-property', handler)
   }, [])
+
+  useEffect(() => {
+    const handler = () => setQueueOpen(true)
+    window.addEventListener('ps:open-staged-queue', handler)
+    return () => window.removeEventListener('ps:open-staged-queue', handler)
+  }, [])
+
+  // Anyone with staged rows gets served the queue modal on arrival —
+  // regardless of whether they have saved properties yet. Always dismissible;
+  // the "Review added properties" triggers re-open it.
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn) return
+    let cancelled = false
+    fetch('/api/dashboard/stage')
+      .then((r) => r.json())
+      .then((data: { staged_count?: number }) => {
+        if (cancelled) return
+        const count = data.staged_count ?? 0
+        setStagedCount(count)
+        if (count > 0) setQueueOpen(true)
+      })
+      .catch(() => {
+        // Non-fatal — the user can still reach the queue from an address page.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clerkLoaded, isSignedIn])
 
   useEffect(() => {
     if (!clerkLoaded) return
@@ -158,6 +189,15 @@ export default function DashboardLayoutClient({
                 <div style={dividerStyle} />
               </>
             ) : null}
+            {isSignedIn && stagedCount > 0 ? (
+              <button
+                type="button"
+                style={reviewQueueBtnStyle}
+                onClick={() => setQueueOpen(true)}
+              >
+                Review added properties
+              </button>
+            ) : null}
             <button
               type="button"
               style={addPropertyBtnStyle}
@@ -204,6 +244,11 @@ export default function DashboardLayoutClient({
       {children}
 
       <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
+      <StagedQueueModal
+        isOpen={queueOpen}
+        onClose={() => setQueueOpen(false)}
+        onQueueChange={setStagedCount}
+      />
     </div>
   )
 }
@@ -242,6 +287,21 @@ const dividerStyle: CSSProperties = {
   width: 1,
   height: 28,
   background: '#e5e1d6',
+}
+
+const reviewQueueBtnStyle: CSSProperties = {
+  padding: '8px 16px',
+  background: '#1e40af',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: 6,
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  boxShadow:
+    'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04)',
 }
 
 const addPropertyBtnStyle: CSSProperties = {

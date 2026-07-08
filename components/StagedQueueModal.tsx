@@ -169,29 +169,28 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   return createPortal(
     <div className="save-modal-backdrop" onClick={onClose} role="presentation">
       <div
-        className="save-modal"
-        style={{ maxWidth: 720 }}
+        style={modalStyle}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="staged-queue-title"
         aria-modal="true"
       >
-        <div className="save-modal-header">
+        <div style={headerStyle}>
           <div>
-            <div id="staged-queue-title" className="save-modal-title">
+            <div id="staged-queue-title" style={titleStyle}>
               Review added properties
             </div>
-            <div className="save-modal-sub">
+            <div style={headerSubStyle}>
               {rows.length} propert{rows.length === 1 ? 'y' : 'ies'} in your queue · enter unit
               counts, then save to your portfolio
             </div>
           </div>
-          <button type="button" className="save-modal-close" onClick={onClose} aria-label="Close">
+          <button type="button" style={closeBtnStyle} onClick={onClose} aria-label="Close">
             &times;
           </button>
         </div>
 
-        <div className="save-modal-body">
+        <div style={bodyStyle}>
           {loading ? (
             <div style={emptyStyle}>Loading your queue…</div>
           ) : rows.length === 0 ? (
@@ -200,7 +199,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
             </div>
           ) : (
             <div>
-              <div style={{ ...rowStyle, borderBottom: '1px solid var(--border, #ddd9d0)' }}>
+              <div style={{ ...gridRowStyle, ...headRowStyle }}>
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -208,10 +207,10 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                   aria-label={allSelected ? 'Deselect all' : 'Select all'}
                   style={checkboxStyle}
                 />
-                <div style={{ ...headLabelStyle, flex: '1 1 200px' }}>Property name</div>
-                <div style={{ ...headLabelStyle, flex: '1 1 180px' }}>Address</div>
-                <div style={{ ...headLabelStyle, width: 72, flexShrink: 0 }}>Units</div>
-                <div style={{ width: 28, flexShrink: 0 }} />
+                <div style={headLabelStyle}>Property name</div>
+                <div style={headLabelStyle}>Address</div>
+                <div style={{ ...headLabelStyle, textAlign: 'center' }}>Units</div>
+                <div />
               </div>
 
               {rows.map((row) => {
@@ -219,7 +218,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 const rowMissingUnits =
                   isRowSelected && parseUnitsInput(unitsDraft[row.id] ?? '') == null
                 return (
-                  <div key={row.id} style={rowStyle}>
+                  <div key={row.id} style={gridRowStyle}>
                     <input
                       type="checkbox"
                       checked={isRowSelected}
@@ -227,41 +226,36 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                       aria-label={`Select ${row.property_name || row.canonical_address}`}
                       style={checkboxStyle}
                     />
-                    <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                      <input
-                        className="save-field-input"
-                        type="text"
-                        value={nameDraft[row.id] ?? ''}
-                        onChange={(e) =>
-                          setNameDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
-                        }
-                        onBlur={() => handleNameBlur(row)}
-                        placeholder="Property name"
-                        aria-label="Property name"
-                      />
-                    </div>
+                    <input
+                      className="save-field-input"
+                      type="text"
+                      value={nameDraft[row.id] ?? ''}
+                      onChange={(e) =>
+                        setNameDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
+                      }
+                      onBlur={() => handleNameBlur(row)}
+                      placeholder="Property name"
+                      aria-label="Property name"
+                    />
                     <div style={addressCellStyle} title={row.address_range ?? row.canonical_address}>
                       {row.address_range || row.canonical_address}
                     </div>
-                    <div style={{ width: 72, flexShrink: 0 }}>
-                      <input
-                        className="save-field-input"
-                        type="text"
-                        inputMode="numeric"
-                        value={unitsDraft[row.id] ?? ''}
-                        onChange={(e) =>
-                          setUnitsDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
-                        }
-                        onBlur={() => handleUnitsBlur(row)}
-                        placeholder="—"
-                        aria-label="Unit count"
-                        style={
-                          rowMissingUnits
-                            ? { borderColor: 'var(--red, #c0392b)' }
-                            : undefined
-                        }
-                      />
-                    </div>
+                    <input
+                      className="save-field-input"
+                      type="text"
+                      inputMode="numeric"
+                      value={unitsDraft[row.id] ?? ''}
+                      onChange={(e) =>
+                        setUnitsDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
+                      }
+                      onBlur={() => handleUnitsBlur(row)}
+                      placeholder="—"
+                      aria-label="Unit count"
+                      style={{
+                        textAlign: 'center',
+                        ...(rowMissingUnits ? { borderColor: 'var(--red, #c0392b)' } : null),
+                      }}
+                    />
                     <button
                       type="button"
                       onClick={() => void removeRow(row)}
@@ -328,19 +322,82 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   )
 }
 
-const rowStyle: CSSProperties = {
+const modalStyle: CSSProperties = {
+  background: '#ffffff',
+  borderRadius: 8,
+  width: '100%',
+  maxWidth: 720,
+  maxHeight: '84vh',
   display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  boxShadow: '0 16px 48px rgba(15, 39, 68, 0.28)',
+}
+
+const headerStyle: CSSProperties = {
+  background: '#0f2744',
+  padding: '16px 22px',
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 16,
+  flexShrink: 0,
+}
+
+const titleStyle: CSSProperties = {
+  fontFamily: 'var(--serif, "Playfair Display", serif)',
+  fontSize: 18,
+  fontWeight: 700,
+  color: '#ffffff',
+  lineHeight: 1.2,
+}
+
+const headerSubStyle: CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  color: 'rgba(255, 255, 255, 0.65)',
+  marginTop: 4,
+}
+
+const closeBtnStyle: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  fontSize: 22,
+  lineHeight: 1,
+  color: 'rgba(255, 255, 255, 0.7)',
+  cursor: 'pointer',
+  padding: '0 2px',
+  flexShrink: 0,
+}
+
+const bodyStyle: CSSProperties = {
+  padding: '16px 22px 18px',
+  overflowY: 'auto',
+  flex: '1 1 auto',
+}
+
+// checkbox | property name | address | units | remove — shared by the head
+// row and data rows so the columns stay aligned.
+const gridRowStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '24px minmax(0, 1.2fr) minmax(0, 1fr) 84px 28px',
+  gap: 12,
   alignItems: 'center',
-  gap: 10,
-  padding: '8px 0',
+  padding: '9px 0',
+  borderBottom: '1px solid #f2f0eb',
+}
+
+const headRowStyle: CSSProperties = {
+  padding: '2px 0 9px',
+  borderBottom: '1px solid #e8e4dc',
 }
 
 const checkboxStyle: CSSProperties = {
   width: 15,
   height: 15,
-  flexShrink: 0,
   accentColor: '#0f2744',
   cursor: 'pointer',
+  justifySelf: 'start',
 }
 
 const headLabelStyle: CSSProperties = {
@@ -352,7 +409,6 @@ const headLabelStyle: CSSProperties = {
 }
 
 const addressCellStyle: CSSProperties = {
-  flex: '1 1 180px',
   minWidth: 0,
   fontFamily: 'DM Mono, ui-monospace, monospace',
   fontSize: 11,
@@ -365,9 +421,9 @@ const addressCellStyle: CSSProperties = {
 const removeBtnStyle: CSSProperties = {
   width: 28,
   height: 28,
-  flexShrink: 0,
   background: 'none',
   border: 'none',
+  borderRadius: 4,
   fontSize: 18,
   lineHeight: 1,
   color: '#8a94a0',
@@ -375,17 +431,17 @@ const removeBtnStyle: CSSProperties = {
 }
 
 const emptyStyle: CSSProperties = {
-  padding: '28px 8px',
+  padding: '32px 8px',
   textAlign: 'center',
   fontSize: 13,
   color: '#4a5568',
 }
 
 const noticeStyle: CSSProperties = {
-  marginTop: 10,
+  marginTop: 12,
   padding: '8px 12px',
-  background: '#f2f0eb',
-  border: '1px solid #e8e4dc',
+  background: '#fef3c7',
+  border: '1px solid #d97706',
   borderRadius: 6,
   fontSize: 12,
   color: '#0f2744',
@@ -396,8 +452,10 @@ const footerStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 16,
-  padding: '14px 20px',
-  borderTop: '1px solid var(--border, #ddd9d0)',
+  padding: '14px 22px',
+  background: '#f2f0eb',
+  borderTop: '1px solid #e8e4dc',
+  flexShrink: 0,
 }
 
 const summaryStyle: CSSProperties = {

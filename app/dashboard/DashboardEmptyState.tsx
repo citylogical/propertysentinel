@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties, ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { SignInButton } from '@clerk/nextjs'
 
 type Props = {
@@ -9,13 +9,30 @@ type Props = {
 }
 
 const UNLOCK_BULLETS: ReactNode[] = [
-  <>Save any Chicago property to unlock its full report — <strong>311 complaint detail, violations, and permits</strong></>,
+  <>Add any Chicago property to unlock its full report — <strong>311 complaint detail, violations, and permits</strong></>,
   <><strong>Daily alerts</strong> the moment a new complaint, violation, or permit is filed at your buildings</>,
-  <><strong>Free for 30 days</strong> from your first save — then flat pricing per unit per month</>,
+  <><strong>30-day free trial</strong> — then one flat monthly price based on your portfolio size</>,
 ]
 
 export default function DashboardEmptyState({ kind }: Props) {
   const isSignedOut = kind === 'signed_out'
+  const [stagedCount, setStagedCount] = useState(0)
+
+  // Properties in the queue but none saved yet: surface the queue trigger
+  // next to the add button and soften the add copy.
+  useEffect(() => {
+    if (isSignedOut) return
+    let cancelled = false
+    fetch('/api/dashboard/stage')
+      .then((r) => r.json())
+      .then((data: { staged_count?: number }) => {
+        if (!cancelled) setStagedCount(data.staged_count ?? 0)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedOut])
 
   const ctaButtonStyle: CSSProperties = {
     display: 'inline-block',
@@ -35,7 +52,26 @@ export default function DashboardEmptyState({ kind }: Props) {
     <div style={{ minHeight: '80vh', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
         {!isSignedOut ? (
-          <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center', gap: 12 }}>
+            {stagedCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('ps:open-staged-queue'))}
+                style={{
+                  padding: '11px 22px',
+                  background: '#1e40af',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Review added properties
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('ps:open-add-property'))}
@@ -51,7 +87,7 @@ export default function DashboardEmptyState({ kind }: Props) {
                 cursor: 'pointer',
               }}
             >
-              Add your first property
+              {stagedCount > 0 ? 'Add more properties' : 'Add your first property'}
             </button>
           </div>
         ) : null}
