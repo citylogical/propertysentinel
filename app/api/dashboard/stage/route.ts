@@ -46,8 +46,28 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const canonicalAddress = searchParams.get('canonical_address')
+  const wantList = searchParams.get('list') === '1'
 
   const supabase = getSupabaseAdmin()
+
+  // Queue contents for the review modal. Queues are user-scale (not 13M-row
+  // scale), so a plain select is fine here.
+  if (wantList) {
+    const { data: rows, error } = await supabase
+      .from('staged_properties')
+      .select(
+        'id, canonical_address, slug, property_name, units, address_range, additional_streets, pins, sqft, year_built, implied_value, community_area, property_class, status, created_at'
+      )
+      .eq('clerk_id', userId)
+      .in('status', ['staged', 'pending_checkout'])
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Stage list error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ rows: rows ?? [], staged_count: rows?.length ?? 0 })
+  }
 
   const { count } = await supabase
     .from('staged_properties')
@@ -140,6 +160,47 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ success: true, id: row?.id })
+}
+
+// Inline edits from the queue modal: units and property_name only. Everything
+// else in the row is a snapshot owned by the add flow.
+export async function PATCH(request: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const id = typeof body.id === 'string' ? body.id.trim() : ''
+  if (!id) {
+    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if ('units' in body) updates.units = parseOptInt(body.units)
+  if ('property_name' in body) updates.property_name = parseOptString(body.property_name)
+
+  const supabase = getSupabaseAdmin()
+
+  const { error } = await supabase
+    .from('staged_properties')
+    .update(updates)
+    .eq('clerk_id', userId)
+    .eq('id', id)
+    .in('status', ['staged', 'pending_checkout'])
+
+  if (error) {
+    console.error('Stage update error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true })
 }
 
 export async function DELETE(request: Request) {
