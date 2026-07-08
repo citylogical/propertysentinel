@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { bandForUnits, bandLabel, MAX_TIER_UNITS } from '@/lib/pricing'
+import {
+  bandForUnits,
+  bandIndexForUnits,
+  bandLabel,
+  MAX_TIER_UNITS,
+  PORTFOLIO_BANDS,
+  type PortfolioBand,
+} from '@/lib/pricing'
 
 // The staging-queue review modal for the onboarding/activation flow.
 // Opens from the dashboard ("Review added properties") and from the green
@@ -45,6 +52,13 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const [unitsDraft, setUnitsDraft] = useState<Record<string, string>>({})
   const [nameDraft, setNameDraft] = useState<Record<string, string>>({})
   const [notice, setNotice] = useState<string | null>(null)
+  // Wizard: 'queue' (review/edit rows) → 'plan' (pick a band → Stripe).
+  // Entitled accounts never see 'plan' — the commit route promotes directly.
+  const [step, setStep] = useState<'queue' | 'plan'>('queue')
+  const [billing, setBilling] = useState<'yearly' | 'monthly'>('yearly')
+  const [planChoice, setPlanChoice] = useState<'recommended' | 'custom'>('recommended')
+  const [customTierIdx, setCustomTierIdx] = useState(0)
+  const [committing, setCommitting] = useState(false)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const showNotice = useCallback((text: string) => {
@@ -63,6 +77,10 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     if (!isOpen) return
     let cancelled = false
     setLoading(true)
+    setStep('queue')
+    setBilling('yearly')
+    setPlanChoice('recommended')
+    setCommitting(false)
     fetch('/api/dashboard/stage?list=1')
       .then((res) => res.json())
       .then((data: { rows?: StagedRow[]; staged_count?: number }) => {
@@ -156,11 +174,85 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const band = canCommit ? bandForUnits(totalUnits) : null
   const isMaxTier = canCommit && totalUnits > MAX_TIER_UNITS
 
-  const handleCommit = () => {
-    if (!canCommit) return
-    // Step 5 wires this to band selection → Stripe Checkout (30-day trial,
-    // card up front, $0 today). Until then, make the state visible.
-    showNotice('Checkout wiring is the next build step — your queue is saved.')
+  const recommendedIdx = bandIndexForUnits(totalUnits)
+  const chosenBand: PortfolioBand | null =
+    planChoice === 'recommended'
+      ? recommendedIdx !== null
+        ? PORTFOLIO_BANDS[recommendedIdx]
+        : null
+      : PORTFOLIO_BANDS[customTierIdx]
+  const chosenTier =
+    planChoice === 'recommended'
+      ? recommendedIdx !== null
+        ? recommendedIdx + 1
+        : null
+      : customTierIdx + 1
+
+  const priceText = (b: PortfolioBand) =>
+    billing === 'yearly'
+      ? `$${b.annualMonthly.toLocaleString()}/mo billed annually ($${(b.annualMonthly * 12).toLocaleString()}/yr)`
+      : `$${b.monthly.toLocaleString()}/mo`
+
+  // The server is the authority on entitlement: entitled accounts get their
+  // rows promoted directly (no Stripe); everyone else advances to the plan
+  // step here.
+  const handleCommit = async () => {
+    if (!canCommit || committing) return
+    setCommitting(true)
+    try {
+      const res = await fetch('/api/dashboard/stage/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staged_ids: selectedRows.map((r) => r.id) }),
+      })
+      const data = (await res.json()) as {
+        promoted?: number
+        requires_checkout?: boolean
+        error?: string
+      }
+      if (data.promoted) {
+        window.location.assign('/dashboard/portfolio')
+        return
+      }
+      if (data.requires_checkout) {
+        setCustomTierIdx(recommendedIdx ?? PORTFOLIO_BANDS.length - 1)
+        setPlanChoice('recommended')
+        setStep('plan')
+        return
+      }
+      showNotice(data.error || 'Could not save — try again')
+    } catch {
+      showNotice('Could not save — try again')
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  const handleStartTrial = async () => {
+    if (chosenTier === null || committing) return
+    setCommitting(true)
+    try {
+      const res = await fetch('/api/stripe/checkout-portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: chosenTier,
+          interval: billing,
+          staged_ids: selectedRows.map((r) => r.id),
+          return_path: '/dashboard/portfolio',
+        }),
+      })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (data.url) {
+        window.location.href = data.url
+        return
+      }
+      showNotice(data.error || 'Could not open checkout — try again')
+    } catch {
+      showNotice('Could not open checkout — try again')
+    } finally {
+      setCommitting(false)
+    }
   }
 
   if (!isOpen) return null
@@ -178,11 +270,21 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         <div style={headerStyle}>
           <div>
             <div id="staged-queue-title" style={titleStyle}>
-              Review added properties
+              {step === 'plan' ? 'Choose your plan' : 'Review added properties'}
             </div>
             <div style={headerSubStyle}>
-              {rows.length} propert{rows.length === 1 ? 'y' : 'ies'} in your queue · enter unit
-              counts, then save to your portfolio
+              {step === 'plan' ? (
+                <>
+                  {selectedRows.length} propert{selectedRows.length === 1 ? 'y' : 'ies'} ·{' '}
+                  {totalUnits.toLocaleString()} unit{totalUnits === 1 ? '' : 's'} · 30-day free
+                  trial, $0 due today
+                </>
+              ) : (
+                <>
+                  {rows.length} propert{rows.length === 1 ? 'y' : 'ies'} in your queue · enter unit
+                  counts, then save to your portfolio
+                </>
+              )}
             </div>
           </div>
           <button type="button" style={closeBtnStyle} onClick={onClose} aria-label="Close">
@@ -191,7 +293,108 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         </div>
 
         <div style={bodyStyle}>
-          {loading ? (
+          {step === 'plan' ? (
+            <div>
+              <button type="button" style={backLinkStyle} onClick={() => setStep('queue')}>
+                &larr; Back to queue
+              </button>
+
+              {recommendedIdx === null ? (
+                <div style={maxPanelStyle}>
+                  <div style={planTitleStyle}>Over {MAX_TIER_UNITS} units</div>
+                  <p style={maxPanelTextStyle}>
+                    Portfolios this size get a custom plan. Reach out and we&apos;ll set you up —
+                    your queue stays saved in the meantime.
+                  </p>
+                  <a
+                    href={`mailto:jim@propertysentinel.io?subject=${encodeURIComponent(`Custom plan (${totalUnits.toLocaleString()} units)`)}`}
+                    style={contactBtnStyle}
+                  >
+                    Contact us
+                  </a>
+                </div>
+              ) : (
+                <>
+                  <div style={billingToggleWrapStyle} role="group" aria-label="Billing interval">
+                    <button
+                      type="button"
+                      style={billing === 'yearly' ? billingOnStyle : billingOffStyle}
+                      onClick={() => setBilling('yearly')}
+                    >
+                      Annual · save 20%
+                    </button>
+                    <button
+                      type="button"
+                      style={billing === 'monthly' ? billingOnStyle : billingOffStyle}
+                      onClick={() => setBilling('monthly')}
+                    >
+                      Monthly
+                    </button>
+                  </div>
+
+                  <label style={planRowStyle(planChoice === 'recommended')}>
+                    <input
+                      type="radio"
+                      name="plan-choice"
+                      checked={planChoice === 'recommended'}
+                      onChange={() => setPlanChoice('recommended')}
+                      style={radioStyle}
+                    />
+                    <div>
+                      <div style={planTagStyle}>
+                        Recommended for your {totalUnits.toLocaleString()} unit
+                        {totalUnits === 1 ? '' : 's'}
+                      </div>
+                      <div style={planTitleStyle}>
+                        {bandLabel(PORTFOLIO_BANDS[recommendedIdx])}
+                      </div>
+                      <div style={planPriceStyle}>{priceText(PORTFOLIO_BANDS[recommendedIdx])}</div>
+                    </div>
+                  </label>
+
+                  <label style={planRowStyle(planChoice === 'custom')}>
+                    <input
+                      type="radio"
+                      name="plan-choice"
+                      checked={planChoice === 'custom'}
+                      onChange={() => setPlanChoice('custom')}
+                      style={radioStyle}
+                    />
+                    <div>
+                      <div style={planTitleStyle}>
+                        Adding more units or a fluctuating portfolio size?
+                      </div>
+                      <div style={planPriceStyle}>See more prices</div>
+                    </div>
+                  </label>
+
+                  {planChoice === 'custom' && (
+                    <div style={subPlanListStyle}>
+                      {PORTFOLIO_BANDS.map((b, i) => (
+                        <label key={b.cap} style={subPlanRowStyle(customTierIdx === i)}>
+                          <input
+                            type="radio"
+                            name="custom-tier"
+                            checked={customTierIdx === i}
+                            onChange={() => setCustomTierIdx(i)}
+                            style={radioStyle}
+                          />
+                          <span style={subPlanLabelStyle}>{bandLabel(b)}</span>
+                          <span style={subPlanPriceStyle}>{priceText(b)}</span>
+                        </label>
+                      ))}
+                      {PORTFOLIO_BANDS[customTierIdx].cap < totalUnits && (
+                        <div style={planNoteStyle}>
+                          This plan covers fewer units than the {totalUnits.toLocaleString()} you
+                          selected — you can change plans anytime.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : loading ? (
             <div style={emptyStyle}>Loading your queue…</div>
           ) : rows.length === 0 ? (
             <div style={emptyStyle}>
@@ -237,9 +440,15 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                       placeholder="Property name"
                       aria-label="Property name"
                     />
-                    <div style={addressCellStyle} title={row.address_range ?? row.canonical_address}>
+                    <a
+                      href={`/address/${row.slug}?building=true`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={addressCellStyle}
+                      title={row.address_range ?? row.canonical_address}
+                    >
                       {row.address_range || row.canonical_address}
-                    </div>
+                    </a>
                     <input
                       className="save-field-input"
                       type="text"
@@ -278,7 +487,36 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
           )}
         </div>
 
-        {rows.length > 0 && (
+        {step === 'plan' ? (
+          <div style={footerStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={summaryStyle}>
+                {chosenBand
+                  ? `${bandLabel(chosenBand)} · ${priceText(chosenBand)}`
+                  : `${totalUnits.toLocaleString()} units · custom plan`}
+              </div>
+              <div style={recommendStyle}>
+                {chosenBand
+                  ? 'Card required · $0 due today · first charge after your 30-day trial'
+                  : 'No card needed — we size custom plans by hand.'}
+              </div>
+            </div>
+            {chosenBand ? (
+              <button
+                type="button"
+                onClick={() => void handleStartTrial()}
+                disabled={committing}
+                style={{
+                  ...commitBtnStyle,
+                  opacity: committing ? 0.6 : 1,
+                  cursor: committing ? 'wait' : 'pointer',
+                }}
+              >
+                {committing ? 'Opening checkout…' : 'Start free trial'}
+              </button>
+            ) : null}
+          </div>
+        ) : rows.length > 0 ? (
           <div style={footerStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={summaryStyle}>
@@ -304,18 +542,18 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
             </div>
             <button
               type="button"
-              onClick={handleCommit}
-              disabled={!canCommit}
+              onClick={() => void handleCommit()}
+              disabled={!canCommit || committing}
               style={{
                 ...commitBtnStyle,
-                opacity: canCommit ? 1 : 0.45,
-                cursor: canCommit ? 'pointer' : 'not-allowed',
+                opacity: canCommit && !committing ? 1 : 0.45,
+                cursor: canCommit && !committing ? 'pointer' : 'not-allowed',
               }}
             >
-              Save to portfolio
+              {committing ? 'Saving…' : 'Save to portfolio'}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>,
     document.body
@@ -416,6 +654,9 @@ const addressCellStyle: CSSProperties = {
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  textDecoration: 'underline dotted',
+  textDecorationColor: '#b5ad9e',
+  textUnderlineOffset: 3,
 }
 
 const removeBtnStyle: CSSProperties = {
@@ -428,6 +669,158 @@ const removeBtnStyle: CSSProperties = {
   lineHeight: 1,
   color: '#8a94a0',
   cursor: 'pointer',
+}
+
+// --- Plan step ---
+
+const backLinkStyle: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  marginBottom: 14,
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  fontWeight: 500,
+  color: '#4a5568',
+  cursor: 'pointer',
+}
+
+const billingToggleWrapStyle: CSSProperties = {
+  display: 'inline-flex',
+  border: '1px solid #ddd9d0',
+  borderRadius: 6,
+  overflow: 'hidden',
+  marginBottom: 16,
+}
+
+const billingBtnBase: CSSProperties = {
+  padding: '7px 14px',
+  border: 'none',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: 'pointer',
+}
+
+const billingOnStyle: CSSProperties = {
+  ...billingBtnBase,
+  background: '#0f2744',
+  color: '#ffffff',
+}
+
+const billingOffStyle: CSSProperties = {
+  ...billingBtnBase,
+  background: '#ffffff',
+  color: '#4a5568',
+}
+
+const planRowStyle = (active: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 12,
+  padding: '14px 16px',
+  marginBottom: 10,
+  border: active ? '1.5px solid #0f2744' : '1px solid #ddd9d0',
+  borderRadius: 8,
+  background: active ? '#ffffff' : '#fdfcfa',
+  cursor: 'pointer',
+})
+
+const radioStyle: CSSProperties = {
+  width: 15,
+  height: 15,
+  marginTop: 2,
+  accentColor: '#0f2744',
+  cursor: 'pointer',
+  flexShrink: 0,
+}
+
+const planTagStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: '#2d6a4f',
+  marginBottom: 3,
+}
+
+const planTitleStyle: CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#0f2744',
+}
+
+const planPriceStyle: CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 12,
+  color: '#4a5568',
+  marginTop: 2,
+}
+
+const subPlanListStyle: CSSProperties = {
+  margin: '2px 0 6px 28px',
+}
+
+const subPlanRowStyle = (active: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '8px 12px',
+  marginBottom: 6,
+  border: active ? '1.5px solid #0f2744' : '1px solid #e8e4dc',
+  borderRadius: 6,
+  background: '#ffffff',
+  cursor: 'pointer',
+})
+
+const subPlanLabelStyle: CSSProperties = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#0f2744',
+  flex: '0 0 130px',
+}
+
+const subPlanPriceStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 11,
+  color: '#4a5568',
+}
+
+const planNoteStyle: CSSProperties = {
+  marginTop: 4,
+  fontSize: 11,
+  color: '#b7791f',
+  lineHeight: 1.4,
+}
+
+const maxPanelStyle: CSSProperties = {
+  padding: '24px 20px',
+  border: '1px solid #e8e4dc',
+  borderRadius: 8,
+  background: '#fdfcfa',
+  textAlign: 'center',
+}
+
+const maxPanelTextStyle: CSSProperties = {
+  fontSize: 13,
+  color: '#4a5568',
+  lineHeight: 1.5,
+  margin: '8px auto 16px',
+  maxWidth: 380,
+}
+
+const contactBtnStyle: CSSProperties = {
+  display: 'inline-block',
+  padding: '10px 20px',
+  background: '#0f2744',
+  color: '#ffffff',
+  borderRadius: 6,
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 600,
+  textDecoration: 'none',
 }
 
 const emptyStyle: CSSProperties = {
