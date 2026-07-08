@@ -1,10 +1,10 @@
 'use client'
 
 import { SignInButton, useUser } from '@clerk/nextjs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import BuildingDetectionModal from '@/components/BuildingDetectionModal'
-import SavePropertyModal from '@/components/SavePropertyModal'
 import UnsavePropertyModal from '@/components/UnsavePropertyModal'
+import { formatAddressForDisplay } from '@/lib/formatAddress'
 
 export type PortfolioSaveData = {
   currentAddress: string
@@ -40,10 +40,25 @@ export default function AddressBarButtons({
   saveData,
 }: Props) {
   const { isSignedIn, isLoaded } = useUser()
-  const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [unsaveModalOpen, setUnsaveModalOpen] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [isStaged, setIsStaged] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [blurb, setBlurb] = useState<string | null>(null)
   const [shareCopied, setShareCopied] = useState(false)
+  const blurbTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showBlurb = useCallback((text: string) => {
+    if (blurbTimer.current) clearTimeout(blurbTimer.current)
+    setBlurb(text)
+    blurbTimer.current = setTimeout(() => setBlurb(null), 2200)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (blurbTimer.current) clearTimeout(blurbTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -57,21 +72,96 @@ export default function AddressBarButtons({
       .catch(() => {})
   }, [isSignedIn, saveData.canonicalAddress])
 
-  const openSaveFlow = () => {
-    if (!isLoaded) return
-    if (!isSignedIn) return
+  useEffect(() => {
+    if (!isSignedIn) {
+      setIsStaged(false)
+      return
+    }
+    if (!saveData.canonicalAddress) return
+    fetch(`/api/dashboard/stage?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`)
+      .then((res) => res.json())
+      .then((data: { staged?: boolean }) => setIsStaged(!!data.staged))
+      .catch(() => {})
+  }, [isSignedIn, saveData.canonicalAddress])
+
+  // One-click staging: snapshot the full save payload the page already
+  // computed. No modal, no cap, no trial stamp — commitment happens later in
+  // the dashboard queue.
+  const stageProperty = useCallback(async () => {
+    if (adding || !saveData.canonicalAddress) return
+    setAdding(true)
+    try {
+      const res = await fetch('/api/dashboard/stage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          canonical_address: saveData.canonicalAddress,
+          slug,
+          property_name: formatAddressForDisplay(saveData.canonicalAddress),
+          units: saveData.assessorUnits,
+          address_range:
+            saveData.portfolioAddressRangeRaw?.trim() ||
+            saveData.buildingAddressRange?.trim() ||
+            formatAddressForDisplay(saveData.canonicalAddress),
+          additional_streets: saveData.additionalStreets,
+          pins: saveData.allPins,
+          sqft: saveData.assessorSqft,
+          year_built: saveData.yearBuilt,
+          implied_value: saveData.impliedValue,
+          community_area: saveData.communityArea,
+          property_class: saveData.propertyClass,
+        }),
+      })
+      if (res.ok) {
+        setIsStaged(true)
+        showBlurb('Added to dashboard')
+      } else {
+        showBlurb('Could not add — try again')
+      }
+    } catch {
+      showBlurb('Could not add — try again')
+    } finally {
+      setAdding(false)
+    }
+  }, [adding, saveData, slug, showBlurb])
+
+  const unstageProperty = useCallback(async () => {
+    if (adding || !saveData.canonicalAddress) return
+    setAdding(true)
+    try {
+      const res = await fetch(
+        `/api/dashboard/stage?canonical_address=${encodeURIComponent(saveData.canonicalAddress)}`,
+        { method: 'DELETE' }
+      )
+      if (res.ok) {
+        setIsStaged(false)
+        showBlurb('Removed from dashboard')
+      } else {
+        showBlurb('Could not remove — try again')
+      }
+    } catch {
+      showBlurb('Could not remove — try again')
+    } finally {
+      setAdding(false)
+    }
+  }, [adding, saveData.canonicalAddress, showBlurb])
+
+  const handleAddClick = () => {
+    if (!isLoaded || !isSignedIn) return
     if (isSaved) {
       setUnsaveModalOpen(true)
+    } else if (isStaged) {
+      void unstageProperty()
     } else {
-      setSaveModalOpen(true)
+      void stageProperty()
     }
   }
 
   // The "See complaint context →" nudge in PropertyFeed dispatches this event.
   // PropertyFeed is rendered deep inside PropertyDataSections (across a Suspense
   // boundary), so an event is cleaner than threading a callback down. Signed-in
-  // users get the save flow; signed-out users get redirected to sign-in (the
-  // bookmark button handles that via SignInButton, but the nudge has no wrapper,
+  // users get the one-click add; signed-out users get redirected to sign-in (the
+  // add button handles that via SignInButton, but the nudge has no wrapper,
   // so we route here).
   useEffect(() => {
     const handler = () => {
@@ -84,25 +174,37 @@ export default function AddressBarButtons({
         window.location.href = `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`
         return
       }
-      // Already saved: the nudge is a no-op (they've saved; enriched context
-      // for entitled non-admins is a separate fast-follow). Only unsaved users
-      // get the save modal from the nudge.
-      if (!isSaved) setSaveModalOpen(true)
+      // Already saved or staged: the nudge is a no-op. Otherwise stage it.
+      if (!isSaved && !isStaged) void stageProperty()
     }
     window.addEventListener('ps:open-save-modal', handler)
     return () => window.removeEventListener('ps:open-save-modal', handler)
-  }, [isLoaded, isSignedIn, isSaved])
+  }, [isLoaded, isSignedIn, isSaved, isStaged, stageProperty])
 
   const returnAfterAuth =
     typeof window !== 'undefined'
       ? `${window.location.origin}${window.location.pathname}${window.location.search}`
       : '/'
 
-  const bookmarkIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill={isSaved ? '#fff' : 'none'} stroke="#fff" strokeWidth="2">
-      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-    </svg>
-  )
+  // "+" is the universal add-to-list glyph; it flips to a check once the
+  // property is staged (in the dashboard queue) or saved (in the portfolio).
+  const addIcon =
+    isStaged || isSaved ? (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    ) : (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    )
+
+  const addTitle = isSaved
+    ? 'Saved to your portfolio — click to manage'
+    : isStaged
+      ? 'In your dashboard — click to remove'
+      : 'Add to dashboard'
 
   return (
     <>
@@ -139,61 +241,65 @@ export default function AddressBarButtons({
           )}
         </button>
 
-        {!isLoaded ? (
-          <button
-            type="button"
-            className="address-header-icon-btn address-header-icon-btn-alert"
-            title="Save to dashboard"
-            aria-label="Save to dashboard"
-            disabled
-          >
-            {bookmarkIcon}
-          </button>
-        ) : !isSignedIn ? (
-          <SignInButton mode="modal" forceRedirectUrl={returnAfterAuth} signUpForceRedirectUrl={returnAfterAuth}>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          {!isLoaded ? (
             <button
               type="button"
               className="address-header-icon-btn address-header-icon-btn-alert"
-              title="Sign in to save to dashboard"
-              aria-label="Sign in to save to dashboard"
+              title="Add to dashboard"
+              aria-label="Add to dashboard"
+              disabled
             >
-              {bookmarkIcon}
+              {addIcon}
             </button>
-          </SignInButton>
-        ) : (
-          <button
-            type="button"
-            className="address-header-icon-btn address-header-icon-btn-alert"
-            title={isSaved ? 'Remove from dashboard' : 'Save to dashboard'}
-            aria-label="Save to dashboard"
-            onClick={openSaveFlow}
-          >
-            {bookmarkIcon}
-          </button>
-        )}
+          ) : !isSignedIn ? (
+            <SignInButton mode="modal" forceRedirectUrl={returnAfterAuth} signUpForceRedirectUrl={returnAfterAuth}>
+              <button
+                type="button"
+                className="address-header-icon-btn address-header-icon-btn-alert"
+                title="Sign in to add to dashboard"
+                aria-label="Sign in to add to dashboard"
+              >
+                {addIcon}
+              </button>
+            </SignInButton>
+          ) : (
+            <button
+              type="button"
+              className="address-header-icon-btn address-header-icon-btn-alert"
+              title={addTitle}
+              aria-label={addTitle}
+              onClick={handleAddClick}
+              disabled={adding}
+            >
+              {addIcon}
+            </button>
+          )}
+          {blurb && (
+            <span
+              role="status"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                background: '#0f2744',
+                color: '#fff',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontSize: 12,
+                fontWeight: 500,
+                padding: '6px 10px',
+                borderRadius: 6,
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.18)',
+                zIndex: 40,
+              }}
+            >
+              {blurb}
+            </span>
+          )}
+        </span>
       </div>
 
-      <SavePropertyModal
-        isOpen={saveModalOpen}
-        onClose={(saved) => {
-          setSaveModalOpen(false)
-          if (saved) setIsSaved(true)
-        }}
-        currentAddress={saveData.currentAddress}
-        canonicalAddress={saveData.canonicalAddress}
-        slug={slug}
-        isPartOfBuilding={saveData.isPartOfBuilding}
-        buildingAddressRange={saveData.buildingAddressRange}
-        additionalStreets={saveData.additionalStreets}
-        portfolioAddressRangeRaw={saveData.portfolioAddressRangeRaw}
-        allPins={saveData.allPins}
-        assessorSqft={saveData.assessorSqft}
-        assessorUnits={saveData.assessorUnits}
-        yearBuilt={saveData.yearBuilt}
-        impliedValue={saveData.impliedValue}
-        communityArea={saveData.communityArea}
-        propertyClass={saveData.propertyClass}
-      />
       <UnsavePropertyModal
         isOpen={unsaveModalOpen}
         onClose={(didUnsave) => {
