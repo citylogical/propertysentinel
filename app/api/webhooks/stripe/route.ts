@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { stripe } from '@/lib/stripe'
 import { promoteStagedRowsForSession } from '@/lib/staged-promotion'
+import { capForLookupKey } from '@/lib/pricing'
 import type Stripe from 'stripe'
 
 export const runtime = 'nodejs'
@@ -27,12 +28,18 @@ async function syncSubscription(sub: Stripe.Subscription) {
     : await supabaseAdmin.from('subscribers').select('plan').eq('stripe_customer_id', customerId).maybeSingle()
   if (existing?.plan === 'enterprise') return
 
+  // Band ceiling from the price lookup_key (tierN_monthly/yearly). Null when
+  // inactive or on a price outside the band catalog — consumers treat null as
+  // "no known cap".
+  const planUnitCap = active ? capForLookupKey(item?.price?.lookup_key) : null
+
   const updates = {
     plan: active ? 'premium' : 'free',
     stripe_customer_id: customerId,
     stripe_subscription_id: sub.id,
     subscription_status: sub.status,
     subscription_quantity: quantity,
+    plan_unit_cap: planUnitCap,
     updated_at: new Date().toISOString(),
   }
 

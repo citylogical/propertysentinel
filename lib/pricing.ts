@@ -50,3 +50,11 @@ export function bandForUnits(units: number): PortfolioBand | null {
 export function bandLabel(band: PortfolioBand): string {
   return `Up to ${band.cap} units`
 }
+
+/** Unit cap for a Stripe price lookup_key (tier3_monthly → 40), or null. */
+export function capForLookupKey(key: string | null | undefined): number | null {
+  const m = /^tier(\d+)_(?:monthly|yearly)$/.exec(key ?? '')
+  if (!m) return null
+  const band = PORTFOLIO_BANDS[Number(m[1]) - 1]
+  return band ? band.cap : null
+}

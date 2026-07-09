@@ -108,6 +108,30 @@ async function promoteRows(
 
     result.promoted++
 
+    // Materialize the self-reported unit count as portfolio_property_units
+    // rows — the dashboard counts THOSE for building/unit totals, not
+    // units_override. Only when the property has no unit rows yet, so a
+    // re-promotion never duplicates a rent roll or manual entries.
+    // Non-fatal per property.
+    if (row.units && row.units > 0) {
+      try {
+        const { count: existingUnits } = await supabase
+          .from('portfolio_property_units')
+          .select('id', { count: 'exact', head: true })
+          .eq('portfolio_property_id', inserted.id as string)
+        if ((existingUnits ?? 0) === 0) {
+          const unitRows = Array.from({ length: Math.min(row.units, 1000) }, (_, i) => ({
+            portfolio_property_id: inserted.id as string,
+            unit_label: `Unit ${i + 1}`,
+            source: 'self_reported',
+          }))
+          await supabase.from('portfolio_property_units').insert(unitRows)
+        }
+      } catch (unitsErr) {
+        console.error('Unit row creation failed (non-fatal):', row.canonical_address, unitsErr)
+      }
+    }
+
     // Activity stats, same as the old save route. Non-fatal per property.
     try {
       const activity = await fetchPortfolioActivity(
