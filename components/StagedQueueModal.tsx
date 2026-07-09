@@ -166,18 +166,48 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         method: 'DELETE',
       })
       if (!res.ok) throw new Error()
-      setRows((prev) => {
-        const next = prev.filter((r) => r.id !== row.id)
-        onQueueChange?.(next.length)
-        return next
-      })
+      // Compute outside the setState updaters — notifying the parent from
+      // inside an updater is a setState-during-render violation.
+      const next = rows.filter((r) => r.id !== row.id)
+      setRows(next)
       setSelected((prev) => {
-        const next = new Set(prev)
-        next.delete(row.id)
-        return next
+        const nextSel = new Set(prev)
+        nextSel.delete(row.id)
+        return nextSel
       })
+      onQueueChange?.(next.length)
     } catch {
       showNotice('Could not remove — try again')
+    }
+  }
+
+  // Two-step clear: first click arms the button, second click (within 3s)
+  // wipes the whole queue.
+  const [clearArmed, setClearArmed] = useState(false)
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (clearTimer.current) clearTimeout(clearTimer.current)
+    }
+  }, [])
+
+  const handleClearQueue = async () => {
+    if (!clearArmed) {
+      setClearArmed(true)
+      if (clearTimer.current) clearTimeout(clearTimer.current)
+      clearTimer.current = setTimeout(() => setClearArmed(false), 3000)
+      return
+    }
+    if (clearTimer.current) clearTimeout(clearTimer.current)
+    setClearArmed(false)
+    try {
+      const res = await fetch('/api/dashboard/stage?all=1', { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setRows([])
+      setSelected(new Set())
+      onQueueChange?.(0)
+    } catch {
+      showNotice('Could not clear the queue — try again')
     }
   }
 
@@ -319,8 +349,9 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   if (typeof window === 'undefined') return null
 
   return createPortal(
-    <div className="save-modal-backdrop" onClick={onClose} role="presentation">
+    <div className="save-modal-backdrop sq-backdrop" onClick={onClose} role="presentation">
       <div
+        className="sq-modal"
         style={modalStyle}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -488,6 +519,17 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
             </div>
           ) : (
             <div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+                <button
+                  type="button"
+                  className={`sq-clear${clearArmed ? ' sq-clear-armed' : ''}`}
+                  onClick={() => void handleClearQueue()}
+                >
+                  {clearArmed
+                    ? `Click again to remove all ${rows.length}`
+                    : 'Clear queue'}
+                </button>
+              </div>
               <div style={{ ...gridRowStyle, ...headRowStyle }}>
                 <input
                   type="checkbox"
@@ -504,10 +546,12 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
 
               {rows.map((row) => {
                 const isRowSelected = selected.has(row.id)
-                const rowMissingUnits =
-                  isRowSelected && parseUnitsInput(unitsDraft[row.id] ?? '') == null
+                // Faint red on the units box until a valid count (> 0) is
+                // entered — selection-independent, so the queue reads at a
+                // glance which rows still need input.
+                const rowMissingUnits = parseUnitsInput(unitsDraft[row.id] ?? '') == null
                 return (
-                  <div key={row.id} style={gridRowStyle}>
+                  <div key={row.id} className="sq-row" style={gridRowStyle}>
                     <input
                       type="checkbox"
                       checked={isRowSelected}
@@ -530,13 +574,14 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                       href={`/address/${row.slug}?building=true`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="sq-address-link"
                       style={addressCellStyle}
                       title={row.address_range ?? row.canonical_address}
                     >
                       {row.address_range || row.canonical_address}
                     </a>
                     <input
-                      className="save-field-input"
+                      className={`save-field-input sq-units-input${rowMissingUnits ? ' sq-units-invalid' : ''}`}
                       type="text"
                       inputMode="numeric"
                       value={unitsDraft[row.id] ?? ''}
@@ -546,13 +591,11 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                       onBlur={() => handleUnitsBlur(row)}
                       placeholder="—"
                       aria-label="Unit count"
-                      style={{
-                        textAlign: 'center',
-                        ...(rowMissingUnits ? { borderColor: 'var(--red, #c0392b)' } : null),
-                      }}
+                      style={{ textAlign: 'center' }}
                     />
                     <button
                       type="button"
+                      className="sq-remove"
                       onClick={() => void removeRow(row)}
                       aria-label={`Remove ${row.property_name || row.canonical_address} from queue`}
                       title="Remove from queue"

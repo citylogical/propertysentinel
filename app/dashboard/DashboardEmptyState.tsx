@@ -14,18 +14,10 @@ const UNLOCK_BULLETS: ReactNode[] = [
   <><strong>30-day free trial</strong> — then one flat monthly price based on your portfolio size</>,
 ]
 
+// Colors and hover behavior come from .ps-cta in globals.css.
 const emptyCtaStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
   padding: '11px 22px',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 14,
-  fontWeight: 600,
-  cursor: 'pointer',
 }
 
 export default function DashboardEmptyState({ kind }: Props) {
@@ -70,8 +62,9 @@ export default function DashboardEmptyState({ kind }: Props) {
             {stagedCount > 0 ? (
               <button
                 type="button"
+                className="ps-cta ps-cta-blue"
                 onClick={() => window.dispatchEvent(new CustomEvent('ps:open-staged-queue'))}
-                style={{ ...emptyCtaStyle, background: '#1e40af' }}
+                style={emptyCtaStyle}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M3 6h11" />
@@ -84,8 +77,9 @@ export default function DashboardEmptyState({ kind }: Props) {
             ) : null}
             <button
               type="button"
+              className="ps-cta ps-cta-green"
               onClick={() => window.dispatchEvent(new CustomEvent('ps:open-add-property'))}
-              style={{ ...emptyCtaStyle, background: '#166534' }}
+              style={emptyCtaStyle}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
                 <line x1="12" y1="5" x2="12" y2="19" />

@@ -172,7 +172,8 @@ export default function DashboardLayoutClient({
             {isSignedIn && stagedCount > 0 ? (
               <button
                 type="button"
-                style={reviewQueueBtnStyle}
+                className="ps-cta ps-cta-blue"
+                style={headerCtaSizeStyle}
                 onClick={() => setQueueOpen(true)}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -186,7 +187,8 @@ export default function DashboardLayoutClient({
             ) : null}
             <button
               type="button"
-              style={addPropertyBtnStyle}
+              className="ps-cta ps-cta-green"
+              style={headerCtaSizeStyle}
               onClick={() => setAddPropOpen(true)}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
@@ -279,38 +281,9 @@ const dividerStyle: CSSProperties = {
   background: '#e5e1d6',
 }
 
-const reviewQueueBtnStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 7,
+// Colors, hover pop, and press feedback come from .ps-cta in globals.css;
+// only sizing lives here.
+const headerCtaSizeStyle: CSSProperties = {
   padding: '8px 16px',
-  background: '#1e40af',
-  color: '#ffffff',
-  border: 'none',
-  borderRadius: 6,
-  fontFamily: 'Inter, system-ui, sans-serif',
   fontSize: 13,
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-  boxShadow:
-    'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04)',
-}
-
-const addPropertyBtnStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 7,
-  padding: '8px 16px',
-  background: '#166534',
-  color: '#ffffff',
-  border: 'none',
-  borderRadius: 6,
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 13,
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-  boxShadow:
-    'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04)',
 }

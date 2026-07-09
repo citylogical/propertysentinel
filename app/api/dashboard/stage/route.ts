@@ -257,9 +257,10 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url)
   const canonicalAddress = searchParams.get('canonical_address')
   const id = searchParams.get('id')
+  const all = searchParams.get('all') === '1'
 
-  if (!canonicalAddress && !id) {
-    return NextResponse.json({ error: 'Missing canonical_address or id' }, { status: 400 })
+  if (!canonicalAddress && !id && !all) {
+    return NextResponse.json({ error: 'Missing canonical_address, id, or all' }, { status: 400 })
   }
 
   const supabase = getSupabaseAdmin()
@@ -274,9 +275,10 @@ export async function DELETE(request: Request) {
     .in('status', ['staged', 'pending_checkout'])
   if (id) {
     query = query.eq('id', id)
-  } else {
-    query = query.eq('canonical_address', String(canonicalAddress).toUpperCase().trim())
+  } else if (canonicalAddress) {
+    query = query.eq('canonical_address', canonicalAddress.toUpperCase().trim())
   }
+  // all=1: no further filter — wipe the user's whole queue.
 
   const { error } = await query
 
