@@ -172,30 +172,32 @@ export default function DashboardLayoutClient({
             {isSignedIn && stagedCount > 0 ? (
               <button
                 type="button"
-                className="ps-cta ps-cta-blue"
+                className="ps-cta ps-cta-blue ps-cta-collapse"
                 style={headerCtaSizeStyle}
                 onClick={() => setQueueOpen(true)}
+                title="Review added properties"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M3 6h11" />
                   <path d="M3 12h11" />
                   <path d="M3 18h11" />
                   <polyline points="17 11 19 13 23 9" />
                 </svg>
-                Review added properties
+                <span className="ps-cta-label">Review added properties</span>
               </button>
             ) : null}
             <button
               type="button"
-              className="ps-cta ps-cta-green"
+              className="ps-cta ps-cta-green ps-cta-collapse"
               style={headerCtaSizeStyle}
               onClick={() => setAddPropOpen(true)}
+              title="Add property"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Add property
+              <span className="ps-cta-label">Add property</span>
             </button>
           </div>
         </div>
@@ -281,9 +283,10 @@ const dividerStyle: CSSProperties = {
   background: '#e5e1d6',
 }
 
-// Colors, hover pop, and press feedback come from .ps-cta in globals.css;
-// only sizing lives here.
+// Colors, hover pop, label reveal, and press feedback come from
+// .ps-cta / .ps-cta-collapse in globals.css; only sizing lives here.
+// Even padding keeps the icon-only resting state square-ish.
 const headerCtaSizeStyle: CSSProperties = {
-  padding: '8px 16px',
+  padding: '10px 11px',
   fontSize: 13,
 }

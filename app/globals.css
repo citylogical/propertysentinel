@@ -5559,3 +5559,25 @@ button.save-toggle-switch {
 
 .sq-address-link { transition: color 0.15s ease; }
 .sq-address-link:hover { color: #0f2744; text-decoration-color: #0f2744; }
+
+/* Collapsed CTA variant: icon-only at rest; label slides/pops in on hover
+   or keyboard focus. Used by the dashboard header buttons. */
+.ps-cta-collapse {
+  gap: 0;
+}
+.ps-cta-collapse .ps-cta-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin-left: 0;
+  transform: translateY(3px);
+  transition: max-width 0.28s ease, opacity 0.18s ease, transform 0.22s ease, margin-left 0.28s ease;
+}
+.ps-cta-collapse:hover .ps-cta-label,
+.ps-cta-collapse:focus-visible .ps-cta-label {
+  max-width: 220px;
+  opacity: 1;
+  margin-left: 7px;
+  transform: translateY(0);
+}
