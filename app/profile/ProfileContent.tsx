@@ -271,79 +271,68 @@ export default function ProfileContent() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 14,
+              gap: 18,
               flexWrap: 'wrap',
             }}
           >
-            <div>
-              <PlanBadge
-                entitlement={entitlement}
-                onUpgrade={() => {
-                  setBillingLoading(true)
-                  fetch('/api/stripe/checkout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ quantity: 1, return_path: '/profile' }),
-                  })
-                    .then((r) => r.json())
-                    .then((d: { url?: string; error?: string }) => {
-                      if (d.url) window.location.href = d.url
-                      else {
-                        window.alert(d.error || 'Could not open checkout.')
+            <div style={{ minWidth: 0 }}>
+              <PlanBadge entitlement={entitlement} role={role || null} />
+              <div style={{ fontSize: 12, color: '#4a5568', marginTop: 8, lineHeight: 1.5 }}>
+                {role === 'admin' || entitlement?.reason === 'enterprise'
+                  ? 'Hand-managed account with full monitoring across your portfolio.'
+                  : entitlement?.reason === 'paying' || entitlement?.reason === 'trial'
+                    ? 'Full monitoring, daily alerts, and complete property reports.'
+                    : 'Search-only. Add properties from your dashboard to start monitoring.'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              {memberSince ? (
+                <div style={{ textAlign: 'right' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 10,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: '#888',
+                    }}
+                  >
+                    Member since
+                  </div>
+                  <div style={{ fontSize: 13, color: '#1a1a1a', marginTop: 2 }}>{memberSince}</div>
+                </div>
+              ) : null}
+              {role === 'admin' ||
+              entitlement?.reason === 'paying' ||
+              entitlement?.reason === 'enterprise' ? (
+                <button
+                  type="button"
+                  className="profile-content-billing-btn"
+                  disabled={billingLoading}
+                  onClick={async () => {
+                    setBillingLoading(true)
+                    try {
+                      const res = await fetch('/api/stripe/portal', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      })
+                      const data = (await res.json()) as { url?: string; error?: string }
+                      if (data.url) {
+                        window.location.href = data.url
+                      } else {
+                        window.alert(data.error || 'Could not open billing.')
                         setBillingLoading(false)
                       }
-                    })
-                    .catch(() => {
-                      window.alert('Could not open checkout.')
-                      setBillingLoading(false)
-                    })
-                }}
-              />
-            </div>
-            {memberSince ? (
-              <div style={{ textAlign: 'right' }}>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                    fontSize: 10,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    color: '#888',
-                  }}
-                >
-                  Member since
-                </div>
-                <div style={{ fontSize: 13, color: '#1a1a1a', marginTop: 2 }}>{memberSince}</div>
-              </div>
-            ) : null}
-            {entitlement?.reason === 'paying' || entitlement?.reason === 'enterprise' ? (
-              <button
-                type="button"
-                className="profile-content-billing-btn"
-                disabled={billingLoading}
-                onClick={async () => {
-                  setBillingLoading(true)
-                  try {
-                    const res = await fetch('/api/stripe/portal', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                    })
-                    const data = (await res.json()) as { url?: string; error?: string }
-                    if (data.url) {
-                      window.location.href = data.url
-                    } else {
-                      window.alert(data.error || 'Could not open billing.')
+                    } catch {
+                      window.alert('Could not open billing.')
                       setBillingLoading(false)
                     }
-                  } catch {
-                    window.alert('Could not open billing.')
-                    setBillingLoading(false)
-                  }
-                }}
-              >
-                {billingLoading ? 'Opening…' : 'Manage billing'}
-              </button>
-            ) : null}
+                  }}
+                >
+                  {billingLoading ? 'Opening…' : 'Manage billing'}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 
