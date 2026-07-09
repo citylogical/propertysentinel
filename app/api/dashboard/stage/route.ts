@@ -1,6 +1,8 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { computeEntitlement } from '@/lib/entitlement'
+import { resolvePlanKind } from '@/lib/plan'
 
 // Staging queue for the onboarding/activation flow. The address-page "Add"
 // button POSTs a one-click snapshot here; rows sit in staged_properties until
@@ -66,7 +68,50 @@ export async function GET(request: Request) {
       console.error('Stage list error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    return NextResponse.json({ rows: rows ?? [], staged_count: rows?.length ?? 0 })
+
+    // Plan context so the queue footer can speak to the user's actual plan:
+    // existing subscribers see remaining band capacity instead of a plan
+    // recommendation; enterprise/admin see no pricing at all.
+    const { data: sub } = await supabase
+      .from('subscribers')
+      .select('role, plan, subscription_status, trial_started_at, plan_unit_cap')
+      .eq('clerk_id', userId)
+      .maybeSingle()
+    const ent = computeEntitlement(
+      sub
+        ? {
+            plan: (sub as { plan?: string | null }).plan ?? null,
+            subscription_status:
+              (sub as { subscription_status?: string | null }).subscription_status ?? null,
+            trial_started_at:
+              (sub as { trial_started_at?: string | null }).trial_started_at ?? null,
+          }
+        : null
+    )
+    const kind = resolvePlanKind((sub as { role?: string | null } | null)?.role, ent.reason)
+
+    let portfolioUnits = 0
+    const { data: props } = await supabase
+      .from('portfolio_properties')
+      .select('id')
+      .eq('user_id', userId)
+    if (props && props.length > 0) {
+      const { count: unitCount } = await supabase
+        .from('portfolio_property_units')
+        .select('*', { count: 'exact', head: true })
+        .in('portfolio_property_id', props.map((p) => p.id as string))
+      portfolioUnits = unitCount ?? 0
+    }
+
+    return NextResponse.json({
+      rows: rows ?? [],
+      staged_count: rows?.length ?? 0,
+      plan: {
+        kind,
+        unit_cap: (sub as { plan_unit_cap?: number | null } | null)?.plan_unit_cap ?? null,
+        portfolio_units: portfolioUnits,
+      },
+    })
   }
 
   const { count } = await supabase

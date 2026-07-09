@@ -32,6 +32,12 @@ export type StagedRow = {
   created_at: string
 }
 
+type PlanContext = {
+  kind: 'basic' | 'sentinel' | 'sentinel_trial' | 'enterprise'
+  unit_cap: number | null
+  portfolio_units: number
+}
+
 type Props = {
   isOpen: boolean
   onClose: () => void
@@ -48,6 +54,7 @@ function parseUnitsInput(raw: string): number | null {
 
 export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Props) {
   const [rows, setRows] = useState<StagedRow[]>([])
+  const [plan, setPlan] = useState<PlanContext | null>(null)
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Local text state for units inputs so typing isn't fought by row state.
@@ -89,10 +96,11 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     setCheckoutSecret(null)
     fetch('/api/dashboard/stage?list=1')
       .then((res) => res.json())
-      .then((data: { rows?: StagedRow[]; staged_count?: number }) => {
+      .then((data: { rows?: StagedRow[]; staged_count?: number; plan?: PlanContext }) => {
         if (cancelled) return
         const fetched = data.rows ?? []
         setRows(fetched)
+        setPlan(data.plan ?? null)
         // Default: everything selected — committing the whole queue is the
         // common case; deselecting is the exception.
         setSelected(new Set(fetched.map((r) => r.id)))
@@ -607,6 +615,27 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                     'Select the properties you want to monitor.'
                   ) : (
                     `Enter a unit count for ${missingUnits.length === 1 ? 'the highlighted property' : `all ${missingUnits.length} highlighted properties`} to continue.`
+                  )
+                ) : plan?.kind === 'enterprise' ? (
+                  <>Enterprise plan — these properties are monitored as soon as you save.</>
+                ) : plan?.kind === 'sentinel' || plan?.kind === 'sentinel_trial' ? (
+                  plan.unit_cap ? (
+                    plan.portfolio_units + totalUnits <= plan.unit_cap ? (
+                      <>
+                        Sentinel plan · up to {plan.unit_cap} units —{' '}
+                        {plan.portfolio_units.toLocaleString()} in your portfolio, room for{' '}
+                        {(plan.unit_cap - plan.portfolio_units - totalUnits).toLocaleString()} more
+                        after this save.
+                      </>
+                    ) : (
+                      <span style={{ color: '#b7791f' }}>
+                        This save brings you to{' '}
+                        {(plan.portfolio_units + totalUnits).toLocaleString()} of {plan.unit_cap}{' '}
+                        units on your Sentinel plan — we&apos;ll follow up about the next tier.
+                      </span>
+                    )
+                  ) : (
+                    <>Sentinel plan — these properties are monitored as soon as you save.</>
                   )
                 ) : isMaxTier ? (
                   <>Over {MAX_TIER_UNITS} units — we&apos;ll set you up on a custom plan.</>
