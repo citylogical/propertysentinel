@@ -47,3 +47,4 @@ next-env.d.ts
 stripe.exe
 # rent-roll parse harness output (contains customer rent data)
 scripts/test-rentroll-parse.out.json
+scripts/test-rentroll-resolve.out.json
