@@ -1,0 +1,1052 @@
+table_name,columns
+address_resolution,"pin text
+pin10 text
+house_number integer
+street_name text
+direction text
+full_address text
+zip text
+tax_year integer"
+affordable_housing_buildings,"id integer not null default nextval('affordable_housing_buildings_id_seq'::regclass)
+community_area text
+property_type text
+property_name text not null
+address text not null
+address_normalized text
+street_number text
+zip text
+phone text
+mgmt_company text
+units integer
+source text default 'CityOfChicago_AffordableRentalHousingList_2026-04'::text
+created_at timestamp with time zone default now()"
+airbnb_annotations,"id uuid not null default gen_random_uuid()
+listing_id bigint not null
+flag text
+verified_address text
+notes text
+annotated_by text not null
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()"
+airbnb_listings,"id bigint not null
+listing_url text
+last_scraped date
+host_id bigint
+host_name text
+host_since date
+host_location text
+host_response_time text
+host_response_rate text
+host_acceptance_rate text
+host_is_superhost text
+host_listings_count integer
+host_total_listings_count integer
+neighbourhood_cleansed text
+latitude double precision
+longitude double precision
+property_type text
+room_type text
+accommodates integer
+bathrooms_text text
+bedrooms integer
+beds integer
+price text
+minimum_nights integer
+maximum_nights integer
+number_of_reviews integer
+number_of_reviews_ltm integer
+number_of_reviews_l30d integer
+first_review date
+last_review date
+review_scores_rating numeric
+license text
+instant_bookable text
+calculated_host_listings_count integer
+reviews_per_month numeric
+created_at timestamp with time zone default now()
+is_duplicate_license boolean default false
+is_potentially_noncompliant boolean default false"
+alert_digest_log,"id uuid not null default gen_random_uuid()
+subscriber_id uuid not null
+sent_at timestamp with time zone not null default now()
+digest_date date not null
+recipients ARRAY not null
+events_count integer not null default 0
+event_summary jsonb
+status text not null
+error_message text
+sent_complaint_sr_numbers ARRAY default '{}'::text[]
+sent_violation_inspection_ids ARRAY default '{}'::text[]
+sent_permit_numbers ARRAY default '{}'::text[]"
+alert_queue,"id uuid not null default gen_random_uuid()
+subscriber_id uuid
+pin text
+sr_number text
+alert_type text
+alert_status text default 'pending'::text
+channel text
+payload jsonb
+scheduled_for timestamp with time zone default now()
+sent_at timestamp with time zone
+failed_reason text
+retry_count integer default 0
+created_at timestamp with time zone default now()"
+alert_recipients,"id uuid not null default gen_random_uuid()
+subscriber_id uuid not null
+channel text not null
+address text not null
+position integer not null
+verified boolean not null default false
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()"
+alert_settings,"subscriber_id uuid not null
+email_digest_enabled boolean not null default true
+sms_realtime_enabled boolean not null default false
+trigger_complaints boolean not null default true
+trigger_violations boolean not null default true
+trigger_permits boolean not null default true
+trigger_stop_work boolean not null default true
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+email_digest_send_when_empty boolean not null default true"
+assessed_values,"id uuid not null default gen_random_uuid()
+row_id text not null
+pin text
+tax_year integer
+class text
+township_code text
+township_name text
+neighborhood_code text
+mailed_bldg numeric
+mailed_land numeric
+mailed_tot numeric
+mailed_hie numeric
+certified_bldg numeric
+certified_land numeric
+certified_tot numeric
+certified_hie numeric
+board_bldg numeric
+board_land numeric
+board_tot numeric
+board_hie numeric
+created_at timestamp with time zone default now()"
+backfill_jobs,"id uuid not null default gen_random_uuid()
+created_by text not null
+property_ids jsonb not null
+complaint_queue jsonb not null default '[]'::jsonb
+total_count integer not null default 0
+processed_count integer not null default 0
+failed_count integer not null default 0
+status text not null default 'pending'::text
+error_message text
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+completed_at timestamp with time zone"
+blog_posts,"id uuid not null default gen_random_uuid()
+slug text not null
+title text not null
+body text not null
+date_label text not null
+published boolean not null default false
+sort_order integer default 0
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+description text"
+chicago_neighborhoods,"id integer not null default nextval('chicago_neighborhoods_id_seq'::regclass)
+pri_neigh text not null
+sec_neigh text not null
+shape_area double precision
+shape_len double precision
+geometry USER-DEFINED not null
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()"
+complaint_workflow_snapshots,"id uuid not null default gen_random_uuid()
+sr_number text not null
+observed_at timestamp with time zone not null default now()
+workflow_step text
+work_order_status text
+final_outcome text
+previous_workflow_step text
+previous_work_order_status text
+previous_final_outcome text
+source text not null default 'worker_c_phase1'::text
+created_at timestamp with time zone not null default now()"
+complaints_311,"id uuid not null default gen_random_uuid()
+sr_number text not null
+pin text
+address text
+address_normalized text
+sr_short_code text
+sr_type text
+status text
+created_date timestamp with time zone
+closed_date timestamp with time zone
+last_modified_date timestamp with time zone
+community_area text
+ward integer
+lat numeric
+lng numeric
+alert_queued boolean default false
+created_at timestamp with time zone default now()
+created_department text
+owner_department text
+origin text
+street_number text
+street_direction text
+street_name text
+street_type text
+zip_code text
+duplicate boolean
+legacy_record boolean
+legacy_sr_number text
+parent_sr_number text
+electrical_district text
+electricity_grid text
+police_sector text
+police_district text
+police_beat text
+precinct text
+sanitation_division_days text
+created_hour integer
+created_day_of_week integer
+created_month integer
+x_coordinate numeric
+y_coordinate numeric
+salesforce_case_id text
+complaint_description text
+complainant_type text
+unit_number text
+danger_reported text
+owner_notified text
+owner_occupied text
+concern_category text
+restaurant_name text
+problem_category text
+business_name text
+sla_target_days integer
+actual_mean_days integer
+estimated_completion text
+work_order_status text
+workflow_step text
+enriched_at timestamp with time zone
+standard_description text
+trade_category text
+urgency_tier text
+paraphrased_at timestamp with time zone
+work_order_steps jsonb
+final_outcome text
+enrich_attempts smallint not null default 0
+last_enrich_attempt_at timestamp with time zone"
+gc_portfolio,"id integer not null default nextval('gc_portfolio_id_seq'::regclass)
+street_address text
+full_address text
+property_city text
+property_state text
+zip_code text
+address_normalized text"
+hansen_address_ranges,"id bigint not null
+bldg_id text not null
+raw_line text not null
+low_number integer
+high_number integer
+street text
+position integer not null
+fetched_at timestamp with time zone not null default now()
+street_normalized text"
+hansen_building_addr_ids,"id bigint not null
+bldg_id text not null
+detail_addr_id text not null
+occurrences integer not null
+is_primary boolean not null
+fetched_at timestamp with time zone not null default now()"
+hansen_buildings,"bldg_id text not null
+input_address text not null
+range_address text
+detail_addr_id text
+stories integer
+basement boolean
+length_ft integer
+width_ft integer
+height_ft integer
+floor_area integer
+constr_type text
+porch text
+lot_width integer
+lot_length integer
+dwelling_units integer
+fetched_at timestamp with time zone not null default now()"
+hansen_enforcement_cases,"id bigint not null
+bldg_id text not null
+case_number text not null
+case_type text
+fetched_at timestamp with time zone not null default now()"
+hansen_inspections,"id bigint not null
+bldg_id text not null
+inspection_number text not null
+inspection_date date
+status text
+type_description text
+fetched_at timestamp with time zone not null default now()"
+hansen_lookups,"searched_address text not null
+status text not null
+bldg_id text
+error_step text
+attempted_at timestamp with time zone not null default now()
+resolved_at timestamp with time zone"
+hansen_permits,"id bigint not null
+bldg_id text not null
+permit_number text not null
+date_issued date
+description text
+fetched_at timestamp with time zone not null default now()"
+hansen_violations,"id bigint not null
+bldg_id text not null
+inspection_number text not null
+inspection_type text
+inspection_date date
+violation_code text
+code_citation text
+violation_details text
+fetched_at timestamp with time zone not null default now()"
+lead_annotations,"id uuid not null default gen_random_uuid()
+user_id text not null
+row_key text not null
+status text default 'new'::text
+notes text
+flagged boolean not null default false
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+flagged_count integer default 0
+maybe_count integer default 0"
+lead_unlock_counts,"sr_number text not null
+unlock_count integer not null default 0
+updated_at timestamp with time zone not null default now()"
+lead_unlocks,"id uuid not null default gen_random_uuid()
+user_id text not null
+sr_number text not null
+address_normalized text
+pin text
+owner_name text
+owner_address text
+owner_phone text
+unlock_source text default 'manual'::text
+created_at timestamp with time zone not null default now()
+tracerfy_contact_id uuid
+owner_email text
+owner_mailing_street text
+owner_mailing_city text
+owner_mailing_state text
+owner_mailing_zip text
+owner_deceased boolean default false
+owner_litigator boolean default false
+phone_type text
+phone_dnc boolean default false
+phone_carrier text
+tracerfy_hit boolean
+tracerfy_persons_count integer
+unlocked_from_cache boolean default false
+all_persons jsonb
+all_phones jsonb
+all_emails jsonb
+business_trace_recommended boolean not null default false
+business_trace_reason text
+property_type_label text"
+lead_watchlist,"id uuid not null default gen_random_uuid()
+user_id text not null
+sr_number text not null
+address_normalized text
+sr_type text
+sr_short_code text
+community_area text
+created_date timestamp with time zone
+created_at timestamp with time zone not null default now()"
+monitored_properties,"id uuid not null default gen_random_uuid()
+subscriber_id uuid
+pin text
+nickname text
+monitoring_active boolean default true
+plan_tier text
+str_monitoring boolean default false
+alert_sms boolean default true
+alert_email boolean default true
+added_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()"
+parcel_sales,"row_id text not null
+pin text not null
+tax_year integer
+township_code text
+nbhd text
+class text
+sale_date date
+sale_price numeric
+doc_no text
+deed_type text
+mydec_deed_type text
+seller_name text
+buyer_name text
+is_multisale boolean
+num_parcels_sale integer
+is_mydec_date boolean
+sale_filter_same_sale_within_365 boolean
+sale_filter_less_than_10k boolean
+sale_filter_deed_type boolean
+created_at timestamp with time zone default now()"
+parcel_universe,"id uuid not null default gen_random_uuid()
+row_id text not null
+pin text not null
+pin10 text
+tax_year integer not null
+class text
+prop_address_full text
+prop_address_city text
+prop_address_zip text
+address_normalized text
+mail_name text
+mail_address text
+mail_city text
+mail_state text
+mail_zip text
+triad_name text
+triad_code text
+township_name text
+township_code text
+neighborhood_code text
+lat numeric
+lng numeric
+ward text
+community_area_num text
+community_area_name text
+police_district text
+bor_district text
+municipality_name text
+flood_fema_sfha boolean
+flood_fs_factor numeric
+flood_fs_risk_direction numeric
+ohare_noise_contour boolean
+opportunity_zone text
+central_business_district text
+school_elementary_name text
+school_secondary_name text
+tif_district_num text
+tif_district_name text
+census_tract_geoid text
+walkability_score numeric
+subdivision_id text
+created_at timestamp with time zone default now()"
+pbl_leads,"id uuid not null default gen_random_uuid()
+pbl_id uuid not null
+contact_name text
+contact_phone text
+contact_email text
+contact_revealed_at timestamp with time zone
+status text not null default 'not_started'::text
+notes text
+updated_by text not null
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()"
+permits,"id uuid not null default gen_random_uuid()
+permit_id text
+permit_number text not null
+pin text
+address text
+address_normalized text
+street_number text
+street_direction text
+street_name text
+permit_status text
+permit_milestone text
+permit_type text
+review_type text
+work_type text
+work_description text
+permit_condition text
+application_start_date date
+issue_date date
+processing_time integer
+reported_cost numeric
+total_fee numeric
+contractor_type text
+contractor_name text
+contractor_city text
+contact_2_type text
+contact_2_name text
+contact_3_type text
+contact_3_name text
+community_area text
+census_tract text
+ward integer
+lat numeric
+lng numeric
+is_roof_permit boolean default false
+raw_data jsonb
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()
+contact_1_type text
+contact_1_name text
+contact_1_city text
+contact_1_state text
+contact_1_zipcode text"
+portfolio_audit_properties,"id uuid not null default gen_random_uuid()
+audit_id uuid not null
+portfolio_property_id uuid
+canonical_address text not null
+address_range text
+additional_streets jsonb
+display_name text
+pins jsonb
+slug text
+community_area text
+property_class text
+year_built text
+implied_value numeric
+open_complaints integer default 0
+total_complaints_12mo integer default 0
+open_violations integer default 0
+total_violations_12mo integer default 0
+total_permits_12mo integer default 0
+shvr_count integer default 0
+is_pbl boolean default false
+has_stop_work boolean default false
+str_registrations integer default 0
+is_restricted_zone boolean default false
+nearby_listings integer default 0
+created_at timestamp with time zone default now()
+open_building_complaints integer
+total_building_complaints_12mo integer"
+portfolio_audit_views,"id uuid not null default gen_random_uuid()
+audit_id uuid not null
+visitor_hash text not null
+first_viewed_at timestamp with time zone default now()
+last_viewed_at timestamp with time zone default now()
+view_count integer default 1"
+portfolio_audits,"id uuid not null default gen_random_uuid()
+created_by text not null
+slug text not null
+pm_company_name text
+contact_email text
+internal_notes text
+expires_at timestamp with time zone
+is_active boolean default true
+created_at timestamp with time zone default now()
+total_views integer default 0
+unique_visitors integer default 0
+last_viewed_at timestamp with time zone"
+portfolio_properties,"id uuid not null default gen_random_uuid()
+user_id text not null
+canonical_address text not null
+address_range text
+additional_streets ARRAY
+pins ARRAY
+slug text not null
+display_name text
+units_override integer
+sqft_override integer
+notes text
+alerts_enabled boolean not null default false
+alert_email boolean not null default true
+alert_sms boolean not null default false
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+total_complaints_12mo integer default 0
+total_violations_12mo integer default 0
+open_violations integer default 0
+open_complaints integer default 0
+total_permits_12mo integer default 0
+shvr_count integer default 0
+is_pbl boolean default false
+has_stop_work boolean default false
+implied_value numeric
+property_class text
+year_built text
+community_area text
+stats_updated_at timestamp with time zone
+str_registrations integer default 0
+is_restricted_zone boolean default false
+nearby_listings integer default 0
+open_building_complaints integer
+total_building_complaints_12mo integer
+latest_building_complaint_date timestamp with time zone
+hansen_bldg_id text
+hansen_backfilled_at timestamp with time zone
+overdue_complaints_count integer default 0"
+portfolio_properties_pre_hansen_backup,"id uuid
+user_id text
+canonical_address text
+address_range text
+additional_streets ARRAY
+pins ARRAY
+slug text
+display_name text
+units_override integer
+sqft_override integer
+notes text
+alerts_enabled boolean
+alert_email boolean
+alert_sms boolean
+created_at timestamp with time zone
+updated_at timestamp with time zone
+total_complaints_12mo integer
+total_violations_12mo integer
+open_violations integer
+open_complaints integer
+total_permits_12mo integer
+shvr_count integer
+is_pbl boolean
+has_stop_work boolean
+implied_value numeric
+property_class text
+year_built text
+community_area text
+stats_updated_at timestamp with time zone
+str_registrations integer
+is_restricted_zone boolean
+nearby_listings integer
+open_building_complaints integer
+total_building_complaints_12mo integer
+latest_building_complaint_date timestamp with time zone
+hansen_bldg_id text
+hansen_backfilled_at timestamp with time zone
+backup_taken_at timestamp with time zone"
+portfolio_property_units,"id uuid not null default gen_random_uuid()
+portfolio_property_id uuid not null
+unit_label text
+bd_ba text
+tag text
+status text
+rent numeric
+lease_from date
+lease_to date
+move_in date
+move_out date
+ob_date date
+source text not null default 'rent_roll'::text
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()"
+portfolio_stats_cache,"id uuid not null default gen_random_uuid()
+portfolio_property_id uuid not null
+open_violations_count integer default 0
+open_complaints_count integer default 0
+total_complaints_count integer default 0
+active_permits_count integer default 0
+total_permits_count integer default 0
+shvr_count integer default 0
+is_pbl boolean default false
+has_stop_work boolean default false
+implied_value bigint
+last_violation_date date
+last_permit_date date
+last_complaint_date date
+refreshed_at timestamp with time zone not null default now()"
+properties,"id uuid not null default gen_random_uuid()
+pin text
+address text
+address_normalized text
+city text default 'Chicago'::text
+state text default 'IL'::text
+zip text
+ward integer
+community_area text
+property_class text
+lat numeric
+lng numeric
+health_score integer
+health_score_updated_at timestamp with time zone
+open_violations_count integer default 0
+open_complaints_count integer default 0
+last_permit_date date
+last_roof_permit_date date
+roof_age_years integer
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()
+pin10 text
+tax_year integer
+mailing_name text
+mailing_address text
+mailing_city text
+mailing_state text
+mailing_zip text
+raw_data jsonb"
+property_chars_commercial,"row_id text not null
+keypin text not null
+pins text
+tax_year integer not null
+township text
+sheet text
+class text
+address text
+property_type_use text
+year_built integer
+building_sqft numeric
+land_sqft numeric
+adj_rent_sf numeric
+pgi numeric
+vacancy numeric
+exp numeric
+noi numeric
+caprate numeric
+income_market_value numeric
+income_market_value_sf numeric
+sale_comp_market_sf numeric
+final_market_value numeric
+final_market_value_sf numeric
+excess_land_val numeric
+investment_rating text
+created_at timestamp with time zone default now()"
+property_chars_condo,"row_id text not null
+pin text not null
+pin10 text
+tax_year integer not null
+card_num integer
+class text
+township_code text
+proration_key_pin text
+pin_proration_rate numeric
+year_built integer
+building_sqft bigint
+unit_sqft bigint
+num_bedrooms integer
+building_non_units integer
+building_pins integer
+land_sqft bigint
+pin_is_multiland boolean
+pin_num_landlines integer
+bldg_is_mixed_use boolean
+is_parking_space boolean
+is_common_area boolean
+created_at timestamp with time zone default now()"
+property_chars_residential,"id uuid not null default gen_random_uuid()
+row_id text not null
+pin text not null
+tax_year integer not null
+card_num integer
+class text
+township_code text
+proration_key_pin text
+pin_proration_rate numeric
+card_proration_rate numeric
+cdu text
+pin_is_multicard boolean
+pin_num_cards integer
+pin_is_multiland boolean
+pin_num_landlines integer
+year_built integer
+building_sqft integer
+land_sqft integer
+num_bedrooms integer
+num_rooms integer
+num_full_baths integer
+num_half_baths integer
+num_fireplaces integer
+type_of_residence text
+construction_quality text
+num_apartments text
+single_v_multi_family text
+design_plan text
+site_desirability text
+ext_wall_material text
+roof_material text
+repair_condition text
+basement_type text
+basement_finish text
+attic_type text
+attic_finish text
+garage_attached text
+garage_area_included text
+garage_size text
+garage_ext_wall_material text
+central_heating text
+central_air text
+num_commercial_units text
+renovation text
+porch text
+created_at timestamp with time zone default now()"
+property_tax_exempt,"row_id text not null
+pin text not null
+tax_year integer not null
+township_code text
+township_name text
+owner_num text
+owner_name text
+class text
+property_address text
+property_city text
+lat numeric
+lon numeric
+created_at timestamp with time zone default now()"
+spatial_ref_sys,"srid integer not null
+auth_name character varying
+auth_srid integer
+srtext character varying
+proj4text character varying"
+staged_properties,"id uuid not null default gen_random_uuid()
+clerk_id text not null
+canonical_address text not null
+slug text not null
+property_name text
+units integer
+address_range text
+additional_streets ARRAY
+pins ARRAY
+sqft integer
+year_built text
+implied_value numeric
+community_area text
+property_class text
+status text not null default 'staged'::text
+checkout_session_id text
+promoted_at timestamp with time zone
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()"
+status_page_cache,"id integer not null default 1
+payload jsonb not null
+computed_at timestamp with time zone not null default now()"
+str_operator_licenses,"id uuid not null default gen_random_uuid()
+license_id text not null
+account_number text
+site_number text
+legal_name text
+doing_business_as_name text
+address text
+address_normalized text
+city text
+state text
+zip_code text
+ward integer
+precinct text
+police_district text
+community_area text
+community_area_name text
+neighborhood text
+license_code text
+license_description text
+license_number text
+application_type text
+application_created_date date
+payment_date date
+conditional_approval text
+license_start_date date
+expiration_date date
+date_issued date
+license_status text
+license_status_change_date date
+ssa text
+lat numeric
+lng numeric
+expiration_alert_sent_60 boolean default false
+expiration_alert_sent_30 boolean default false
+expiration_alert_sent_7 boolean default false
+raw_data jsonb
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()"
+str_prohibited_buildings,"id uuid not null default gen_random_uuid()
+application_id bigint
+submission_id text
+applicant_role text
+association_cooperative_or_owner text
+address_number text
+street_direction text
+street_name text
+street_type text
+number_of_units integer
+pin text
+vote_date date
+recorded_date date
+signed_date date
+lat double precision
+lng double precision
+address_normalized text
+created_at timestamp with time zone default now()"
+str_registrations,"id uuid not null default gen_random_uuid()
+registration_number text not null
+host_name text
+street_address text
+current_status text
+current_status_date date
+expiration_date date
+ward text
+precinct text
+address_normalized text
+created_at timestamp with time zone default now()
+previous_expiration_date date"
+str_restricted_zones,"id uuid not null default gen_random_uuid()
+ward integer
+precinct integer
+submission_date date
+comment_period_end_date date
+ordinance_introduction_date date
+ordinance_effective_date date
+scope_of_restriction text
+enacting_ordinance text
+repeal_submission_date date
+repeal_comment_period_end_date date
+repeal_ordinance_introduction_date date
+repeal_ordinance_effective_date date
+repeal_ordinance text
+created_at timestamp with time zone default now()"
+subscribers,"id uuid not null default gen_random_uuid()
+email text not null
+full_name text
+phone text
+subscriber_type text
+plan text
+plan_started_at timestamp with time zone
+plan_expires_at timestamp with time zone
+stripe_customer_id text
+stripe_subscription_id text
+sms_alerts boolean default true
+email_alerts boolean default true
+weekly_unlocks_remaining integer default 0
+total_unlocks_used integer default 0
+onboarding_completed boolean default false
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()
+zip text
+clerk_id text
+role text not null default 'default'::text
+first_name text
+last_name text
+organization text
+unlimited_unlocks boolean not null default false
+is_admin boolean default false
+subscription_status text
+subscription_quantity integer
+trial_started_at timestamp with time zone
+lifetime_saves integer not null default 0
+plan_unit_cap integer"
+tracerfy_contact_cache,"id uuid not null default gen_random_uuid()
+address_normalized text not null
+tracerfy_hit boolean not null
+tracerfy_persons_count integer not null default 0
+tracerfy_credits_deducted integer not null default 0
+tracerfy_raw_response jsonb not null
+request_address text not null
+request_city text not null default 'Chicago'::text
+request_state text not null default 'IL'::text
+request_zip text
+primary_owner_first_name text
+primary_owner_last_name text
+primary_owner_full_name text
+primary_owner_age text
+primary_owner_dob text
+primary_owner_deceased boolean default false
+primary_owner_litigator boolean default false
+primary_phone text
+primary_phone_type text
+primary_phone_dnc boolean default false
+primary_phone_carrier text
+primary_email text
+mailing_street text
+mailing_city text
+mailing_state text
+mailing_zip text
+fetched_at timestamp with time zone not null default now()
+expires_at timestamp with time zone not null default (now() + '90 days'::interval)
+created_at timestamp with time zone not null default now()
+updated_at timestamp with time zone not null default now()
+all_persons jsonb
+all_phones jsonb
+all_emails jsonb"
+unlock_credits,"id uuid not null default gen_random_uuid()
+user_id text not null
+delta integer not null
+reason text not null
+sr_number text
+created_at timestamp with time zone not null default now()"
+user_building_ranges,"id uuid not null default gen_random_uuid()
+user_id text not null
+user_email text
+searched_address text not null
+street1_range text not null
+street2_range text
+street3_range text
+street4_range text
+street1_low text
+street1_high text
+street2_low text
+street2_high text
+street3_low text
+street3_high text
+street4_low text
+street4_high text
+status text not null default 'pending'::text
+reviewed_by text
+reviewed_at timestamp with time zone
+admin_notes text
+created_at timestamp with time zone not null default now()"
+user_sr_preferences,"id uuid not null default gen_random_uuid()
+user_id text not null
+sr_short_code text not null
+created_at timestamp with time zone default now()"
+user_table_preferences,"id uuid not null default gen_random_uuid()
+user_id text not null
+table_id text not null
+column_order ARRAY
+column_visibility jsonb
+column_widths jsonb
+sort_state jsonb
+filters jsonb
+updated_at timestamp with time zone not null default now()"
+violations,"id uuid not null default gen_random_uuid()
+violation_id text not null
+pin text
+address text
+address_normalized text
+street_number text
+street_direction text
+street_name text
+street_type text
+property_group text
+violation_date date
+violation_last_modified_date timestamp with time zone
+violation_code text
+violation_status text
+violation_status_date date
+violation_description text
+violation_location text
+violation_inspector_comments text
+violation_ordinance text
+inspector_id text
+inspection_number text
+inspection_status text
+inspection_waived text
+inspection_category text
+department_bureau text
+community_area text
+ward integer
+lat numeric
+lng numeric
+created_at timestamp with time zone default now()
+updated_at timestamp with time zone default now()
+is_stop_work_order boolean default false"
+worker_a_runs,"id uuid not null default gen_random_uuid()
+ran_at timestamp with time zone not null
+status text not null
+records_fetched integer default 0
+error_message text
+duration_ms integer
+source text default 'live'::text
+created_at timestamp with time zone default now()
+lag_seconds integer
+min_modified timestamp with time zone
+max_modified timestamp with time zone"
+worker_b_runs,"id uuid not null default gen_random_uuid()
+ran_at timestamp with time zone not null
+status text not null
+permits_fetched integer default 0
+violations_fetched integer default 0
+error_message text
+duration_ms integer
+created_at timestamp with time zone default now()"
+worker_c_runs,"id uuid not null default gen_random_uuid()
+ran_at timestamp with time zone not null
+source text not null
+status text not null
+phase1_refreshed integer default 0
+phase2_examined integer default 0
+phase2_closed integer default 0
+error_message text
+duration_ms integer
+notes text
+created_at timestamp with time zone not null default now()
+phase3_refreshed integer default 0
+phase3_addresses_queried integer default 0"

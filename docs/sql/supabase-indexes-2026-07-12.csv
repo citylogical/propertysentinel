@@ -1,0 +1,260 @@
+tablename,indexes
+affordable_housing_buildings,"CREATE UNIQUE INDEX affordable_housing_buildings_pkey ON public.affordable_housing_buildings USING btree (id)
+CREATE INDEX idx_ahb_address_normalized ON public.affordable_housing_buildings USING btree (address_normalized)
+CREATE INDEX idx_ahb_mgmt_company ON public.affordable_housing_buildings USING btree (mgmt_company)
+CREATE INDEX idx_ahb_zip ON public.affordable_housing_buildings USING btree (zip)"
+airbnb_annotations,"CREATE UNIQUE INDEX airbnb_annotations_listing_id_key ON public.airbnb_annotations USING btree (listing_id)
+CREATE UNIQUE INDEX airbnb_annotations_pkey ON public.airbnb_annotations USING btree (id)
+CREATE INDEX idx_airbnb_annotations_flag ON public.airbnb_annotations USING btree (flag)
+CREATE INDEX idx_airbnb_annotations_listing ON public.airbnb_annotations USING btree (listing_id)"
+airbnb_listings,"CREATE UNIQUE INDEX airbnb_listings_pkey ON public.airbnb_listings USING btree (id)
+CREATE INDEX idx_airbnb_coords ON public.airbnb_listings USING btree (latitude, longitude)
+CREATE INDEX idx_airbnb_geom ON public.airbnb_listings USING gist (st_setsrid(st_makepoint(longitude, latitude), 4326))
+CREATE INDEX idx_airbnb_host_id ON public.airbnb_listings USING btree (host_id)
+CREATE INDEX idx_airbnb_license ON public.airbnb_listings USING btree (license)
+CREATE INDEX idx_airbnb_neighbourhood ON public.airbnb_listings USING btree (neighbourhood_cleansed)"
+alert_digest_log,"CREATE UNIQUE INDEX alert_digest_log_pkey ON public.alert_digest_log USING btree (id)
+CREATE UNIQUE INDEX idx_alert_digest_log_dedupe ON public.alert_digest_log USING btree (subscriber_id, digest_date) WHERE (status = 'sent'::text)
+CREATE INDEX idx_alert_digest_log_subscriber_date ON public.alert_digest_log USING btree (subscriber_id, digest_date DESC)"
+alert_queue,"CREATE UNIQUE INDEX alert_queue_pkey ON public.alert_queue USING btree (id)
+CREATE INDEX idx_alert_queue_pin ON public.alert_queue USING btree (pin)
+CREATE INDEX idx_alert_queue_scheduled ON public.alert_queue USING btree (scheduled_for)
+CREATE INDEX idx_alert_queue_status ON public.alert_queue USING btree (alert_status)
+CREATE INDEX idx_alert_queue_subscriber ON public.alert_queue USING btree (subscriber_id)
+CREATE INDEX idx_alert_queue_type ON public.alert_queue USING btree (alert_type)"
+alert_recipients,"CREATE UNIQUE INDEX alert_recipients_pkey ON public.alert_recipients USING btree (id)
+CREATE UNIQUE INDEX alert_recipients_subscriber_id_channel_position_key ON public.alert_recipients USING btree (subscriber_id, channel, ""position"")
+CREATE INDEX idx_alert_recipients_subscriber_channel ON public.alert_recipients USING btree (subscriber_id, channel)"
+alert_settings,CREATE UNIQUE INDEX alert_settings_pkey ON public.alert_settings USING btree (subscriber_id)
+assessed_values,"CREATE UNIQUE INDEX assessed_values_pkey ON public.assessed_values USING btree (id)
+CREATE UNIQUE INDEX assessed_values_row_id_key ON public.assessed_values USING btree (row_id)
+CREATE INDEX assessed_values_tax_year_idx ON public.assessed_values USING btree (tax_year)
+CREATE INDEX idx_assessed_values_class_township_year ON public.assessed_values USING btree (class, township_name, tax_year)
+CREATE INDEX idx_assessed_values_pin ON public.assessed_values USING btree (pin)
+CREATE INDEX idx_assessed_values_pin_year ON public.assessed_values USING btree (pin, tax_year)
+CREATE INDEX idx_assessed_values_township ON public.assessed_values USING btree (township_name)"
+backfill_jobs,"CREATE UNIQUE INDEX backfill_jobs_pkey ON public.backfill_jobs USING btree (id)
+CREATE INDEX idx_backfill_jobs_created_by_status ON public.backfill_jobs USING btree (created_by, status, created_at DESC)
+CREATE INDEX idx_backfill_jobs_status_pending ON public.backfill_jobs USING btree (status, created_at) WHERE (status = ANY (ARRAY['pending'::text, 'running'::text]))"
+blog_posts,"CREATE UNIQUE INDEX blog_posts_pkey ON public.blog_posts USING btree (id)
+CREATE UNIQUE INDEX blog_posts_slug_key ON public.blog_posts USING btree (slug)
+CREATE INDEX idx_blog_posts_published ON public.blog_posts USING btree (published, sort_order DESC)"
+chicago_neighborhoods,"CREATE UNIQUE INDEX chicago_neighborhoods_pkey ON public.chicago_neighborhoods USING btree (id)
+CREATE INDEX idx_chicago_neighborhoods_geom ON public.chicago_neighborhoods USING gist (geometry)
+CREATE INDEX idx_chicago_neighborhoods_pri ON public.chicago_neighborhoods USING btree (pri_neigh)"
+complaint_workflow_snapshots,"CREATE UNIQUE INDEX complaint_workflow_snapshots_pkey ON public.complaint_workflow_snapshots USING btree (id)
+CREATE INDEX idx_workflow_snapshots_observed ON public.complaint_workflow_snapshots USING btree (observed_at DESC)
+CREATE INDEX idx_workflow_snapshots_sr_observed ON public.complaint_workflow_snapshots USING btree (sr_number, observed_at DESC)"
+complaints_311,"CREATE UNIQUE INDEX complaints_311_pkey ON public.complaints_311 USING btree (id)
+CREATE UNIQUE INDEX complaints_311_sr_number_key ON public.complaints_311 USING btree (sr_number)
+CREATE INDEX idx_c311_open_enriched_addr ON public.complaints_311 USING btree (address_normalized) WHERE ((status = 'Open'::text) AND (enriched_at IS NOT NULL))
+CREATE INDEX idx_complaints_311_address_normalized ON public.complaints_311 USING btree (address_normalized)
+CREATE INDEX idx_complaints_311_created_date_90d ON public.complaints_311 USING btree (created_at DESC)
+CREATE INDEX idx_complaints_311_enriched_at ON public.complaints_311 USING btree (enriched_at)
+CREATE INDEX idx_complaints_311_enriched_created ON public.complaints_311 USING btree (created_date DESC) WHERE (enriched_at IS NOT NULL)
+CREATE INDEX idx_complaints_311_final_outcome ON public.complaints_311 USING btree (final_outcome) WHERE (final_outcome IS NOT NULL)
+CREATE INDEX idx_complaints_311_last_modified ON public.complaints_311 USING btree (last_modified_date DESC)
+CREATE INDEX idx_complaints_311_paraphrased_at ON public.complaints_311 USING btree (paraphrased_at)
+CREATE INDEX idx_complaints_311_salesforce_case_id ON public.complaints_311 USING btree (salesforce_case_id)
+CREATE INDEX idx_complaints_311_trade_category ON public.complaints_311 USING btree (trade_category) WHERE (trade_category IS NOT NULL)
+CREATE INDEX idx_complaints_311_trade_leads ON public.complaints_311 USING btree (sr_short_code, created_date DESC) WHERE (sr_short_code = ANY (ARRAY['BBC'::text, 'AAF'::text, 'WBJ'::text, 'WBK'::text, 'WM3'::text, 'WCA'::text, 'AAD'::text, 'AAE'::text, 'AAI'::text, 'CHECKFOR'::text, 'NAC'::text, 'SFA'::text, 'SFB'::text, 'SFC'::text, 'SFD'::text, 'SFK'::text, 'SFN'::text, 'SFQ'::text, 'SGA'::text, 'SGG'::text, 'EAB'::text, 'EBD'::text, 'BPI'::text, 'SEC'::text, 'SEE'::text, 'SEL'::text, 'BBK'::text, 'BBA'::text, 'BBD'::text, 'SCB'::text, 'FAC'::text, 'HDF'::text, 'WCA2'::text, 'WCA3'::text]))
+CREATE INDEX idx_complaints_311_urgency_tier ON public.complaints_311 USING btree (urgency_tier) WHERE (urgency_tier IS NOT NULL)
+CREATE INDEX idx_complaints_addr_shvr ON public.complaints_311 USING btree (address_normalized, sr_short_code) WHERE (sr_short_code = 'SHVR'::text)
+CREATE INDEX idx_complaints_addr_status ON public.complaints_311 USING btree (address_normalized, status)
+CREATE INDEX idx_complaints_created_date ON public.complaints_311 USING btree (created_date)
+CREATE INDEX idx_complaints_pin ON public.complaints_311 USING btree (pin)
+CREATE INDEX idx_complaints_shvr_geom ON public.complaints_311 USING gist (st_setsrid(st_makepoint((lng)::double precision, (lat)::double precision), 4326)) WHERE ((sr_short_code = 'SHVR'::text) AND (lat IS NOT NULL))
+CREATE INDEX idx_complaints_sr_short_code ON public.complaints_311 USING btree (sr_short_code)
+CREATE INDEX idx_complaints_status ON public.complaints_311 USING btree (status)"
+gc_portfolio,CREATE UNIQUE INDEX gc_portfolio_pkey ON public.gc_portfolio USING btree (id)
+hansen_address_ranges,"CREATE UNIQUE INDEX hansen_address_ranges_bldg_id_raw_line_key ON public.hansen_address_ranges USING btree (bldg_id, raw_line)
+CREATE UNIQUE INDEX hansen_address_ranges_pkey ON public.hansen_address_ranges USING btree (id)
+CREATE INDEX hansen_address_ranges_street_normalized_idx ON public.hansen_address_ranges USING btree (street_normalized)"
+hansen_building_addr_ids,"CREATE UNIQUE INDEX hansen_building_addr_ids_bldg_id_detail_addr_id_key ON public.hansen_building_addr_ids USING btree (bldg_id, detail_addr_id)
+CREATE INDEX hansen_building_addr_ids_bldg_id_idx ON public.hansen_building_addr_ids USING btree (bldg_id)
+CREATE INDEX hansen_building_addr_ids_detail_addr_id_idx ON public.hansen_building_addr_ids USING btree (detail_addr_id)
+CREATE UNIQUE INDEX hansen_building_addr_ids_pkey ON public.hansen_building_addr_ids USING btree (id)"
+hansen_buildings,CREATE UNIQUE INDEX hansen_buildings_pkey ON public.hansen_buildings USING btree (bldg_id)
+hansen_enforcement_cases,"CREATE UNIQUE INDEX hansen_enforcement_cases_bldg_id_case_number_key ON public.hansen_enforcement_cases USING btree (bldg_id, case_number)
+CREATE UNIQUE INDEX hansen_enforcement_cases_pkey ON public.hansen_enforcement_cases USING btree (id)"
+hansen_inspections,"CREATE UNIQUE INDEX hansen_inspections_bldg_id_inspection_number_key ON public.hansen_inspections USING btree (bldg_id, inspection_number)
+CREATE UNIQUE INDEX hansen_inspections_pkey ON public.hansen_inspections USING btree (id)"
+hansen_lookups,"CREATE INDEX hansen_lookups_attempted_at_idx ON public.hansen_lookups USING btree (attempted_at DESC)
+CREATE UNIQUE INDEX hansen_lookups_pkey ON public.hansen_lookups USING btree (searched_address)"
+hansen_permits,"CREATE UNIQUE INDEX hansen_permits_bldg_id_permit_number_key ON public.hansen_permits USING btree (bldg_id, permit_number)
+CREATE UNIQUE INDEX hansen_permits_pkey ON public.hansen_permits USING btree (id)"
+hansen_violations,"CREATE UNIQUE INDEX hansen_violations_bldg_id_inspection_number_violation_code_key ON public.hansen_violations USING btree (bldg_id, inspection_number, violation_code)
+CREATE UNIQUE INDEX hansen_violations_pkey ON public.hansen_violations USING btree (id)"
+lead_annotations,"CREATE INDEX idx_lead_annotations_key ON public.lead_annotations USING btree (user_id, row_key)
+CREATE INDEX idx_lead_annotations_user ON public.lead_annotations USING btree (user_id)
+CREATE UNIQUE INDEX lead_annotations_pkey ON public.lead_annotations USING btree (id)
+CREATE UNIQUE INDEX lead_annotations_user_id_row_key_key ON public.lead_annotations USING btree (user_id, row_key)"
+lead_unlock_counts,CREATE UNIQUE INDEX lead_unlock_counts_pkey ON public.lead_unlock_counts USING btree (sr_number)
+lead_unlocks,"CREATE INDEX idx_lead_unlocks_tracerfy_contact ON public.lead_unlocks USING btree (tracerfy_contact_id)
+CREATE INDEX idx_lead_unlocks_user ON public.lead_unlocks USING btree (user_id)
+CREATE UNIQUE INDEX lead_unlocks_pkey ON public.lead_unlocks USING btree (id)
+CREATE UNIQUE INDEX lead_unlocks_user_id_sr_number_key ON public.lead_unlocks USING btree (user_id, sr_number)"
+lead_watchlist,"CREATE INDEX idx_lead_watchlist_user ON public.lead_watchlist USING btree (user_id)
+CREATE UNIQUE INDEX lead_watchlist_pkey ON public.lead_watchlist USING btree (id)
+CREATE UNIQUE INDEX lead_watchlist_user_id_sr_number_key ON public.lead_watchlist USING btree (user_id, sr_number)"
+monitored_properties,"CREATE INDEX idx_monitored_active ON public.monitored_properties USING btree (monitoring_active)
+CREATE INDEX idx_monitored_pin ON public.monitored_properties USING btree (pin)
+CREATE INDEX idx_monitored_subscriber ON public.monitored_properties USING btree (subscriber_id)
+CREATE UNIQUE INDEX monitored_properties_pkey ON public.monitored_properties USING btree (id)
+CREATE UNIQUE INDEX monitored_properties_subscriber_id_pin_key ON public.monitored_properties USING btree (subscriber_id, pin)"
+parcel_sales,"CREATE INDEX idx_parcel_sales_class ON public.parcel_sales USING btree (class)
+CREATE INDEX idx_parcel_sales_date ON public.parcel_sales USING btree (sale_date)
+CREATE INDEX idx_parcel_sales_nbhd_date ON public.parcel_sales USING btree (nbhd, sale_date)
+CREATE INDEX idx_parcel_sales_pin ON public.parcel_sales USING btree (pin)
+CREATE INDEX idx_parcel_sales_pin_date ON public.parcel_sales USING btree (pin, sale_date)
+CREATE INDEX idx_parcel_sales_qualifying ON public.parcel_sales USING btree (sale_filter_less_than_10k, sale_filter_deed_type, sale_filter_same_sale_within_365)
+CREATE INDEX idx_parcel_sales_township ON public.parcel_sales USING btree (township_code)
+CREATE UNIQUE INDEX parcel_sales_pkey ON public.parcel_sales USING btree (row_id)"
+parcel_universe,"CREATE INDEX idx_parcel_universe_pin ON public.parcel_universe USING btree (pin)
+CREATE INDEX idx_pu_addr_zip ON public.parcel_universe USING btree (prop_address_zip, address_normalized)
+CREATE INDEX idx_pu_address_normalized ON public.parcel_universe USING btree (address_normalized)
+CREATE INDEX idx_pu_class_township ON public.parcel_universe USING btree (class, township_code)
+CREATE INDEX idx_pu_mail_state ON public.parcel_universe USING btree (mail_state)
+CREATE INDEX idx_pu_neighborhood ON public.parcel_universe USING btree (neighborhood_code)
+CREATE INDEX idx_pu_pin ON public.parcel_universe USING btree (pin)
+CREATE INDEX idx_pu_pin_year ON public.parcel_universe USING btree (pin, tax_year)
+CREATE INDEX idx_pu_tax_year ON public.parcel_universe USING btree (tax_year)
+CREATE INDEX idx_pu_township ON public.parcel_universe USING btree (township_name)
+CREATE UNIQUE INDEX parcel_universe_pkey ON public.parcel_universe USING btree (id)
+CREATE UNIQUE INDEX parcel_universe_row_id_key ON public.parcel_universe USING btree (row_id)"
+pbl_leads,"CREATE INDEX idx_pbl_leads_pbl_id ON public.pbl_leads USING btree (pbl_id)
+CREATE INDEX idx_pbl_leads_status ON public.pbl_leads USING btree (status)
+CREATE UNIQUE INDEX pbl_leads_pbl_id_key ON public.pbl_leads USING btree (pbl_id)
+CREATE UNIQUE INDEX pbl_leads_pkey ON public.pbl_leads USING btree (id)"
+permits,"CREATE INDEX idx_permits_addr_norm_pattern ON public.permits USING btree (address_normalized text_pattern_ops)
+CREATE INDEX idx_permits_address_normalized ON public.permits USING btree (address_normalized)
+CREATE INDEX idx_permits_is_roof ON public.permits USING btree (is_roof_permit)
+CREATE INDEX idx_permits_issue_date ON public.permits USING btree (issue_date)
+CREATE INDEX idx_permits_number ON public.permits USING btree (permit_number)
+CREATE INDEX idx_permits_pin ON public.permits USING btree (pin)
+CREATE INDEX idx_permits_type ON public.permits USING btree (permit_type)
+CREATE UNIQUE INDEX permits_permit_number_key ON public.permits USING btree (permit_number)
+CREATE UNIQUE INDEX permits_pkey ON public.permits USING btree (id)"
+portfolio_audit_properties,"CREATE INDEX idx_audit_properties_audit_id ON public.portfolio_audit_properties USING btree (audit_id)
+CREATE UNIQUE INDEX portfolio_audit_properties_audit_id_portfolio_property_id_key ON public.portfolio_audit_properties USING btree (audit_id, portfolio_property_id)
+CREATE UNIQUE INDEX portfolio_audit_properties_pkey ON public.portfolio_audit_properties USING btree (id)"
+portfolio_audit_views,"CREATE INDEX idx_audit_views_audit_id ON public.portfolio_audit_views USING btree (audit_id)
+CREATE UNIQUE INDEX portfolio_audit_views_audit_id_visitor_hash_key ON public.portfolio_audit_views USING btree (audit_id, visitor_hash)
+CREATE UNIQUE INDEX portfolio_audit_views_pkey ON public.portfolio_audit_views USING btree (id)"
+portfolio_audits,"CREATE INDEX idx_audits_created_by ON public.portfolio_audits USING btree (created_by)
+CREATE INDEX idx_audits_slug ON public.portfolio_audits USING btree (slug)
+CREATE UNIQUE INDEX portfolio_audits_pkey ON public.portfolio_audits USING btree (id)
+CREATE UNIQUE INDEX portfolio_audits_slug_key ON public.portfolio_audits USING btree (slug)"
+portfolio_properties,"CREATE INDEX idx_portfolio_user ON public.portfolio_properties USING btree (user_id)
+CREATE INDEX portfolio_properties_hansen_bldg_id_idx ON public.portfolio_properties USING btree (hansen_bldg_id)
+CREATE UNIQUE INDEX portfolio_properties_pkey ON public.portfolio_properties USING btree (id)
+CREATE UNIQUE INDEX portfolio_properties_user_id_canonical_address_key ON public.portfolio_properties USING btree (user_id, canonical_address)"
+portfolio_property_units,"CREATE INDEX idx_portfolio_property_units_portfolio_property_id ON public.portfolio_property_units USING btree (portfolio_property_id)
+CREATE INDEX idx_portfolio_property_units_status ON public.portfolio_property_units USING btree (portfolio_property_id, status)
+CREATE UNIQUE INDEX portfolio_property_units_pkey ON public.portfolio_property_units USING btree (id)"
+portfolio_stats_cache,"CREATE UNIQUE INDEX portfolio_stats_cache_pkey ON public.portfolio_stats_cache USING btree (id)
+CREATE UNIQUE INDEX portfolio_stats_cache_portfolio_property_id_key ON public.portfolio_stats_cache USING btree (portfolio_property_id)"
+properties,"CREATE INDEX idx_properties_addr_norm_pattern ON public.properties USING btree (address_normalized text_pattern_ops)
+CREATE INDEX idx_properties_address ON public.properties USING btree (address)
+CREATE INDEX idx_properties_address_normalized ON public.properties USING btree (address_normalized)
+CREATE INDEX idx_properties_address_pattern ON public.properties USING btree (address text_pattern_ops)
+CREATE INDEX idx_properties_mailing_name ON public.properties USING btree (mailing_name)
+CREATE INDEX idx_properties_pin ON public.properties USING btree (pin)
+CREATE INDEX idx_properties_ward_address ON public.properties USING btree (ward, address_normalized)
+CREATE INDEX idx_properties_zip_address ON public.properties USING btree (zip, address_normalized)
+CREATE UNIQUE INDEX properties_pin_key ON public.properties USING btree (pin)
+CREATE UNIQUE INDEX properties_pkey ON public.properties USING btree (id)"
+property_chars_commercial,"CREATE INDEX idx_commercial_chars_class ON public.property_chars_commercial USING btree (class)
+CREATE INDEX idx_commercial_chars_keypin ON public.property_chars_commercial USING btree (keypin)
+CREATE INDEX idx_commercial_chars_keypin_year ON public.property_chars_commercial USING btree (keypin, tax_year)
+CREATE INDEX idx_commercial_chars_township_year ON public.property_chars_commercial USING btree (township, tax_year)
+CREATE INDEX idx_commercial_chars_year ON public.property_chars_commercial USING btree (tax_year)
+CREATE UNIQUE INDEX property_chars_commercial_pkey ON public.property_chars_commercial USING btree (row_id)"
+property_chars_condo,"CREATE INDEX idx_condo_chars_parking ON public.property_chars_condo USING btree (is_parking_space)
+CREATE INDEX idx_condo_chars_pin ON public.property_chars_condo USING btree (pin)
+CREATE INDEX idx_condo_chars_pin_year ON public.property_chars_condo USING btree (pin, tax_year)
+CREATE INDEX idx_condo_chars_year ON public.property_chars_condo USING btree (tax_year)
+CREATE UNIQUE INDEX property_chars_condo_pkey ON public.property_chars_condo USING btree (row_id)"
+property_chars_residential,"CREATE INDEX idx_pcr_class_township_year ON public.property_chars_residential USING btree (class, township_code, tax_year)
+CREATE INDEX idx_pcr_pin ON public.property_chars_residential USING btree (pin)
+CREATE INDEX idx_pcr_pin_year ON public.property_chars_residential USING btree (pin, tax_year)
+CREATE INDEX idx_pcr_tax_year ON public.property_chars_residential USING btree (tax_year)
+CREATE UNIQUE INDEX property_chars_residential_pkey ON public.property_chars_residential USING btree (id)
+CREATE UNIQUE INDEX property_chars_residential_row_id_key ON public.property_chars_residential USING btree (row_id)"
+property_tax_exempt,"CREATE INDEX idx_tax_exempt_owner ON public.property_tax_exempt USING btree (owner_name)
+CREATE INDEX idx_tax_exempt_pin ON public.property_tax_exempt USING btree (pin)
+CREATE INDEX idx_tax_exempt_pin_year ON public.property_tax_exempt USING btree (pin, tax_year)
+CREATE INDEX idx_tax_exempt_township ON public.property_tax_exempt USING btree (township_name)
+CREATE INDEX idx_tax_exempt_year ON public.property_tax_exempt USING btree (tax_year)
+CREATE UNIQUE INDEX property_tax_exempt_pkey ON public.property_tax_exempt USING btree (row_id)"
+spatial_ref_sys,CREATE UNIQUE INDEX spatial_ref_sys_pkey ON public.spatial_ref_sys USING btree (srid)
+staged_properties,"CREATE INDEX staged_properties_checkout_idx ON public.staged_properties USING btree (checkout_session_id) WHERE (checkout_session_id IS NOT NULL)
+CREATE UNIQUE INDEX staged_properties_clerk_id_canonical_address_key ON public.staged_properties USING btree (clerk_id, canonical_address)
+CREATE INDEX staged_properties_clerk_id_idx ON public.staged_properties USING btree (clerk_id)
+CREATE UNIQUE INDEX staged_properties_pkey ON public.staged_properties USING btree (id)"
+status_page_cache,CREATE UNIQUE INDEX status_page_cache_pkey ON public.status_page_cache USING btree (id)
+str_operator_licenses,"CREATE INDEX idx_str_op_address ON public.str_operator_licenses USING btree (address_normalized)
+CREATE INDEX idx_str_op_expiration ON public.str_operator_licenses USING btree (expiration_date)
+CREATE INDEX idx_str_op_legal_name ON public.str_operator_licenses USING btree (legal_name)
+CREATE INDEX idx_str_op_license_code ON public.str_operator_licenses USING btree (license_code)
+CREATE INDEX idx_str_op_license_id ON public.str_operator_licenses USING btree (license_id)
+CREATE INDEX idx_str_op_status ON public.str_operator_licenses USING btree (license_status)
+CREATE UNIQUE INDEX str_operator_licenses_license_id_key ON public.str_operator_licenses USING btree (license_id)
+CREATE UNIQUE INDEX str_operator_licenses_pkey ON public.str_operator_licenses USING btree (id)"
+str_prohibited_buildings,"CREATE INDEX idx_str_pbl_address ON public.str_prohibited_buildings USING btree (address_normalized)
+CREATE INDEX idx_str_pbl_geom ON public.str_prohibited_buildings USING gist (st_setsrid(st_makepoint(lng, lat), 4326))
+CREATE INDEX idx_str_pbl_pin ON public.str_prohibited_buildings USING btree (pin)
+CREATE UNIQUE INDEX str_prohibited_buildings_application_id_key ON public.str_prohibited_buildings USING btree (application_id)
+CREATE UNIQUE INDEX str_prohibited_buildings_pkey ON public.str_prohibited_buildings USING btree (id)"
+str_registrations,"CREATE INDEX idx_str_reg_address ON public.str_registrations USING btree (address_normalized)
+CREATE INDEX idx_str_reg_status ON public.str_registrations USING btree (current_status)
+CREATE UNIQUE INDEX str_registrations_pkey ON public.str_registrations USING btree (id)
+CREATE UNIQUE INDEX str_registrations_registration_number_key ON public.str_registrations USING btree (registration_number)"
+str_restricted_zones,"CREATE INDEX idx_str_rz_ward_precinct ON public.str_restricted_zones USING btree (ward, precinct)
+CREATE UNIQUE INDEX str_restricted_zones_pkey ON public.str_restricted_zones USING btree (id)
+CREATE UNIQUE INDEX str_restricted_zones_ward_precinct_key ON public.str_restricted_zones USING btree (ward, precinct)"
+subscribers,"CREATE INDEX idx_subscribers_email ON public.subscribers USING btree (email)
+CREATE INDEX idx_subscribers_plan ON public.subscribers USING btree (plan)
+CREATE INDEX idx_subscribers_stripe ON public.subscribers USING btree (stripe_customer_id)
+CREATE INDEX idx_subscribers_stripe_customer ON public.subscribers USING btree (stripe_customer_id) WHERE (stripe_customer_id IS NOT NULL)
+CREATE UNIQUE INDEX subscribers_clerk_id_key ON public.subscribers USING btree (clerk_id)
+CREATE UNIQUE INDEX subscribers_email_key ON public.subscribers USING btree (email)
+CREATE UNIQUE INDEX subscribers_pkey ON public.subscribers USING btree (id)
+CREATE UNIQUE INDEX subscribers_stripe_customer_id_key ON public.subscribers USING btree (stripe_customer_id)
+CREATE UNIQUE INDEX subscribers_stripe_subscription_id_key ON public.subscribers USING btree (stripe_subscription_id)"
+tracerfy_contact_cache,"CREATE INDEX idx_tracerfy_cache_deceased ON public.tracerfy_contact_cache USING btree (primary_owner_deceased) WHERE (primary_owner_deceased = true)
+CREATE INDEX idx_tracerfy_cache_expires ON public.tracerfy_contact_cache USING btree (expires_at)
+CREATE UNIQUE INDEX tracerfy_contact_cache_address_normalized_key ON public.tracerfy_contact_cache USING btree (address_normalized)
+CREATE UNIQUE INDEX tracerfy_contact_cache_pkey ON public.tracerfy_contact_cache USING btree (id)"
+unlock_credits,"CREATE INDEX idx_unlock_credits_credit_back_recent ON public.unlock_credits USING btree (user_id, created_at DESC) WHERE (reason = 'incorrect_info'::text)
+CREATE UNIQUE INDEX idx_unlock_credits_incorrect_info_unique ON public.unlock_credits USING btree (user_id, sr_number) WHERE (reason = 'incorrect_info'::text)
+CREATE UNIQUE INDEX idx_unlock_credits_initial_grant_unique ON public.unlock_credits USING btree (user_id) WHERE (reason = 'initial_grant'::text)
+CREATE INDEX idx_unlock_credits_user_id ON public.unlock_credits USING btree (user_id)
+CREATE UNIQUE INDEX unlock_credits_pkey ON public.unlock_credits USING btree (id)"
+user_building_ranges,"CREATE INDEX idx_ubr_status ON public.user_building_ranges USING btree (status)
+CREATE INDEX idx_ubr_user ON public.user_building_ranges USING btree (user_id)
+CREATE UNIQUE INDEX user_building_ranges_pkey ON public.user_building_ranges USING btree (id)"
+user_sr_preferences,"CREATE INDEX idx_user_sr_prefs_user ON public.user_sr_preferences USING btree (user_id)
+CREATE UNIQUE INDEX user_sr_preferences_pkey ON public.user_sr_preferences USING btree (id)
+CREATE UNIQUE INDEX user_sr_preferences_unique_pair ON public.user_sr_preferences USING btree (user_id, sr_short_code)"
+user_table_preferences,"CREATE INDEX idx_user_table_prefs ON public.user_table_preferences USING btree (user_id, table_id)
+CREATE UNIQUE INDEX user_table_preferences_pkey ON public.user_table_preferences USING btree (id)
+CREATE UNIQUE INDEX user_table_preferences_user_id_table_id_key ON public.user_table_preferences USING btree (user_id, table_id)"
+violations,"CREATE INDEX idx_violations_addr_status ON public.violations USING btree (address_normalized, violation_status)
+CREATE INDEX idx_violations_addr_stopwork ON public.violations USING btree (address_normalized, is_stop_work_order) WHERE (is_stop_work_order = true)
+CREATE INDEX idx_violations_address_normalized ON public.violations USING btree (address_normalized)
+CREATE INDEX idx_violations_category ON public.violations USING btree (inspection_category)
+CREATE INDEX idx_violations_code ON public.violations USING btree (violation_code)
+CREATE INDEX idx_violations_date ON public.violations USING btree (violation_date)
+CREATE INDEX idx_violations_inspection ON public.violations USING btree (inspection_number)
+CREATE INDEX idx_violations_pin ON public.violations USING btree (pin)
+CREATE INDEX idx_violations_status ON public.violations USING btree (violation_status)
+CREATE UNIQUE INDEX violations_pkey ON public.violations USING btree (id)
+CREATE UNIQUE INDEX violations_violation_id_key ON public.violations USING btree (violation_id)"
+worker_a_runs,"CREATE INDEX idx_worker_a_runs_ran_at ON public.worker_a_runs USING btree (ran_at DESC)
+CREATE UNIQUE INDEX worker_a_runs_pkey ON public.worker_a_runs USING btree (id)"
+worker_b_runs,"CREATE INDEX idx_worker_b_runs_ran_at ON public.worker_b_runs USING btree (ran_at DESC)
+CREATE UNIQUE INDEX worker_b_runs_pkey ON public.worker_b_runs USING btree (id)"
+worker_c_runs,"CREATE UNIQUE INDEX worker_c_runs_pkey ON public.worker_c_runs USING btree (id)
+CREATE INDEX worker_c_runs_ran_at_idx ON public.worker_c_runs USING btree (ran_at DESC)
+CREATE INDEX worker_c_runs_source_idx ON public.worker_c_runs USING btree (source)"
