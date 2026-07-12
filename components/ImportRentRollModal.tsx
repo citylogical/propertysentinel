@@ -9,9 +9,11 @@ import type { ImportResolution } from '@/lib/rentroll/resolve'
 // The rent-roll upload flow: drop a CSV/XLSX → the file is parsed in THIS
 // browser (SheetJS; the file never leaves the machine — only extracted cell
 // text is sent) → /api/dashboard/import/start creates the job → this modal
-// drives /import/process until every address is resolved → the review table
-// shows green checks (verified/range) and amber rows (nearest/no-match) with
-// inline edits and per-address re-checks.
+// drives /import/process until every address is resolved → the review screen
+// behaves like the staging queue: paginated, collapsible property groups,
+// edits persisted to the job (PATCH /import/job) so closing and reopening
+// resumes exactly where the user left off. Amber addresses re-resolve
+// automatically on blur/Enter.
 //
 // The final "Add to queue" handoff (staged_properties + staged_property_units
 // + the existing plan/checkout wizard) is the next build step — the button
@@ -28,13 +30,21 @@ type Props = {
 type ReviewUnit = ParsedUnitRow & {
   key: number
   included: boolean
-  /** Client-side edits (address edits live at the group level). */
   draft_unit_label: string
   draft_rent: string
 }
 
+type JobPayload = {
+  id: string
+  status: string
+  file_name: string | null
+  parsed_rows: ParsedUnitRow[]
+  results: ImportResolution[]
+}
+
 const MAX_FILE_BYTES = 10 * 1024 * 1024
 const ACCEPTED_EXTENSIONS = ['.csv', '.xlsx', '.xls']
+const PER_PAGE_OPTIONS = [10, 25, 50]
 
 function fileKind(name: string): 'csv' | 'xlsx' | null {
   const lower = name.toLowerCase()
@@ -61,9 +71,12 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
   const [rechecking, setRechecking] = useState<Record<string, boolean>>({})
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(10)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cancelledRef = useRef(false)
   const startedFileRef = useRef<File | null>(null)
+  const resumeCheckedRef = useRef(false)
 
   const reset = useCallback(() => {
     setStep('drop')
@@ -78,22 +91,30 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     setGroupDrafts({})
     setRechecking({})
     setExpandedGroups({})
+    setPage(1)
   }, [])
 
-  const loadReview = useCallback(async (id: string) => {
-    const res = await fetch(`/api/dashboard/import/job?job_id=${encodeURIComponent(id)}`)
-    const data = (await res.json()) as {
-      job?: { parsed_rows: ParsedUnitRow[]; results: ImportResolution[]; file_name: string | null }
-      error?: string
-    }
-    if (!res.ok || !data.job) throw new Error(data.error ?? 'Could not load results')
+  // Fire-and-forget persistence — the review screen must survive close/reopen.
+  const persistRows = useCallback(
+    (id: string | null, updates: Array<{ row_num: number } & Partial<Pick<ParsedUnitRow, 'unit_label' | 'included'>> & { rent?: string | null }>) => {
+      if (!id || updates.length === 0) return
+      void fetch('/api/dashboard/import/job', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: id, updates }),
+      }).catch(() => {})
+    },
+    []
+  )
+
+  const applyJob = useCallback((job: JobPayload) => {
     const resultMap: Record<string, ImportResolution> = {}
-    for (const r of data.job.results ?? []) resultMap[r.raw_address] = r
+    for (const r of job.results ?? []) resultMap[r.raw_address] = r
     setResolutions(resultMap)
-    const rows: ReviewUnit[] = (data.job.parsed_rows ?? []).map((row, i) => ({
+    const rows: ReviewUnit[] = (job.parsed_rows ?? []).map((row, i) => ({
       ...row,
       key: i,
-      included: !row.flags.includes('summary_row'),
+      included: row.included ?? !row.flags.includes('summary_row'),
       draft_unit_label: row.unit_label ?? '',
       draft_rent: formatMoney(row.rent),
     }))
@@ -107,8 +128,21 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
       if (!u.draft_unit_label.trim()) u.draft_unit_label = `Unit ${n}`
     }
     setUnits(rows)
+    setJobId(job.id)
+    setFileName(job.file_name)
+    setPage(1)
     setStep('review')
   }, [])
+
+  const loadReview = useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/dashboard/import/job?job_id=${encodeURIComponent(id)}`)
+      const data = (await res.json()) as { job?: JobPayload; error?: string }
+      if (!res.ok || !data.job) throw new Error(data.error ?? 'Could not load results')
+      applyJob(data.job)
+    },
+    [applyJob]
+  )
 
   const driveProcessing = useCallback(
     async (id: string) => {
@@ -199,18 +233,32 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     void handleFile(initialFile)
   }, [isOpen, initialFile, handleFile, reset])
 
+  // Opened without a file: resume the latest in-review import (queue
+  // behavior), falling back to the dropzone when there is none.
   useEffect(() => {
-    if (!isOpen) cancelledRef.current = true
-    else cancelledRef.current = false
+    if (!isOpen || initialFile) return
+    if (resumeCheckedRef.current) return
+    resumeCheckedRef.current = true
+    fetch('/api/dashboard/import/job')
+      .then((r) => r.json())
+      .then((data: { job?: JobPayload | null }) => {
+        if (data.job && data.job.status === 'review') applyJob(data.job)
+      })
+      .catch(() => {})
+  }, [isOpen, initialFile, applyJob])
+
+  useEffect(() => {
+    cancelledRef.current = !isOpen
   }, [isOpen])
 
   // ── Review grouping ────────────────────────────────────────────────────
   // Units group by their extracted address; the group's resolution comes
-  // from the job results keyed by that same string. Unaddressed rows
-  // (summary/unparsed) form their own single-row groups.
+  // from the job results keyed by that same string. Summary rows are pure
+  // noise ("Total, 593 Units") and are dropped from the review entirely.
   const groups = useMemo(() => {
     const map = new Map<string, ReviewUnit[]>()
     for (const u of units) {
+      if (u.flags.includes('summary_row')) continue
       const key = u.address ?? `__row_${u.key}`
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(u)
@@ -219,17 +267,22 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
       const resolution = resolutions[key] ?? null
       return { key, units: list, resolution, hasAddress: !key.startsWith('__row_') }
     })
-    // Rows that need a human float to the top; verified sink below; summary
-    // rows go last. Sort is stable, so file order holds within each band.
+    // Rows that need a human float to the top; verified sink below. Sort is
+    // stable, so file order holds within each band.
     const rank = (g: (typeof list)[number]): number => {
-      if (!g.hasAddress) {
-        return g.units.every((u) => u.flags.includes('summary_row')) ? 3 : 0
-      }
+      if (!g.hasAddress) return 0
       const m = g.resolution?.match
       return !m || m === 'nearest' || m === 'no_match' ? 0 : 1
     }
     return list.sort((a, b) => rank(a) - rank(b))
   }, [units, resolutions])
+
+  const totalPages = Math.max(1, Math.ceil(groups.length / perPage))
+  const pageClamped = Math.min(page, totalPages)
+  const pageGroups = useMemo(
+    () => groups.slice((pageClamped - 1) * perPage, pageClamped * perPage),
+    [groups, pageClamped, perPage]
+  )
 
   const selected = useMemo(() => units.filter((u) => u.included && u.address), [units])
   const selectedProperties = useMemo(
@@ -240,9 +293,10 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     () =>
       groups.filter(
         (g) =>
-          g.hasAddress &&
-          g.resolution &&
-          (g.resolution.match === 'nearest' || g.resolution.match === 'no_match')
+          !g.hasAddress ||
+          !g.resolution ||
+          g.resolution.match === 'nearest' ||
+          g.resolution.match === 'no_match'
       ).length,
     [groups]
   )
@@ -251,9 +305,22 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     setUnits((prev) => prev.map((u) => (u.key === key ? { ...u, ...patch } : u)))
   }, [])
 
-  const setGroupIncluded = useCallback((address: string, included: boolean) => {
-    setUnits((prev) => prev.map((u) => (u.address === address ? { ...u, included } : u)))
-  }, [])
+  const toggleUnitIncluded = useCallback(
+    (u: ReviewUnit, included: boolean) => {
+      setUnitField(u.key, { included })
+      persistRows(jobId, [{ row_num: u.row_num, included }])
+    },
+    [jobId, persistRows, setUnitField]
+  )
+
+  const setGroupIncluded = useCallback(
+    (groupUnits: ReviewUnit[], included: boolean) => {
+      const keys = new Set(groupUnits.map((u) => u.key))
+      setUnits((prev) => prev.map((u) => (keys.has(u.key) ? { ...u, included } : u)))
+      persistRows(jobId, groupUnits.map((u) => ({ row_num: u.row_num, included })))
+    },
+    [jobId, persistRows]
+  )
 
   const recheckAddress = useCallback(
     async (oldKey: string) => {
@@ -293,6 +360,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const handleClose = () => {
     cancelledRef.current = true
     startedFileRef.current = null
+    resumeCheckedRef.current = false
     reset()
     onClose()
   }
@@ -310,9 +378,14 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
         aria-modal="true"
       >
         <div style={headerStyle}>
-          <div>
-            <div id="import-rentroll-title" style={titleStyle}>
-              {step === 'review' ? 'Review your rent roll' : 'Upload your rent roll'}
+          <div style={{ minWidth: 0 }}>
+            <div style={headTopStyle}>
+              <div id="import-rentroll-title" style={titleStyle}>
+                {step === 'review' ? 'Review your rent roll' : 'Upload your rent roll'}
+              </div>
+              <button type="button" className="ir-close" onClick={handleClose} aria-label="Close">
+                &times;
+              </button>
             </div>
             <div style={headerSubStyle}>
               {step === 'review' ? (
@@ -326,9 +399,6 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
               )}
             </div>
           </div>
-          <button type="button" style={closeBtnStyle} onClick={handleClose} aria-label="Close">
-            &times;
-          </button>
         </div>
 
         <div style={bodyStyle}>
@@ -409,52 +479,45 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
           {step === 'review' ? (
             <div>
               {error ? <div className="ir-error" style={{ marginBottom: 10 }}>{error}</div> : null}
-              {groups.map((g) => {
+              {pageGroups.map((g) => {
                 const res = g.resolution
                 const green = res && (res.match === 'verified' || res.match === 'range')
+                const amber = g.hasAddress && res && (res.match === 'no_match' || res.match === 'nearest')
                 const groupIncluded = g.units.some((u) => u.included)
-                const isJunk = g.units.every((u) => u.flags.includes('summary_row'))
-                const expanded = !isJunk && (expandedGroups[g.key] ?? false)
+                const expanded = expandedGroups[g.key] ?? false
                 return (
                   <div key={g.key} className="ir-group">
                     <div
-                      className={`ir-group-head${isJunk ? '' : ' ir-group-head-click'}`}
-                      onClick={() =>
-                        !isJunk &&
-                        setExpandedGroups((prev) => ({ ...prev, [g.key]: !expanded }))
-                      }
+                      className="ir-group-head ir-group-head-click"
+                      onClick={() => setExpandedGroups((prev) => ({ ...prev, [g.key]: !expanded }))}
                     >
                       <input
                         type="checkbox"
                         checked={groupIncluded}
                         onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          g.hasAddress
-                            ? setGroupIncluded(g.key, e.target.checked)
-                            : g.units.forEach((u) => setUnitField(u.key, { included: e.target.checked }))
-                        }
+                        onChange={(e) => setGroupIncluded(g.units, e.target.checked)}
                         aria-label="Include property"
                       />
-                      {g.hasAddress && res ? (
-                        green ? (
-                          <span className="ir-chip ir-chip-ok" title="Matched to city records">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          </span>
+                      <span className="ir-chip-slot">
+                        {g.hasAddress && res ? (
+                          green ? (
+                            <span className="ir-chip ir-chip-ok" title="Matched to city records">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            </span>
+                          ) : (
+                            <span className="ir-chip ir-chip-warn" title={res.match === 'nearest' ? 'Matched to a nearby parcel — confirm' : 'No city record found — edit the address'}>
+                              {res.match === 'nearest' ? 'Check match' : 'Not found'}
+                            </span>
+                          )
                         ) : (
-                          <span className="ir-chip ir-chip-warn" title={res.match === 'nearest' ? 'Matched to a nearby parcel — confirm' : 'No city record found — edit the address'}>
-                            {res.match === 'nearest' ? 'Check match' : 'Not found'}
-                          </span>
-                        )
-                      ) : isJunk ? (
-                        <span className="ir-chip ir-chip-muted">Summary row</span>
-                      ) : (
-                        <span className="ir-chip ir-chip-warn">Needs address</span>
-                      )}
+                          <span className="ir-chip ir-chip-warn">Needs address</span>
+                        )}
+                      </span>
 
                       <div className="ir-group-addr">
-                        {g.hasAddress && res && (res.match === 'no_match' || res.match === 'nearest') ? (
+                        {amber ? (
                           <span className="ir-addr-edit" onClick={(e) => e.stopPropagation()}>
                             <input
                               className="ir-addr-input"
@@ -462,23 +525,15 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                               onChange={(e) =>
                                 setGroupDrafts((prev) => ({ ...prev, [g.key]: e.target.value }))
                               }
+                              onBlur={() => void recheckAddress(g.key)}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') void recheckAddress(g.key)
+                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                               }}
                               aria-label="Edit address"
                             />
-                            <button
-                              type="button"
-                              className="ir-recheck"
-                              disabled={
-                                rechecking[g.key] ||
-                                !(groupDrafts[g.key] ?? '').trim() ||
-                                (groupDrafts[g.key] ?? g.key) === g.key
-                              }
-                              onClick={() => void recheckAddress(g.key)}
-                            >
-                              {rechecking[g.key] ? 'Checking…' : 'Re-check'}
-                            </button>
+                            {rechecking[g.key] ? (
+                              <span className="ir-range-note">checking…</span>
+                            ) : null}
                           </span>
                         ) : (
                           <span className="ir-addr-text">
@@ -488,12 +543,12 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                         {res?.address_range && green ? (
                           <span className="ir-range-note">{res.address_range}</span>
                         ) : null}
-                        {res?.match === 'nearest' && res.nearest_distance !== null ? (
+                        {res?.match === 'nearest' && res.nearest_distance !== null && !rechecking[g.key] ? (
                           <span className="ir-range-note">
                             closest parcel: {res.canonical_address}
                           </span>
                         ) : null}
-                        {res?.match === 'no_match' && res.nearest_suggestion ? (
+                        {res?.match === 'no_match' && res.nearest_suggestion && !rechecking[g.key] ? (
                           <span className="ir-range-note">did you mean {res.nearest_suggestion}?</span>
                         ) : null}
                       </div>
@@ -501,16 +556,14 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                       <span className="ir-group-count">
                         {g.units.length} unit{g.units.length === 1 ? '' : 's'}
                       </span>
-                      {!isJunk ? (
-                        <svg
-                          className={`ir-chevron${expanded ? ' ir-chevron-open' : ''}`}
-                          width="14" height="14" viewBox="0 0 24 24" fill="none"
-                          stroke="#8a94a0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                          aria-hidden
-                        >
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      ) : null}
+                      <svg
+                        className={`ir-chevron${expanded ? ' ir-chevron-open' : ''}`}
+                        width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="#8a94a0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
                     </div>
 
                     {expanded ? (
@@ -522,7 +575,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                 <input
                                   type="checkbox"
                                   checked={u.included}
-                                  onChange={(e) => setUnitField(u.key, { included: e.target.checked })}
+                                  onChange={(e) => toggleUnitIncluded(u, e.target.checked)}
                                   aria-label="Include unit"
                                 />
                               </td>
@@ -532,6 +585,11 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                   value={u.draft_unit_label}
                                   placeholder="Unit"
                                   onChange={(e) => setUnitField(u.key, { draft_unit_label: e.target.value })}
+                                  onBlur={() =>
+                                    persistRows(jobId, [
+                                      { row_num: u.row_num, unit_label: u.draft_unit_label.trim() || null },
+                                    ])
+                                  }
                                   aria-label="Unit label"
                                 />
                               </td>
@@ -544,11 +602,16 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                     placeholder="—"
                                     inputMode="decimal"
                                     onChange={(e) => setUnitField(u.key, { draft_rent: e.target.value })}
+                                    onBlur={() =>
+                                      persistRows(jobId, [
+                                        { row_num: u.row_num, rent: u.draft_rent.trim() || null },
+                                      ])
+                                    }
                                     aria-label="Monthly rent"
                                   />
                                 </span>
                               </td>
-                              <td className="ir-unit-meta">{u.bd_ba ?? ''}</td>
+                              <td className="ir-unit-bdba">{u.bd_ba ?? ''}</td>
                               <td className="ir-unit-flags">
                                 {u.flags.includes('junk_prefix') ? (
                                   <span className="ir-flag" title={`Original: ${u.raw_address}`}>cleaned</span>
@@ -566,6 +629,46 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                   </div>
                 )
               })}
+
+              {totalPages > 1 || groups.length > PER_PAGE_OPTIONS[0] ? (
+                <div className="ir-pager">
+                  <button
+                    type="button"
+                    className="ir-pager-btn"
+                    disabled={pageClamped <= 1}
+                    onClick={() => setPage(pageClamped - 1)}
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="ir-pager-info">
+                    {(pageClamped - 1) * perPage + 1}–{Math.min(pageClamped * perPage, groups.length)} of{' '}
+                    {groups.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="ir-pager-btn"
+                    disabled={pageClamped >= totalPages}
+                    onClick={() => setPage(pageClamped + 1)}
+                  >
+                    Next ›
+                  </button>
+                  <select
+                    className="ir-pager-select"
+                    value={perPage}
+                    onChange={(e) => {
+                      setPerPage(Number(e.target.value))
+                      setPage(1)
+                    }}
+                    aria-label="Properties per page"
+                  >
+                    {PER_PAGE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} / page
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -588,50 +691,44 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
 
 const modalStyle: CSSProperties = {
   background: '#ffffff',
-  borderRadius: 8,
+  borderRadius: 16,
   width: '100%',
   maxWidth: 860,
   maxHeight: '86vh',
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
-  boxShadow: '0 16px 48px rgba(15, 39, 68, 0.28)',
+  boxShadow: '0 20px 60px rgba(15, 39, 68, 0.28)',
 }
 
+// Header matches the site contact modal: white card, serif navy title,
+// circular light close button — no dark banner.
 const headerStyle: CSSProperties = {
-  background: '#0f2744',
-  padding: '16px 22px',
+  padding: '22px 26px 14px',
+  borderBottom: '1px solid #e5e1d6',
+  flexShrink: 0,
+}
+
+const headTopStyle: CSSProperties = {
   display: 'flex',
-  alignItems: 'flex-start',
+  alignItems: 'center',
   justifyContent: 'space-between',
   gap: 16,
-  flexShrink: 0,
 }
 
 const titleStyle: CSSProperties = {
   fontFamily: 'Merriweather, Georgia, serif',
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#ffffff',
+  fontSize: 22,
+  fontWeight: 900,
+  color: '#0f2744',
   lineHeight: 1.2,
 }
 
 const headerSubStyle: CSSProperties = {
   fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 12,
-  color: 'rgba(255, 255, 255, 0.65)',
+  fontSize: 13,
+  color: '#4a5568',
   marginTop: 4,
-}
-
-const closeBtnStyle: CSSProperties = {
-  background: 'none',
-  border: 'none',
-  fontSize: 22,
-  lineHeight: 1,
-  color: 'rgba(255, 255, 255, 0.7)',
-  cursor: 'pointer',
-  padding: '0 2px',
-  flexShrink: 0,
 }
 
 const bodyStyle: CSSProperties = {

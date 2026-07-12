@@ -33,6 +33,13 @@ export type ParsedUnitRow = {
   move_in: string | null
   move_out: string | null
   flags: RowFlag[]
+  /**
+   * Review-screen selection state, persisted into import_jobs.parsed_rows by
+   * PATCH /api/dashboard/import/job so the review survives close/reopen.
+   * Absent until the user first touches the row; defaults to true except for
+   * summary rows.
+   */
+  included?: boolean
 }
 
 /** 0-based column indexes into the sheet; -1 = column not present. */

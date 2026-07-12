@@ -49,6 +49,7 @@ export default function DashboardLayoutClient({
   const [queueOpen, setQueueOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
+  const [hasImportReview, setHasImportReview] = useState(false)
 
   useEffect(() => {
     const handler = () => setAddPropOpen(true)
@@ -71,6 +72,23 @@ export default function DashboardLayoutClient({
     window.addEventListener('ps:open-import', handler)
     return () => window.removeEventListener('ps:open-import', handler)
   }, [])
+
+  // An import sitting in review acts like the queue: the header button comes
+  // back to it until it's committed or replaced.
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn) return
+    let cancelled = false
+    fetch('/api/dashboard/import/job')
+      .then((r) => r.json())
+      .then((data: { job?: { status?: string } | null }) => {
+        if (cancelled) return
+        setHasImportReview(data.job?.status === 'review')
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [clerkLoaded, isSignedIn, importOpen])
 
   // Anyone with staged rows gets served the queue modal on arrival —
   // regardless of whether they have saved properties yet. Always dismissible;
@@ -182,12 +200,16 @@ export default function DashboardLayoutClient({
                 <div style={dividerStyle} />
               </>
             ) : null}
-            {isSignedIn && stagedCount > 0 ? (
+            {isSignedIn && (stagedCount > 0 || hasImportReview) ? (
               <button
                 type="button"
                 className="ps-cta ps-cta-blue ps-cta-collapse"
                 style={headerCtaSizeStyle}
-                onClick={() => setQueueOpen(true)}
+                onClick={() =>
+                  hasImportReview
+                    ? window.dispatchEvent(new CustomEvent('ps:open-import', { detail: {} }))
+                    : setQueueOpen(true)
+                }
                 title="Review added properties"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

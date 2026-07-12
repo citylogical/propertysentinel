@@ -5768,25 +5768,74 @@ button.save-toggle-switch {
   outline: none;
   border-color: #b7791f;
 }
-.ir-recheck {
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  color: #1e3a5f;
-  background: #d6e4f3;
+.ir-close {
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
+  border-radius: 50%;
+  background: #f2f0eb;
+  color: #1a1a1a;
+  font-size: 16px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s ease;
 }
-.ir-recheck:hover:not(:disabled) {
-  background: #1e3a5f;
-  color: #fff;
+.ir-close:hover {
+  background: #e6e2d8;
 }
-.ir-recheck:disabled {
-  opacity: 0.5;
+
+.ir-chip-slot {
+  width: 100px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.ir-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0 2px;
+}
+.ir-pager-btn {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f2744;
+  background: #fff;
+  border: 1px solid #ddd9d0;
+  border-radius: 5px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.ir-pager-btn:hover:not(:disabled) {
+  background: #faf9f5;
+  border-color: #0f2744;
+}
+.ir-pager-btn:disabled {
+  opacity: 0.4;
   cursor: default;
+}
+.ir-pager-info {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+.ir-pager-select {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  color: #0f2744;
+  background: #fff;
+  border: 1px solid #ddd9d0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  cursor: pointer;
 }
 
 .ir-units {
@@ -5807,17 +5856,21 @@ button.save-toggle-switch {
   padding-left: 12px !important;
 }
 .ir-unit-label {
-  width: 130px;
+  width: 110px;
 }
-.ir-unit-meta {
+.ir-unit-label .ir-cell-input {
+  width: 96px;
+}
+.ir-unit-rent {
+  width: 110px;
+  white-space: nowrap;
+}
+.ir-unit-bdba {
+  width: 90px;
   font-family: DM Mono, ui-monospace, monospace;
   font-size: 11px;
   color: #6b7280;
   white-space: nowrap;
-}
-.ir-unit-rent {
-  width: 110px;
-  text-align: right;
 }
 .ir-unit-flags {
   width: 90px;
@@ -5880,14 +5933,17 @@ button.save-toggle-switch {
 .ir-rent-wrap {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 1px;
-  width: 100%;
+  white-space: nowrap;
+}
+.ir-rent-wrap .ir-cell-input {
+  width: 80px;
 }
 .ir-rent-sigil {
   font-family: DM Mono, ui-monospace, monospace;
   font-size: 11px;
   color: #8a94a0;
+  flex-shrink: 0;
 }
 .ir-unit-status {
   font-family: DM Mono, ui-monospace, monospace;
