@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 })
 
   const j = job as { id: string; results: ImportResolution[]; status: string }
-  if (j.status !== 'review') {
+  if (j.status !== 'review' && j.status !== 'committed') {
     return NextResponse.json({ error: 'Job is not in review' }, { status: 409 })
   }
 

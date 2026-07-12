@@ -40,12 +40,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ job })
   }
 
-  // Latest reviewable job — reopening the modal resumes where the user left off.
+  // Latest reviewable job — reopening the modal resumes where the user left
+  // off. Committed jobs stay reachable so the queue can link back to the
+  // review; re-committing after edits is idempotent.
   const { data: latest, error: latestErr } = await supabase
     .from('import_jobs')
     .select(JOB_COLS)
     .eq('clerk_id', userId)
-    .eq('status', 'review')
+    .in('status', ['review', 'committed'])
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -87,7 +89,7 @@ export async function PATCH(request: Request) {
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 })
 
   const j = job as { id: string; status: string; parsed_rows: ParsedUnitRow[] }
-  if (j.status !== 'review') {
+  if (j.status !== 'review' && j.status !== 'committed') {
     return NextResponse.json({ error: 'Job is not in review' }, { status: 409 })
   }
 

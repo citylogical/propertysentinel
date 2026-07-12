@@ -73,6 +73,8 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+  const [jobStatus, setJobStatus] = useState<'review' | 'committed'>('review')
+  const [committing, setCommitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cancelledRef = useRef(false)
   const startedFileRef = useRef<File | null>(null)
@@ -130,6 +132,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     setUnits(rows)
     setJobId(job.id)
     setFileName(job.file_name)
+    setJobStatus(job.status === 'committed' ? 'committed' : 'review')
     setPage(1)
     setStep('review')
   }, [])
@@ -242,10 +245,37 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     fetch('/api/dashboard/import/job')
       .then((r) => r.json())
       .then((data: { job?: JobPayload | null }) => {
-        if (data.job && data.job.status === 'review') applyJob(data.job)
+        if (data.job && (data.job.status === 'review' || data.job.status === 'committed')) {
+          applyJob(data.job)
+        }
       })
       .catch(() => {})
   }, [isOpen, initialFile, applyJob])
+
+  const commitToQueue = useCallback(async () => {
+    if (!jobId || committing) return
+    setCommitting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/dashboard/import/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId }),
+      })
+      const data = (await res.json()) as { staged?: number; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Could not add to queue')
+      setJobStatus('committed')
+      onClose()
+      // Defer so this modal unmounts before the queue opens on top.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('ps:open-staged-queue'))
+      }, 0)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add to queue')
+    } finally {
+      setCommitting(false)
+    }
+  }, [jobId, committing, onClose])
 
   useEffect(() => {
     cancelledRef.current = !isOpen
@@ -678,8 +708,18 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
             <div style={summaryStyle}>
               {selectedProperties} PROPERTIES · {selected.length} UNITS SELECTED
             </div>
-            <button type="button" className="ps-cta ps-cta-green" style={{ padding: '10px 18px', fontSize: 13, opacity: 0.55, cursor: 'default' }} disabled title="Final step — coming in the next build">
-              Add to queue (coming next)
+            <button
+              type="button"
+              className="ps-cta ps-cta-green"
+              style={{ padding: '10px 18px', fontSize: 13 }}
+              disabled={committing || selected.length === 0}
+              onClick={() => void commitToQueue()}
+            >
+              {committing
+                ? 'Adding…'
+                : jobStatus === 'committed'
+                  ? 'Update queue'
+                  : `Add ${selectedProperties} propert${selectedProperties === 1 ? 'y' : 'ies'} to queue`}
             </button>
           </div>
         ) : null}
