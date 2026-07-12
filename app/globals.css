@@ -5862,3 +5862,40 @@ button.save-toggle-switch {
   padding: 2px 5px;
   cursor: help;
 }
+
+.ir-group-head-click {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ir-group-head-click:hover {
+  background: #f5f3ec;
+}
+.ir-chevron {
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+.ir-chevron-open {
+  transform: rotate(180deg);
+}
+.ir-rent-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1px;
+  width: 100%;
+}
+.ir-rent-sigil {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 11px;
+  color: #8a94a0;
+}
+.ir-unit-status {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #a8b0ba;
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 12px !important;
+}

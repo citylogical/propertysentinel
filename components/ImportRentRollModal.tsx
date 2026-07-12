@@ -60,6 +60,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const [resolutions, setResolutions] = useState<Record<string, ImportResolution>>({})
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
   const [rechecking, setRechecking] = useState<Record<string, boolean>>({})
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cancelledRef = useRef(false)
   const startedFileRef = useRef<File | null>(null)
@@ -76,6 +77,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     setResolutions({})
     setGroupDrafts({})
     setRechecking({})
+    setExpandedGroups({})
   }, [])
 
   const loadReview = useCallback(async (id: string) => {
@@ -88,15 +90,23 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     const resultMap: Record<string, ImportResolution> = {}
     for (const r of data.job.results ?? []) resultMap[r.raw_address] = r
     setResolutions(resultMap)
-    setUnits(
-      (data.job.parsed_rows ?? []).map((row, i) => ({
-        ...row,
-        key: i,
-        included: !row.flags.includes('summary_row'),
-        draft_unit_label: row.unit_label ?? '',
-        draft_rent: formatMoney(row.rent),
-      }))
-    )
+    const rows: ReviewUnit[] = (data.job.parsed_rows ?? []).map((row, i) => ({
+      ...row,
+      key: i,
+      included: !row.flags.includes('summary_row'),
+      draft_unit_label: row.unit_label ?? '',
+      draft_rent: formatMoney(row.rent),
+    }))
+    // Rent rolls without a unit column still get labels: "Unit 1..N" within
+    // each property — matching what promotion would materialize anyway.
+    const counters = new Map<string, number>()
+    for (const u of rows) {
+      if (!u.address) continue
+      const n = (counters.get(u.address) ?? 0) + 1
+      counters.set(u.address, n)
+      if (!u.draft_unit_label.trim()) u.draft_unit_label = `Unit ${n}`
+    }
+    setUnits(rows)
     setStep('review')
   }, [])
 
@@ -205,10 +215,20 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(u)
     }
-    return [...map.entries()].map(([key, list]) => {
+    const list = [...map.entries()].map(([key, list]) => {
       const resolution = resolutions[key] ?? null
       return { key, units: list, resolution, hasAddress: !key.startsWith('__row_') }
     })
+    // Rows that need a human float to the top; verified sink below; summary
+    // rows go last. Sort is stable, so file order holds within each band.
+    const rank = (g: (typeof list)[number]): number => {
+      if (!g.hasAddress) {
+        return g.units.every((u) => u.flags.includes('summary_row')) ? 3 : 0
+      }
+      const m = g.resolution?.match
+      return !m || m === 'nearest' || m === 'no_match' ? 0 : 1
+    }
+    return list.sort((a, b) => rank(a) - rank(b))
   }, [units, resolutions])
 
   const selected = useMemo(() => units.filter((u) => u.included && u.address), [units])
@@ -394,12 +414,20 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                 const green = res && (res.match === 'verified' || res.match === 'range')
                 const groupIncluded = g.units.some((u) => u.included)
                 const isJunk = g.units.every((u) => u.flags.includes('summary_row'))
+                const expanded = !isJunk && (expandedGroups[g.key] ?? false)
                 return (
                   <div key={g.key} className="ir-group">
-                    <div className="ir-group-head">
+                    <div
+                      className={`ir-group-head${isJunk ? '' : ' ir-group-head-click'}`}
+                      onClick={() =>
+                        !isJunk &&
+                        setExpandedGroups((prev) => ({ ...prev, [g.key]: !expanded }))
+                      }
+                    >
                       <input
                         type="checkbox"
                         checked={groupIncluded}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) =>
                           g.hasAddress
                             ? setGroupIncluded(g.key, e.target.checked)
@@ -413,7 +441,6 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            {res.match === 'range' ? 'Verified · building' : 'Verified'}
                           </span>
                         ) : (
                           <span className="ir-chip ir-chip-warn" title={res.match === 'nearest' ? 'Matched to a nearby parcel — confirm' : 'No city record found — edit the address'}>
@@ -428,7 +455,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
 
                       <div className="ir-group-addr">
                         {g.hasAddress && res && (res.match === 'no_match' || res.match === 'nearest') ? (
-                          <span className="ir-addr-edit">
+                          <span className="ir-addr-edit" onClick={(e) => e.stopPropagation()}>
                             <input
                               className="ir-addr-input"
                               value={groupDrafts[g.key] ?? g.key}
@@ -474,9 +501,19 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                       <span className="ir-group-count">
                         {g.units.length} unit{g.units.length === 1 ? '' : 's'}
                       </span>
+                      {!isJunk ? (
+                        <svg
+                          className={`ir-chevron${expanded ? ' ir-chevron-open' : ''}`}
+                          width="14" height="14" viewBox="0 0 24 24" fill="none"
+                          stroke="#8a94a0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      ) : null}
                     </div>
 
-                    {!isJunk ? (
+                    {expanded ? (
                       <table className="ir-units">
                         <tbody>
                           {g.units.map((u) => (
@@ -498,18 +535,20 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                   aria-label="Unit label"
                                 />
                               </td>
-                              <td className="ir-unit-meta">{u.bd_ba ?? ''}</td>
-                              <td className="ir-unit-meta">{u.status ?? ''}</td>
                               <td className="ir-unit-rent">
-                                <input
-                                  className="ir-cell-input ir-cell-rent"
-                                  value={u.draft_rent}
-                                  placeholder="Rent"
-                                  inputMode="decimal"
-                                  onChange={(e) => setUnitField(u.key, { draft_rent: e.target.value })}
-                                  aria-label="Monthly rent"
-                                />
+                                <span className="ir-rent-wrap">
+                                  <span className="ir-rent-sigil">$</span>
+                                  <input
+                                    className="ir-cell-input ir-cell-rent"
+                                    value={u.draft_rent}
+                                    placeholder="—"
+                                    inputMode="decimal"
+                                    onChange={(e) => setUnitField(u.key, { draft_rent: e.target.value })}
+                                    aria-label="Monthly rent"
+                                  />
+                                </span>
                               </td>
+                              <td className="ir-unit-meta">{u.bd_ba ?? ''}</td>
                               <td className="ir-unit-flags">
                                 {u.flags.includes('junk_prefix') ? (
                                   <span className="ir-flag" title={`Original: ${u.raw_address}`}>cleaned</span>
@@ -518,6 +557,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                   <span className="ir-flag" title={`Original: ${u.raw_address}`}>recovered</span>
                                 ) : null}
                               </td>
+                              <td className="ir-unit-status">{u.status ?? ''}</td>
                             </tr>
                           ))}
                         </tbody>
