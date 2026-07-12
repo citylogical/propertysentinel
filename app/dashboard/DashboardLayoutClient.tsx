@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
 import type { Entitlement } from '@/lib/entitlement'
 import StagedQueueModal from '@/components/StagedQueueModal'
+import ImportRentRollModal from '@/components/ImportRentRollModal'
 import AddPropertyModal from './AddPropertyModal'
 
 type HeaderStats = {
@@ -46,6 +47,8 @@ export default function DashboardLayoutClient({
   const [addPropOpen, setAddPropOpen] = useState(false)
   const [stagedCount, setStagedCount] = useState(0)
   const [queueOpen, setQueueOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   useEffect(() => {
     const handler = () => setAddPropOpen(true)
@@ -57,6 +60,16 @@ export default function DashboardLayoutClient({
     const handler = () => setQueueOpen(true)
     window.addEventListener('ps:open-staged-queue', handler)
     return () => window.removeEventListener('ps:open-staged-queue', handler)
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const file = (e as CustomEvent<{ file?: File }>).detail?.file ?? null
+      setImportFile(file)
+      setImportOpen(true)
+    }
+    window.addEventListener('ps:open-import', handler)
+    return () => window.removeEventListener('ps:open-import', handler)
   }, [])
 
   // Anyone with staged rows gets served the queue modal on arrival —
@@ -242,6 +255,14 @@ export default function DashboardLayoutClient({
         isOpen={queueOpen}
         onClose={() => setQueueOpen(false)}
         onQueueChange={setStagedCount}
+      />
+      <ImportRentRollModal
+        isOpen={importOpen}
+        onClose={() => {
+          setImportOpen(false)
+          setImportFile(null)
+        }}
+        initialFile={importFile}
       />
     </div>
   )
