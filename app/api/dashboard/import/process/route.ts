@@ -19,7 +19,10 @@ import { resolveImportAddress, type ImportResolution } from '@/lib/rentroll/reso
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const CHUNK_SIZE = 15 // ~1-1.5s per address, ~20-25s per chunk, well under 60s
+// Measured ~2.5s/address against live Supabase from a residential connection
+// (Vercel-to-Supabase should be faster). 12 × 2.5s = ~30s, safe under the
+// 60s ceiling even on a slow chunk.
+const CHUNK_SIZE = 12
 
 export async function POST(request: Request) {
   const { userId } = await auth()

@@ -113,6 +113,15 @@ export function cleanAddressCell(rawAddress: string): {
     flags.push('unit_in_address')
   }
 
+  // Trailing annotation: "2965 N Lincoln Ave - Residential" → strip the
+  // " - <words>" tail (a dash followed by letters is never part of an
+  // address; dash followed by digits is a range, handled above).
+  const tail = s.match(/\s+-\s+[A-Za-z].*$/)
+  if (tail) {
+    s = s.slice(0, tail.index).trim()
+    if (!flags.includes('junk_prefix')) flags.push('junk_prefix')
+  }
+
   // A usable Chicago address is "<number> <words>". Anything else needs rescue.
   if (!/^\d+\s+\S+/.test(s)) {
     return { address: null, unitFromAddress, flags: [...flags, 'unparsed'] }
