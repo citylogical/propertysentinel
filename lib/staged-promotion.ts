@@ -108,11 +108,13 @@ async function promoteRows(
 
     result.promoted++
 
-    // Materialize the self-reported unit count as portfolio_property_units
-    // rows — the dashboard counts THOSE for building/unit totals, not
-    // units_override. Only when the property has no unit rows yet, so a
-    // re-promotion never duplicates a rent roll or manual entries.
-    // Non-fatal per property.
+    // Materialize unit rows in portfolio_property_units — the dashboard
+    // counts THOSE for building/unit totals, not units_override. Only when
+    // the property has no unit rows yet, so a re-promotion never duplicates
+    // a rent roll or manual entries. Rent-roll imports park real unit detail
+    // (label, bd/ba, rent, lease dates) in staged_property_units at commit
+    // time; when present those are copied verbatim, otherwise fall back to
+    // the synthetic "Unit 1..N" self-reported rows. Non-fatal per property.
     if (row.units && row.units > 0) {
       try {
         const { count: existingUnits } = await supabase
@@ -120,11 +122,33 @@ async function promoteRows(
           .select('id', { count: 'exact', head: true })
           .eq('portfolio_property_id', inserted.id as string)
         if ((existingUnits ?? 0) === 0) {
-          const unitRows = Array.from({ length: Math.min(row.units, 1000) }, (_, i) => ({
-            portfolio_property_id: inserted.id as string,
-            unit_label: `Unit ${i + 1}`,
-            source: 'self_reported',
-          }))
+          const { data: stagedUnits, error: stagedUnitsErr } = await supabase
+            .from('staged_property_units')
+            .select('unit_label, bd_ba, status, rent, lease_from, lease_to, move_in, move_out')
+            .eq('staged_property_id', row.id)
+            .order('created_at', { ascending: true })
+            .range(0, 999)
+          if (stagedUnitsErr) {
+            // Fall through to synthetic units, but leave a trace — otherwise a
+            // transient read failure silently discards real rent-roll detail.
+            console.error(
+              'staged_property_units read failed, falling back to synthetic units:',
+              row.canonical_address,
+              stagedUnitsErr
+            )
+          }
+          const unitRows =
+            stagedUnits && stagedUnits.length > 0
+              ? stagedUnits.map((u) => ({
+                  portfolio_property_id: inserted.id as string,
+                  ...u,
+                  source: 'rent_roll',
+                }))
+              : Array.from({ length: Math.min(row.units, 1000) }, (_, i) => ({
+                  portfolio_property_id: inserted.id as string,
+                  unit_label: `Unit ${i + 1}`,
+                  source: 'self_reported',
+                }))
           await supabase.from('portfolio_property_units').insert(unitRows)
         }
       } catch (unitsErr) {
