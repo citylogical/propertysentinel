@@ -70,6 +70,11 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const [customTierIdx, setCustomTierIdx] = useState(0)
   const [committing, setCommitting] = useState(false)
   const [checkoutSecret, setCheckoutSecret] = useState<string | null>(null)
+  // Queue pagination — imports can stage hundreds of properties at once.
+  const [qPage, setQPage] = useState(1)
+  const [qPerPage, setQPerPage] = useState(10)
+  // A rent-roll import in review/committed state — the queue links back to it.
+  const [hasImportJob, setHasImportJob] = useState(false)
   const checkoutMountRef = useRef<HTMLDivElement | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -94,6 +99,13 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     setPlanChoice('recommended')
     setCommitting(false)
     setCheckoutSecret(null)
+    setQPage(1)
+    fetch('/api/dashboard/import/job')
+      .then((res) => res.json())
+      .then((data: { job?: { status?: string } | null }) => {
+        if (!cancelled) setHasImportJob(Boolean(data.job))
+      })
+      .catch(() => {})
     fetch('/api/dashboard/stage?list=1')
       .then((res) => res.json())
       .then((data: { rows?: StagedRow[]; staged_count?: number; plan?: PlanContext }) => {
@@ -136,6 +148,10 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const toggleAll = () => {
     setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
   }
+
+  const qTotalPages = Math.max(1, Math.ceil(rows.length / qPerPage))
+  const qPageClamped = Math.min(qPage, qTotalPages)
+  const pagedRows = rows.slice((qPageClamped - 1) * qPerPage, qPageClamped * qPerPage)
 
   const persistField = useCallback(
     (id: string, field: 'units' | 'property_name', value: number | string | null) => {
@@ -386,7 +402,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
               )}
             </div>
           </div>
-          <button type="button" style={closeBtnStyle} onClick={onClose} aria-label="Close">
+          <button type="button" className="ir-close" onClick={onClose} aria-label="Close">
             &times;
           </button>
         </div>
@@ -519,7 +535,24 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
             </div>
           ) : (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                {hasImportJob ? (
+                  <button
+                    type="button"
+                    style={backLinkStyle}
+                    onClick={() => {
+                      onClose()
+                      // Defer so this modal unmounts before the review opens.
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('ps:open-import', { detail: {} }))
+                      }, 0)
+                    }}
+                  >
+                    &larr; Back to import review
+                  </button>
+                ) : (
+                  <span />
+                )}
                 <button
                   type="button"
                   className={`sq-clear${clearArmed ? ' sq-clear-armed' : ''}`}
@@ -544,7 +577,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 <div />
               </div>
 
-              {rows.map((row) => {
+              {pagedRows.map((row) => {
                 const isRowSelected = selected.has(row.id)
                 // Faint red on the units box until a valid count (> 0) is
                 // entered — selection-independent, so the queue reads at a
@@ -606,6 +639,46 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                   </div>
                 )
               })}
+
+              {rows.length > qPerPage || qTotalPages > 1 ? (
+                <div className="ir-pager">
+                  <button
+                    type="button"
+                    className="ir-pager-btn"
+                    disabled={qPageClamped <= 1}
+                    onClick={() => setQPage(qPageClamped - 1)}
+                  >
+                    &lsaquo; Prev
+                  </button>
+                  <span className="ir-pager-info">
+                    {(qPageClamped - 1) * qPerPage + 1}–
+                    {Math.min(qPageClamped * qPerPage, rows.length)} of {rows.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="ir-pager-btn"
+                    disabled={qPageClamped >= qTotalPages}
+                    onClick={() => setQPage(qPageClamped + 1)}
+                  >
+                    Next &rsaquo;
+                  </button>
+                  <select
+                    className="ir-pager-select"
+                    value={qPerPage}
+                    onChange={(e) => {
+                      setQPerPage(Number(e.target.value))
+                      setQPage(1)
+                    }}
+                    aria-label="Properties per page"
+                  >
+                    {[10, 25, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {n} / page
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -712,7 +785,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
 
 const modalStyle: CSSProperties = {
   background: '#ffffff',
-  borderRadius: 8,
+  borderRadius: 16,
   width: '100%',
   maxWidth: 720,
   maxHeight: '84vh',
@@ -722,9 +795,12 @@ const modalStyle: CSSProperties = {
   boxShadow: '0 16px 48px rgba(15, 39, 68, 0.28)',
 }
 
+// Header matches the site contact modal: white card, serif navy title,
+// circular light close button (.ir-close) — no dark banner.
 const headerStyle: CSSProperties = {
-  background: '#0f2744',
-  padding: '16px 22px',
+  background: '#ffffff',
+  padding: '22px 26px 14px',
+  borderBottom: '1px solid #e5e1d6',
   display: 'flex',
   alignItems: 'flex-start',
   justifyContent: 'space-between',
@@ -733,29 +809,18 @@ const headerStyle: CSSProperties = {
 }
 
 const titleStyle: CSSProperties = {
-  fontFamily: 'var(--serif, "Playfair Display", serif)',
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#ffffff',
+  fontFamily: 'Merriweather, Georgia, serif',
+  fontSize: 22,
+  fontWeight: 900,
+  color: '#0f2744',
   lineHeight: 1.2,
 }
 
 const headerSubStyle: CSSProperties = {
   fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 12,
-  color: 'rgba(255, 255, 255, 0.65)',
+  fontSize: 13,
+  color: '#4a5568',
   marginTop: 4,
-}
-
-const closeBtnStyle: CSSProperties = {
-  background: 'none',
-  border: 'none',
-  fontSize: 22,
-  lineHeight: 1,
-  color: 'rgba(255, 255, 255, 0.7)',
-  cursor: 'pointer',
-  padding: '0 2px',
-  flexShrink: 0,
 }
 
 const bodyStyle: CSSProperties = {
