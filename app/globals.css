@@ -6161,3 +6161,12 @@ button.save-toggle-switch {
   white-space: nowrap;
   padding-right: 12px !important;
 }
+
+/* ---- Portfolio highlights modal (PortfolioHighlightsModal.tsx) ---- */
+.phm-row-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.phm-row-clickable:hover {
+  background: #faf9f5;
+}

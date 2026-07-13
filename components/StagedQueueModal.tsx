@@ -269,7 +269,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         error?: string
       }
       if (data.promoted) {
-        window.location.assign('/dashboard/portfolio')
+        window.location.assign('/dashboard/portfolio?build=1')
         return
       }
       if (data.requires_checkout) {

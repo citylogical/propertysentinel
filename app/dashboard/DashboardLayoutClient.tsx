@@ -7,6 +7,8 @@ import { useEffect, useState, type ReactNode, type CSSProperties } from 'react'
 import type { Entitlement } from '@/lib/entitlement'
 import StagedQueueModal from '@/components/StagedQueueModal'
 import ImportRentRollModal from '@/components/ImportRentRollModal'
+import PortfolioBuildDriver from '@/components/PortfolioBuildDriver'
+import PortfolioHighlightsModal from '@/components/PortfolioHighlightsModal'
 import AddPropertyModal from './AddPropertyModal'
 
 type HeaderStats = {
@@ -270,6 +272,8 @@ export default function DashboardLayoutClient({
       </header>
       ) : null}
 
+      <PortfolioBuildDriver isSignedIn={Boolean(clerkLoaded && isSignedIn)} />
+
       {children}
 
       <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
@@ -286,6 +290,7 @@ export default function DashboardLayoutClient({
         }}
         initialFile={importFile}
       />
+      <PortfolioHighlightsModal />
     </div>
   )
 }
