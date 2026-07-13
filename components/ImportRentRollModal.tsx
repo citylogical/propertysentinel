@@ -75,6 +75,10 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const [perPage, setPerPage] = useState(10)
   const [jobStatus, setJobStatus] = useState<'review' | 'committed'>('review')
   const [committing, setCommitting] = useState(false)
+  // Smooth progress: the server confirms in chunks of 12, but the bar and
+  // counter advance one address at a time by extrapolating the measured pace.
+  const [smoothProcessed, setSmoothProcessed] = useState(0)
+  const paceRef = useRef({ confirmed: 0, chunkStart: 0, msPerAddr: 2500, startedAt: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cancelledRef = useRef(false)
   const startedFileRef = useRef<File | null>(null)
@@ -94,6 +98,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     setRechecking({})
     setExpandedGroups({})
     setPage(1)
+    setSmoothProcessed(0)
   }, [])
 
   // Fire-and-forget persistence — the review screen must survive close/reopen.
@@ -150,6 +155,8 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
   const driveProcessing = useCallback(
     async (id: string) => {
       setStep('resolving')
+      setSmoothProcessed(0)
+      paceRef.current = { confirmed: 0, chunkStart: Date.now(), msPerAddr: 2500, startedAt: Date.now() }
       // Browser-driven chunk loop, same shape as the enrichment backfill.
       for (;;) {
         if (cancelledRef.current) return
@@ -165,7 +172,14 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
           error?: string
         }
         if (!res.ok) throw new Error(data.error ?? 'Processing failed')
-        setProgress({ processed: data.processed ?? 0, total: data.total ?? 0 })
+        const processed = data.processed ?? 0
+        const now = Date.now()
+        if (processed > 0) {
+          paceRef.current.msPerAddr = (now - paceRef.current.startedAt) / processed
+        }
+        paceRef.current.confirmed = processed
+        paceRef.current.chunkStart = now
+        setProgress({ processed, total: data.total ?? 0 })
         if (data.status === 'review') break
         if (data.status !== 'resolving' && data.status !== 'pending') {
           throw new Error(`Unexpected job status: ${data.status}`)
@@ -175,6 +189,19 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     },
     [loadReview]
   )
+
+  // Tick the displayed counter one address at a time between chunk responses.
+  useEffect(() => {
+    if (!isOpen || step !== 'resolving') return
+    const id = setInterval(() => {
+      const p = paceRef.current
+      const extrapolated =
+        p.confirmed + Math.floor((Date.now() - p.chunkStart) / Math.max(p.msPerAddr, 200))
+      const cap = Math.min(progress.total, p.confirmed + 11)
+      setSmoothProcessed((prev) => Math.max(prev, Math.min(extrapolated, cap)))
+    }, 350)
+    return () => clearInterval(id)
+  }, [isOpen, step, progress.total])
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -395,7 +422,15 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     onClose()
   }
 
-  const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0
+  const shownProcessed = Math.max(smoothProcessed, 0)
+  const pct = progress.total > 0 ? Math.round((shownProcessed / progress.total) * 100) : 0
+  const remainingMs = Math.max(0, progress.total - shownProcessed) * paceRef.current.msPerAddr
+  const remainingLabel =
+    progress.total === 0 || shownProcessed === 0
+      ? null
+      : remainingMs < 60_000
+        ? 'under a minute left'
+        : `about ${Math.ceil(remainingMs / 60_000)} min left`
 
   return createPortal(
     <div className="save-modal-backdrop sq-backdrop" onClick={handleClose} role="presentation">
@@ -411,7 +446,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
           <div style={{ minWidth: 0 }}>
             <div style={headTopStyle}>
               <div id="import-rentroll-title" style={titleStyle}>
-                {step === 'review' ? 'Review your rent roll' : 'Upload your rent roll'}
+                {step === 'review' ? 'Review your portfolio' : 'Upload your rent roll'}
               </div>
               <button type="button" className="ir-close" onClick={handleClose} aria-label="Close">
                 &times;
@@ -423,6 +458,9 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                   {fileName} · {selectedProperties} propert{selectedProperties === 1 ? 'y' : 'ies'} ·{' '}
                   {selected.length} unit{selected.length === 1 ? '' : 's'} selected
                   {flaggedGroups > 0 ? ` · ${flaggedGroups} need${flaggedGroups === 1 ? 's' : ''} a look` : ''}
+                  <div style={{ marginTop: 2, color: '#8a94a0', fontSize: 12 }}>
+                    You can edit property and unit-level details in your dashboard at any time.
+                  </div>
                 </>
               ) : (
                 'CSV or Excel, any format — we pull out the addresses, units, and rents.'
@@ -491,7 +529,8 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
               <div className="ir-progress-label">
                 Checking {progress.total} address{progress.total === 1 ? '' : 'es'} against city records…{' '}
                 <span className="ir-progress-count">
-                  {progress.processed}/{progress.total}
+                  {shownProcessed}/{progress.total}
+                  {remainingLabel ? ` · ${remainingLabel}` : ''}
                 </span>
               </div>
               <div className="ir-progress-track">

@@ -5557,6 +5557,24 @@ button.save-toggle-switch {
 }
 .sq-clear:hover, .sq-clear-armed { color: #c0392b; }
 
+/* Destructive queue action: solid red button, darkens when armed. */
+.sq-clear-btn {
+  background: #c0392b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.sq-clear-btn:hover,
+.sq-clear-btn-armed {
+  background: #a93226;
+}
+
 .sq-address-link { transition: color 0.15s ease; }
 .sq-address-link:hover { color: #0f2744; text-decoration-color: #0f2744; }
 

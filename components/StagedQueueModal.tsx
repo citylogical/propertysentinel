@@ -535,11 +535,12 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
             </div>
           ) : (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 {hasImportJob ? (
                   <button
                     type="button"
-                    style={backLinkStyle}
+                    className="ps-cta ps-cta-blue"
+                    style={{ padding: '7px 12px', fontSize: 12 }}
                     onClick={() => {
                       onClose()
                       // Defer so this modal unmounts before the review opens.
@@ -555,7 +556,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 )}
                 <button
                   type="button"
-                  className={`sq-clear${clearArmed ? ' sq-clear-armed' : ''}`}
+                  className={`sq-clear-btn${clearArmed ? ' sq-clear-btn-armed' : ''}`}
                   onClick={() => void handleClearQueue()}
                 >
                   {clearArmed
