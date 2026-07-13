@@ -1,12 +1,13 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { EnrichedComplaint } from '@/components/ComplaintRowEnriched'
-import ComplaintRowEnriched from '@/components/ComplaintRowEnriched'
+import ComplaintRowEnriched, { mergeComplaintWithEnrichPayload } from '@/components/ComplaintRowEnriched'
 import type { ComplaintRow, ViolationRow, PermitRow } from '@/lib/supabase-search'
-import { isDefaultVisible } from '@/lib/sr-codes'
+import { ENRICHABLE_CODES, isDefaultVisible } from '@/lib/sr-codes'
+import { SR_INTAKE_LABELS } from '@/lib/sr-catalog'
 
 const PAGE_SIZE = 5
 
@@ -62,6 +63,107 @@ function permitStatusClass(status: string | null): 'active' | 'expired' | 'other
   if (s === 'ISSUED' || s === 'ACTIVE') return 'active'
   if (s === 'EXPIRED' || s === 'REVOKED') return 'expired'
   return 'other'
+}
+
+// The "See complaint context" button — magnifying glass + label. Serves both
+// the marketing nudge (signed-out / not-in-portfolio → save flow) and the
+// portfolio owner's on-demand enrichment trigger.
+function SeeContextButton({
+  onClick,
+  loading = false,
+  disabled = false,
+  error = false,
+}: {
+  onClick: () => void
+  loading?: boolean
+  disabled?: boolean
+  error?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className="see-context-nudge"
+      onClick={onClick}
+      disabled={disabled || loading}
+      style={error ? { color: '#c0392b', borderColor: '#c0392b' } : undefined}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      {loading ? 'Loading context…' : error ? 'Could not load — retry' : 'See complaint context'}
+    </button>
+  )
+}
+
+// Public-safe tags for the in-portfolio inline context, mirroring the
+// dashboard's ComplaintDetail. Tenant-identifying fields (Filed by, Unit,
+// Danger, Owner notified/occupied, raw narrative) stay admin-only and are
+// deliberately excluded here.
+function buildOwnerTags(d: EnrichedComplaint): { label: string; value: string }[] {
+  const tags: { label: string; value: string }[] = []
+  const codeKey = String(d.sr_short_code ?? '').toUpperCase()
+  const intakeLabels = SR_INTAKE_LABELS[codeKey] ?? {}
+  const desc = (d.standard_description ?? '').trim()
+  const rawDesc = (d.complaint_description ?? '').trim()
+  if (d.concern_category) {
+    tags.push({ label: intakeLabels.concern ?? 'Category', value: d.concern_category })
+  }
+  if (d.problem_category && intakeLabels.problem) {
+    tags.push({ label: intakeLabels.problem, value: d.problem_category })
+  }
+  // Structured-intake codes with no paraphrase: the surface/freeform answer
+  // lives in complaint_description — promote it when the code labels it.
+  if (!desc && intakeLabels.description && rawDesc) {
+    tags.push({ label: intakeLabels.description, value: rawDesc })
+  }
+  if (codeKey === 'EAF' && String(d.owner_occupied ?? '').trim().toLowerCase() === 'yes') {
+    tags.push({ label: 'Animal resides at address', value: 'Yes' })
+  }
+  return tags
+}
+
+// Inline complaint context for portfolio owners: paraphrased description plus
+// categorical tags, always visible (no expander). Spans both grid columns of
+// the .complaint row.
+function OwnerContextBlock({ d }: { d: EnrichedComplaint }) {
+  const desc = (d.standard_description ?? '').trim()
+  const tags = buildOwnerTags(d)
+  if (!desc && tags.length === 0) {
+    return (
+      <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+        No additional detail on file for this complaint.
+      </div>
+    )
+  }
+  return (
+    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {desc ? (
+        <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{desc}</div>
+      ) : null}
+      {tags.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {tags.map((t, i) => (
+            <span
+              key={i}
+              style={{
+                fontSize: 11,
+                padding: '3px 8px',
+                background: '#fff',
+                border: '1px solid #e5e1d6',
+                borderRadius: 3,
+                lineHeight: 1.4,
+                color: 'var(--text)',
+              }}
+            >
+              <span style={{ color: 'var(--text-dim)', marginRight: 4 }}>{t.label}:</span>
+              <span style={{ fontWeight: 500 }}>{t.value}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function ViolationGroups({
@@ -429,8 +531,12 @@ export default function PropertyFeed({
 }: PropertyFeedProps) {
   const { user, isLoaded } = useUser()
   const [isAdmin, setIsAdmin] = useState(false)
+  // Property is in the signed-in user's portfolio — unlocks the inline
+  // complaint context (same range-aware check the header save button uses).
+  const [isSaved, setIsSaved] = useState(false)
   const [enrichedBySr, setEnrichedBySr] = useState<Map<string, EnrichedComplaint>>(() => new Map())
   const [enrichActiveSr, setEnrichActiveSr] = useState<string | null>(null)
+  const [enrichErrorSr, setEnrichErrorSr] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
@@ -448,6 +554,28 @@ export default function PropertyFeed({
         setIsAdmin(false)
       })
   }, [isLoaded, user])
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (!user || !addressNormalized) {
+      setIsSaved(false)
+      return
+    }
+    let cancelled = false
+    void fetch(`/api/dashboard/save?canonical_address=${encodeURIComponent(addressNormalized)}`, {
+      credentials: 'include',
+    })
+      .then((r) => r.json())
+      .then((d: { saved?: boolean }) => {
+        if (!cancelled) setIsSaved(!!d.saved)
+      })
+      .catch(() => {
+        if (!cancelled) setIsSaved(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isLoaded, user, addressNormalized])
   const [activeTab, setActiveTab] = useState<'311' | 'violations' | 'permits'>('311')
   const [showAllSRCodes, setShowAllSRCodes] = useState(false)
   const [visible311, setVisible311] = useState(PAGE_SIZE)
@@ -483,7 +611,7 @@ export default function PropertyFeed({
   }, [])
 
   useEffect(() => {
-    if (!isLoaded || !isAdmin || !addressNormalized) return
+    if (!isLoaded || !(isAdmin || isSaved) || !addressNormalized) return
     let cancelled = false
     void fetch(`/api/complaints/enriched?address=${encodeURIComponent(addressNormalized)}`, {
       credentials: 'include',
@@ -499,7 +627,49 @@ export default function PropertyFeed({
     return () => {
       cancelled = true
     }
-  }, [isLoaded, isAdmin, addressNormalized])
+  }, [isLoaded, isAdmin, isSaved, addressNormalized])
+
+  // On-demand enrichment for portfolio owners on the plain (non-admin) rows.
+  // One SR at a time — the Aura fetch is slow and rate-sensitive. The server
+  // authorizes per-SR: non-admins may only enrich complaints filed at their
+  // own portfolio addresses.
+  const runOwnerEnrich = useCallback(
+    async (c: ComplaintRow) => {
+      if (enrichActiveSr) return
+      const srKey = String(c.sr_number)
+      setEnrichActiveSr(srKey)
+      setEnrichErrorSr(null)
+      try {
+        const res = await fetch('/api/complaints/enrich-on-demand', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sr_number: srKey }),
+        })
+        const j = (await res.json().catch(() => ({}))) as {
+          success?: boolean
+          data?: Record<string, unknown>
+        }
+        if (res.ok && j.success && j.data) {
+          const row = mergeComplaintWithEnrichPayload(c, j.data)
+          setEnrichedBySr((prev) => {
+            const next = new Map(prev)
+            next.set(srKey, row)
+            return next
+          })
+        } else {
+          setEnrichErrorSr(srKey)
+          window.setTimeout(() => setEnrichErrorSr((cur) => (cur === srKey ? null : cur)), 2400)
+        }
+      } catch {
+        setEnrichErrorSr(srKey)
+        window.setTimeout(() => setEnrichErrorSr((cur) => (cur === srKey ? null : cur)), 2400)
+      } finally {
+        setEnrichActiveSr(null)
+      }
+    },
+    [enrichActiveSr],
+  )
 
   useEffect(() => {
     const btn = activeBtnRef.current
@@ -679,7 +849,8 @@ export default function PropertyFeed({
             <>
               {visibleComplaints.map((c) => {
                 const statusClass = isOpen(c.status) ? 'open' : 'completed'
-                const enrich = isAdmin && isLoaded ? enrichedBySr.get(String(c.sr_number)) : undefined
+                const srKey = String(c.sr_number)
+                const enrich = isLoaded && (isAdmin || isSaved) ? enrichedBySr.get(srKey) : undefined
 
                 if (isLoaded && isAdmin) {
                   return (
@@ -700,6 +871,14 @@ export default function PropertyFeed({
                   )
                 }
 
+                // In-portfolio rows show context inline; the button only remains
+                // on enrichable rows that haven't been enriched yet, where it
+                // fetches on demand. Everyone else keeps the save-flow nudge.
+                const isEnrichable = ENRICHABLE_CODES.has(
+                  (c.sr_short_code ?? '').trim().toUpperCase(),
+                )
+                const showOwnerButton = isSaved && !enrich && isEnrichable
+
                 return (
                   <div key={c.sr_number} className="complaint" style={{ alignItems: 'flex-start' }}>
                     <div>
@@ -719,16 +898,22 @@ export default function PropertyFeed({
                       <div className={`status-badge ${statusClass}`}>
                         {isOpen(c.status) ? 'Open' : 'Completed'}
                       </div>
-                      <button
-                        type="button"
-                        className="see-context-nudge"
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('ps:open-save-modal'))
-                        }}
-                      >
-                        See complaint context →
-                      </button>
+                      {!isSaved ? (
+                        <SeeContextButton
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('ps:open-save-modal'))
+                          }}
+                        />
+                      ) : showOwnerButton ? (
+                        <SeeContextButton
+                          onClick={() => void runOwnerEnrich(c)}
+                          loading={enrichActiveSr === srKey}
+                          disabled={enrichActiveSr != null && enrichActiveSr !== srKey}
+                          error={enrichErrorSr === srKey}
+                        />
+                      ) : null}
                     </div>
+                    {isSaved && enrich ? <OwnerContextBlock d={enrich} /> : null}
                   </div>
                 )
               })}
