@@ -3,6 +3,8 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import ComplaintDetail, { type ComplaintDetailRecord } from '@/app/dashboard/details/ComplaintDetail'
+import ViolationDetail, { type ViolationDetailRecord } from '@/app/dashboard/details/ViolationDetail'
+import PermitDetail, { type PermitDetailRecord } from '@/app/dashboard/details/PermitDetail'
 import { StatusPill, formatDate, type StatusKind } from '@/app/dashboard/details/_shared'
 
 // One-time "your portfolio is live" recap: opens when PortfolioBuildDriver
@@ -96,10 +98,10 @@ export default function PortfolioHighlightsModal() {
             {selected ? (
               <button
                 type="button"
-                className="imq-rail-action"
+                className="phm-back-btn"
                 onClick={() => setSelected(null)}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <line x1="19" y1="12" x2="5" y2="12" />
                   <polyline points="12 19 5 12 12 5" />
                 </svg>
@@ -127,21 +129,42 @@ export default function PortfolioHighlightsModal() {
                     letterSpacing: '0.08em',
                   }}
                 >
-                  311 Complaint
+                  {selected.category === 'complaint'
+                    ? '311 Complaint'
+                    : selected.category === 'violation'
+                      ? 'Violation'
+                      : 'Permit'}
                 </span>
                 {selected.open_date ? <span> · {formatDate(selected.open_date)}</span> : null}
               </div>
               <div style={{ borderTop: '1px solid #f0ede6', marginBottom: 12 }} />
-              <ComplaintDetail
-                complaint={selected.complaint as ComplaintDetailRecord}
-                isAdmin={false}
-                address={selected.property_address}
-                addressSlug={selected.property_slug}
-              />
+              {selected.category === 'complaint' && selected.complaint ? (
+                <ComplaintDetail
+                  complaint={selected.complaint as ComplaintDetailRecord}
+                  isAdmin={false}
+                  address={selected.property_address}
+                  addressSlug={selected.property_slug}
+                />
+              ) : selected.category === 'violation' && selected.violations ? (
+                <ViolationDetail
+                  violations={selected.violations as ViolationDetailRecord[]}
+                  address={selected.property_address}
+                  addressSlug={selected.property_slug}
+                />
+              ) : selected.category === 'permit' && selected.permit ? (
+                <PermitDetail
+                  permit={selected.permit as PermitDetailRecord}
+                  address={selected.property_address}
+                  addressSlug={selected.property_slug}
+                />
+              ) : null}
             </div>
           ) : (
             items.map((row) => {
-              const clickable = row.category === 'complaint' && Boolean(row.complaint)
+              const clickable =
+                (row.category === 'complaint' && Boolean(row.complaint)) ||
+                (row.category === 'violation' && (row.violations?.length ?? 0) > 0) ||
+                (row.category === 'permit' && Boolean(row.permit))
               const pillKind: StatusKind | null =
                 row.status === 'open'
                   ? 'open'
