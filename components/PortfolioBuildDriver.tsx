@@ -229,7 +229,9 @@ export default function PortfolioBuildDriver({ isSignedIn }: Props) {
 const bannerStyle: CSSProperties = {
   background: '#ffffff',
   borderBottom: '1px solid #e5e1d6',
-  padding: '10px 32px',
+  // Vertical padding sized so the bar sits evenly between the tab row above
+  // and the portfolio filters below.
+  padding: '16px 32px',
   transition: 'opacity 0.3s ease',
 }
 

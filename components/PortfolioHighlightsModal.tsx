@@ -84,7 +84,7 @@ export default function PortfolioHighlightsModal() {
         aria-modal="true"
       >
         <div style={headerStyle}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div id="portfolio-highlights-title" style={titleStyle}>
               Your portfolio is live
             </div>
@@ -92,17 +92,46 @@ export default function PortfolioHighlightsModal() {
               The latest activity across your properties from the past 12 months.
             </div>
           </div>
-          <button type="button" className="ir-close" onClick={handleClose} aria-label="Close">
-            &times;
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            {selected ? (
+              <button
+                type="button"
+                className="imq-rail-action"
+                onClick={() => setSelected(null)}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Back to highlights
+              </button>
+            ) : null}
+            <button type="button" className="ir-close" onClick={handleClose} aria-label="Close">
+              &times;
+            </button>
+          </div>
         </div>
 
         <div style={bodyStyle}>
           {selected ? (
-            <div>
-              <button type="button" style={backLinkStyle} onClick={() => setSelected(null)}>
-                &larr; Back to highlights
-              </button>
+            <div style={detailWrapStyle}>
+              {/* Mirror the activity feed's detail chrome: serif type title,
+                  mono category · date line, hairline, then the shared card. */}
+              <div style={detailTitleStyle}>{selected.display_type}</div>
+              <div style={detailMetaStyle}>
+                <span
+                  style={{
+                    color: categoryTagColor(selected.category),
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                  }}
+                >
+                  311 Complaint
+                </span>
+                {selected.open_date ? <span> · {formatDate(selected.open_date)}</span> : null}
+              </div>
+              <div style={{ borderTop: '1px solid #f0ede6', marginBottom: 12 }} />
               <ComplaintDetail
                 complaint={selected.complaint as ComplaintDetailRecord}
                 isAdmin={false}
@@ -154,6 +183,7 @@ export default function PortfolioHighlightsModal() {
           <button
             type="button"
             className="ps-cta ps-cta-green"
+            style={{ padding: '10px 18px', fontSize: 13 }}
             onClick={() => {
               handleClose()
               window.location.assign('/dashboard/activity')
@@ -211,16 +241,25 @@ const bodyStyle: CSSProperties = {
   flex: '1 1 auto',
 }
 
-const backLinkStyle: CSSProperties = {
-  display: 'inline-block',
-  background: 'none',
-  border: 'none',
-  padding: '14px 22px 0',
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: 12.5,
-  fontWeight: 600,
-  color: '#0f2744',
-  cursor: 'pointer',
+const detailWrapStyle: CSSProperties = {
+  padding: '20px 28px 28px',
+}
+
+const detailTitleStyle: CSSProperties = {
+  fontFamily: 'Merriweather, Georgia, serif',
+  fontSize: 18,
+  fontWeight: 700,
+  color: '#1a1a1a',
+  lineHeight: 1.2,
+  marginBottom: 10,
+}
+
+const detailMetaStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 11,
+  letterSpacing: '0.04em',
+  color: '#888888',
+  marginBottom: 10,
 }
 
 const rowStyle: CSSProperties = {

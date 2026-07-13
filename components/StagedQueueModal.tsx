@@ -102,7 +102,10 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     fetch('/api/dashboard/import/job')
       .then((res) => res.json())
       .then((data: { job?: { status?: string } | null }) => {
-        if (!cancelled) setHasImportJob(Boolean(data.job))
+        // Only an ACTIVE import review earns the back link — a queue built by
+        // hand (or after an import is committed) shouldn't advertise a review
+        // that isn't there.
+        if (!cancelled) setHasImportJob(data.job?.status === 'review')
       })
       .catch(() => {})
     fetch('/api/dashboard/stage?list=1')
