@@ -5279,9 +5279,13 @@ button.save-toggle-switch {
 }
 
 .see-context-nudge {
-  background: none;
-  border: none;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #ddd9d0;
+  border-radius: 4px;
+  padding: 5px 10px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -5289,11 +5293,21 @@ button.save-toggle-switch {
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
-  transition: text-decoration 0.12s;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-.see-context-nudge:hover {
-  text-decoration: underline;
+.see-context-nudge svg {
+  flex-shrink: 0;
+}
+
+.see-context-nudge:hover:not(:disabled) {
+  background: var(--cream);
+  border-color: #c9c4b8;
+}
+
+.see-context-nudge:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .save-modal-benefits {
