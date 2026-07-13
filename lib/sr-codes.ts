@@ -199,6 +199,14 @@ export const ENRICHABLE_CODES = new Set(
   SR_CODES.filter(e => e.enrichable).map(e => e.code)
 )
 
+// Owner-liability codes we auto-enrich on portfolio save: the default alert
+// checklist (ownerRelevant) intersected with enrichable — today the 29 owner
+// codes minus WCA2 (Water Lead Test Kit Request: a kit request, nothing
+// behind it to enrich).
+export const OWNER_ENRICHABLE_CODES = new Set(
+  SR_CODES.filter(e => e.ownerRelevant && e.enrichable).map(e => e.code)
+)
+
 // Returns true if a complaint shows in the public property page default view.
 // LEGACY — authenticated surfaces use OWNER_RELEVANT_CODES / the preferences seam.
 export function isDefaultVisible(srShortCode: string | null | undefined): boolean {

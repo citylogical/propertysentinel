@@ -77,7 +77,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ requires_checkout: true, total_units: totalUnits })
   }
 
-  const result = await promoteStagedRowsForUser(supabase, userId, stagedIds)
+  // skipStats: promotion must stay fast for 300+ property imports. The
+  // client-driven build loop (/api/dashboard/build/stats) computes activity
+  // stats right after; Worker C's nightly phase 3 is the backstop.
+  const result = await promoteStagedRowsForUser(supabase, userId, stagedIds, { skipStats: true })
   if (result.promoted === 0) {
     return NextResponse.json(
       { error: 'Could not save your properties — try again' },

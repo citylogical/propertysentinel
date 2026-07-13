@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { paraphraseComplaint } from '@/lib/paraphrase-complaint'
 import { QUESTION_MAP, SKIP_IDS } from '@/lib/aura-question-map'
+import { getAllAddresses } from '@/lib/portfolio-stats'
 
 /** Aurora config; update `fwuid` and `loaded` when the city deploys Salesforce changes. */
 const AURA_CONTEXT = JSON.stringify({
@@ -214,9 +215,6 @@ export async function POST(request: Request) {
   const subRole = (subscriber as { role?: string | null } | null)?.role != null
     ? String((subscriber as { role?: string | null }).role)
     : ''
-  if (!subscriber || subRole !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   let body: { sr_number?: string }
   try {
@@ -227,6 +225,42 @@ export async function POST(request: Request) {
   const sr_number = (body.sr_number ?? '').trim()
   if (!sr_number) {
     return NextResponse.json({ error: 'Missing sr_number' }, { status: 400 })
+  }
+
+  // Admins enrich anything. Everyone else may enrich ONLY complaints filed
+  // at their own portfolio addresses — the post-save build loop's path.
+  // The gate is per-SR ownership, so nobody can spend our Aura budget on
+  // arbitrary service requests.
+  if (!subscriber || subRole !== 'admin') {
+    if (!subscriber) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const { data: complaintRow } = await supabaseAdmin
+      .from('complaints_311')
+      .select('address_normalized')
+      .eq('sr_number', sr_number)
+      .maybeSingle()
+    const complaintAddress = (complaintRow as { address_normalized?: string | null } | null)
+      ?.address_normalized
+    if (!complaintAddress) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const { data: props } = await supabaseAdmin
+      .from('portfolio_properties')
+      .select('canonical_address, address_range, additional_streets')
+      .eq('user_id', user.id)
+    const owned = ((props ?? []) as Array<{
+      canonical_address: string
+      address_range: string | null
+      additional_streets: string[] | null
+    }>).some((p) =>
+      getAllAddresses(p.canonical_address, p.address_range, p.additional_streets).includes(
+        complaintAddress
+      )
+    )
+    if (!owned) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   // --- Step 1: find Case ID

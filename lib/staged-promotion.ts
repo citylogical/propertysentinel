@@ -54,9 +54,22 @@ async function seedSrPreferences(supabase: SupabaseClient, clerkId: string): Pro
   }
 }
 
+type PromoteOptions = {
+  /**
+   * Skip the per-property activity-stats computation (the slow part —
+   * ~1-2s/property). Used by the entitled commit path so large portfolios
+   * promote instantly; the client-driven build loop (or Worker C's nightly
+   * phase 3) fills stats in afterward via stats_updated_at IS NULL. The
+   * Stripe webhook path keeps the default (stats inline) — its behavior is
+   * unchanged.
+   */
+  skipStats?: boolean
+}
+
 async function promoteRows(
   supabase: SupabaseClient,
-  rows: StagedPropertyRow[]
+  rows: StagedPropertyRow[],
+  opts?: PromoteOptions
 ): Promise<PromotionResult> {
   const result: PromotionResult = { promoted: 0, errors: [] }
   if (rows.length === 0) return result
@@ -157,6 +170,7 @@ async function promoteRows(
     }
 
     // Activity stats, same as the old save route. Non-fatal per property.
+    if (opts?.skipStats) continue
     try {
       const activity = await fetchPortfolioActivity(
         supabase,
@@ -184,7 +198,8 @@ const STAGED_SELECT =
 export async function promoteStagedRowsForUser(
   supabase: SupabaseClient,
   clerkId: string,
-  stagedIds: string[]
+  stagedIds: string[],
+  opts?: PromoteOptions
 ): Promise<PromotionResult> {
   if (stagedIds.length === 0) return { promoted: 0, errors: [] }
   const { data: rows, error } = await supabase
@@ -197,7 +212,7 @@ export async function promoteStagedRowsForUser(
     console.error('Staged promotion fetch failed:', error)
     return { promoted: 0, errors: ['fetch_failed'] }
   }
-  return promoteRows(supabase, (rows ?? []) as StagedPropertyRow[])
+  return promoteRows(supabase, (rows ?? []) as StagedPropertyRow[], opts)
 }
 
 /** Promote the rows stamped with a checkout session (webhook path). */
