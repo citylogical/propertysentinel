@@ -5278,18 +5278,22 @@ button.save-toggle-switch {
   background: #8a4d1b;
 }
 
+/* Amber intel chip — mono uppercase, same voice as SR numbers and record
+   labels. Amber is the CTA accent; this is the one warm clickable in the row. */
 .see-context-nudge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: #ffffff;
-  border: 1px solid #ddd9d0;
-  border-radius: 4px;
-  padding: 5px 10px;
-  font-family: inherit;
-  font-size: 12px;
+  gap: 7px;
+  background: rgba(232, 168, 74, 0.12);
+  border: 1px solid rgba(200, 130, 30, 0.45);
+  border-radius: 3px;
+  padding: 6px 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
   font-weight: 500;
-  color: #0f2744;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a5a1c;
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
@@ -5298,16 +5302,29 @@ button.save-toggle-switch {
 
 .see-context-nudge svg {
   flex-shrink: 0;
+  transition: transform 0.15s;
 }
 
 .see-context-nudge:hover:not(:disabled) {
-  background: var(--cream);
-  border-color: #c9c4b8;
+  background: rgba(232, 168, 74, 0.22);
+  border-color: #c8821e;
+}
+
+.see-context-nudge:hover:not(:disabled) svg {
+  transform: scale(1.12);
 }
 
 .see-context-nudge:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .see-context-nudge svg,
+  .see-context-nudge:hover:not(:disabled) svg {
+    transition: none;
+    transform: none;
+  }
 }
 
 .save-modal-benefits {
