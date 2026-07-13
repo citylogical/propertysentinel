@@ -202,43 +202,48 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
 
     const canonical = resolved.address_normalized ?? normalized
 
-    // Sibling fan-out (condo towers, address ranges, mailing-name buildings).
+    // Building range — HANSEN FIRST. The city's own building record is the
+    // definitive range source (archive first, live handshake only on a
+    // retry-eligible miss; negative cache + global rate caps respected).
+    // Only when Hansen has no multi-address range for the building do we
+    // fall back to the properties-table cascade in fetchSiblingPins
+    // (manual entries → approved user ranges → condo fan-out → mailing-name
+    // grouping). PINs across a Hansen range are collected exact + unit-
+    // suffix-prefix, so condo unit PINs still come along.
     let pins = resolved.pin ? [resolved.pin] : []
     let siblingAddresses = [canonical]
     let addressRange: string | null = rangeDisplay
-    let resolvedVia: string = 'none'
-    try {
-      if (resolved.pin) {
-        const siblings = await fetchSiblingPins(resolved.pin, canonical)
-        pins = siblings.siblingPins.length > 0 ? siblings.siblingPins : pins
-        siblingAddresses = siblings.siblingAddresses.length > 0 ? siblings.siblingAddresses : siblingAddresses
-        // Prefer the sibling-derived range over the rent roll's own hint.
-        addressRange = siblings.addressRange ?? rangeDisplay
-        resolvedVia = siblings.resolvedVia
-      }
-    } catch (e) {
-      console.error('[resolveImportAddress] sibling fan-out failed:', e)
-    }
+    let rangeSource: 'hansen' | 'fanout' | 'none' = 'none'
 
-    // Hansen — the city's own building record, same guarantee a manual
-    // address search provides: archive first, live handshake only on a
-    // retry-eligible miss (negative cache + global rate caps respected;
-    // rate-limited addresses simply keep the fan-out result and get healed
-    // by a later page visit). Manual entries and approved user ranges stay
-    // authoritative, matching the address page's source hierarchy.
     try {
-      if (resolvedVia !== 'mailing' && resolvedVia !== 'user_range') {
-        const base = stripUnitSuffix(canonical) ?? canonical
-        const hansen = await ensureHansenRecord(base)
-        if (hansen && hansen.allAddresses.length > 1) {
-          const hansenPins = await collectPinsForUserRangeAddresses(hansen.allAddresses)
+      const base = stripUnitSuffix(canonical) ?? canonical
+      const hansen = await ensureHansenRecord(base)
+      if (hansen && hansen.allAddresses.length > 1) {
+        const hansenPins = await collectPinsForUserRangeAddresses(hansen.allAddresses)
+        if (hansenPins.length > 0) {
           pins = [...new Set([...pins, ...hansenPins])]
-          siblingAddresses = [...new Set([...siblingAddresses, ...hansen.allAddresses])]
+          siblingAddresses = hansen.allAddresses
           addressRange = buildAddressRange(hansen.allAddresses) ?? addressRange
+          rangeSource = 'hansen'
         }
       }
     } catch (e) {
       console.error('[resolveImportAddress] hansen ensure failed:', e)
+    }
+
+    if (rangeSource !== 'hansen') {
+      try {
+        if (resolved.pin) {
+          const siblings = await fetchSiblingPins(resolved.pin, canonical)
+          pins = siblings.siblingPins.length > 0 ? siblings.siblingPins : pins
+          siblingAddresses = siblings.siblingAddresses.length > 0 ? siblings.siblingAddresses : siblingAddresses
+          // Prefer the sibling-derived range over the rent roll's own hint.
+          addressRange = siblings.addressRange ?? rangeDisplay
+          if (siblings.resolvedVia !== 'none') rangeSource = 'fanout'
+        }
+      } catch (e) {
+        console.error('[resolveImportAddress] sibling fan-out failed:', e)
+      }
     }
 
     if (grade === 'verified' && (addressRange !== null || siblingAddresses.length > 1)) {
