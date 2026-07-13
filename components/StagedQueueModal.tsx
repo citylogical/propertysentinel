@@ -59,7 +59,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Local text state for units inputs so typing isn't fought by row state.
   const [unitsDraft, setUnitsDraft] = useState<Record<string, string>>({})
-  const [nameDraft, setNameDraft] = useState<Record<string, string>>({})
   const [notice, setNotice] = useState<string | null>(null)
   // Wizard: 'queue' (review/edit rows) → 'plan' (pick a band) → 'checkout'
   // (Stripe embedded checkout mounted in place — the user never leaves).
@@ -119,7 +118,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         setUnitsDraft(
           Object.fromEntries(fetched.map((r) => [r.id, r.units != null ? String(r.units) : '']))
         )
-        setNameDraft(Object.fromEntries(fetched.map((r) => [r.id, r.property_name ?? ''])))
         onQueueChange?.(data.staged_count ?? fetched.length)
       })
       .catch(() => {
@@ -168,12 +166,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     const parsed = parseUnitsInput(unitsDraft[row.id] ?? '')
     setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, units: parsed } : r)))
     if (parsed !== row.units) persistField(row.id, 'units', parsed)
-  }
-
-  const handleNameBlur = (row: StagedRow) => {
-    const name = (nameDraft[row.id] ?? '').trim() || null
-    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, property_name: name } : r)))
-    if (name !== row.property_name) persistField(row.id, 'property_name', name)
   }
 
   const removeRow = async (row: StagedRow) => {
@@ -368,7 +360,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     <div className="save-modal-backdrop sq-backdrop" onClick={onClose} role="presentation">
       <div
         className="sq-modal"
-        style={modalStyle}
+        style={{ ...modalStyle, maxWidth: step === 'queue' ? 920 : 720 }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="staged-queue-title"
@@ -407,7 +399,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
           </button>
         </div>
 
-        <div style={bodyStyle}>
+        <div style={step === 'queue' && !loading && rows.length > 0 ? queueSplitBodyStyle : bodyStyle}>
           {step === 'checkout' ? (
             <div>
               <button
@@ -534,156 +526,251 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
               Nothing in your queue. Search any Chicago address and click the + button to add it.
             </div>
           ) : (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                {hasImportJob ? (
-                  <button
-                    type="button"
-                    className="ps-cta ps-cta-blue"
-                    style={{ padding: '7px 12px', fontSize: 12 }}
-                    onClick={() => {
-                      onClose()
-                      // Defer so this modal unmounts before the review opens.
-                      setTimeout(() => {
-                        window.dispatchEvent(new CustomEvent('ps:open-import', { detail: {} }))
-                      }, 0)
-                    }}
-                  >
-                    &larr; Back to import review
-                  </button>
-                ) : (
-                  <span />
-                )}
-                <button
-                  type="button"
-                  className={`sq-clear-btn${clearArmed ? ' sq-clear-btn-armed' : ''}`}
-                  onClick={() => void handleClearQueue()}
-                >
-                  {clearArmed
-                    ? `Click again to remove all ${rows.length}`
-                    : 'Clear queue'}
-                </button>
-              </div>
-              <div style={{ ...gridRowStyle, ...headRowStyle }}>
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  aria-label={allSelected ? 'Deselect all' : 'Select all'}
-                  style={checkboxStyle}
-                />
-                <div style={headLabelStyle}>Property name</div>
-                <div style={headLabelStyle}>Address</div>
-                <div style={{ ...headLabelStyle, textAlign: 'center' }}>Units</div>
-                <div />
-              </div>
-
-              {pagedRows.map((row) => {
-                const isRowSelected = selected.has(row.id)
-                // Faint red on the units box until a valid count (> 0) is
-                // entered — selection-independent, so the queue reads at a
-                // glance which rows still need input.
-                const rowMissingUnits = parseUnitsInput(unitsDraft[row.id] ?? '') == null
-                return (
-                  <div key={row.id} className="sq-row" style={gridRowStyle}>
-                    <input
-                      type="checkbox"
-                      checked={isRowSelected}
-                      onChange={() => toggleRow(row.id)}
-                      aria-label={`Select ${row.property_name || row.canonical_address}`}
-                      style={checkboxStyle}
-                    />
-                    <input
-                      className="save-field-input"
-                      type="text"
-                      value={nameDraft[row.id] ?? ''}
-                      onChange={(e) =>
-                        setNameDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
-                      }
-                      onBlur={() => handleNameBlur(row)}
-                      placeholder="Property name"
-                      aria-label="Property name"
-                    />
-                    <a
-                      href={`/address/${row.slug}?building=true`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="sq-address-link"
-                      style={addressCellStyle}
-                      title={row.address_range ?? row.canonical_address}
-                    >
-                      {row.address_range || row.canonical_address}
-                    </a>
-                    <input
-                      className={`save-field-input sq-units-input${rowMissingUnits ? ' sq-units-invalid' : ''}`}
-                      type="text"
-                      inputMode="numeric"
-                      value={unitsDraft[row.id] ?? ''}
-                      onChange={(e) =>
-                        setUnitsDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
-                      }
-                      onBlur={() => handleUnitsBlur(row)}
-                      placeholder="—"
-                      aria-label="Unit count"
-                      style={{ textAlign: 'center' }}
-                    />
-                    <button
-                      type="button"
-                      className="sq-remove"
-                      onClick={() => void removeRow(row)}
-                      aria-label={`Remove ${row.property_name || row.canonical_address} from queue`}
-                      title="Remove from queue"
-                      style={removeBtnStyle}
-                    >
-                      &times;
-                    </button>
-                  </div>
-                )
-              })}
-
-              {rows.length > qPerPage || qTotalPages > 1 ? (
-                <div className="ir-pager">
-                  <button
-                    type="button"
-                    className="ir-pager-btn"
-                    disabled={qPageClamped <= 1}
-                    onClick={() => setQPage(qPageClamped - 1)}
-                  >
-                    &lsaquo; Prev
-                  </button>
-                  <span className="ir-pager-info">
+            <div className="imq-split">
+              <div className="imq-list">
+                <div className="imq-toolbar">
+                  <input
+                    type="checkbox"
+                    className="imq-check"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label={allSelected ? 'Deselect all' : 'Select all'}
+                  />
+                  <span>Select all</span>
+                  <span className="imq-toolbar-count">
                     {(qPageClamped - 1) * qPerPage + 1}–
                     {Math.min(qPageClamped * qPerPage, rows.length)} of {rows.length}
                   </span>
+                </div>
+                <div className="imq-list-scroll">
+                  {pagedRows.map((row) => {
+                    const isRowSelected = selected.has(row.id)
+                    // Faint red on the units box until a valid count (> 0) is
+                    // entered — selection-independent, so the queue reads at a
+                    // glance which rows still need input.
+                    const rowMissingUnits = parseUnitsInput(unitsDraft[row.id] ?? '') == null
+                    return (
+                      <div key={row.id} className="imq-row">
+                        <input
+                          type="checkbox"
+                          className="imq-check"
+                          checked={isRowSelected}
+                          onChange={() => toggleRow(row.id)}
+                          aria-label={`Select ${row.property_name || row.canonical_address}`}
+                        />
+                        <div className="imq-row-addr">
+                          <a
+                            href={`/address/${row.slug}?building=true`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={row.property_name ?? row.canonical_address}
+                          >
+                            {row.property_name || row.canonical_address}
+                          </a>
+                          {row.address_range && row.address_range !== row.canonical_address ? (
+                            <span className="imq-row-range">{row.address_range}</span>
+                          ) : null}
+                        </div>
+                        <input
+                          className={`imq-units-input${rowMissingUnits ? ' imq-units-invalid' : ''}`}
+                          type="text"
+                          inputMode="numeric"
+                          value={unitsDraft[row.id] ?? ''}
+                          onChange={(e) =>
+                            setUnitsDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
+                          }
+                          onBlur={() => handleUnitsBlur(row)}
+                          placeholder="—"
+                          aria-label="Unit count"
+                        />
+                        <button
+                          type="button"
+                          className="sq-remove"
+                          onClick={() => void removeRow(row)}
+                          aria-label={`Remove ${row.property_name || row.canonical_address} from queue`}
+                          title="Remove from queue"
+                          style={removeBtnStyle}
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {rows.length > qPerPage || qTotalPages > 1 ? (
+                  <div className="ir-pager" style={{ borderTop: '1px solid #eeeae1', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="ir-pager-btn"
+                      disabled={qPageClamped <= 1}
+                      onClick={() => setQPage(qPageClamped - 1)}
+                    >
+                      &lsaquo; Prev
+                    </button>
+                    <span className="ir-pager-info">
+                      {(qPageClamped - 1) * qPerPage + 1}–
+                      {Math.min(qPageClamped * qPerPage, rows.length)} of {rows.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="ir-pager-btn"
+                      disabled={qPageClamped >= qTotalPages}
+                      onClick={() => setQPage(qPageClamped + 1)}
+                    >
+                      Next &rsaquo;
+                    </button>
+                    <select
+                      className="ir-pager-select"
+                      value={qPerPage}
+                      onChange={(e) => {
+                        setQPerPage(Number(e.target.value))
+                        setQPage(1)
+                      }}
+                      aria-label="Properties per page"
+                    >
+                      {[10, 25, 50].map((n) => (
+                        <option key={n} value={n}>
+                          {n} / page
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="imq-rail">
+                <div className="imq-rail-stats">
+                  <div>
+                    <div className="imq-stat-value">{selectedRows.length}</div>
+                    <div className="imq-stat-label">Properties</div>
+                  </div>
+                  <div>
+                    <div className="imq-stat-value">{totalUnits.toLocaleString()}</div>
+                    <div className="imq-stat-label">Units</div>
+                  </div>
+                </div>
+
+                <div className="imq-rail-card">
+                  {plan?.kind === 'enterprise' ? (
+                    <>
+                      <div className="imq-rail-card-tag">Your plan</div>
+                      <div className="imq-rail-card-name">Enterprise</div>
+                      <div className="imq-rail-card-price">
+                        Monitored as soon as you save.
+                      </div>
+                    </>
+                  ) : plan?.kind === 'sentinel' || plan?.kind === 'sentinel_trial' ? (
+                    <>
+                      <div className="imq-rail-card-tag">Your plan</div>
+                      <div className="imq-rail-card-name">
+                        Sentinel{plan.unit_cap ? ` · up to ${plan.unit_cap} units` : ''}
+                      </div>
+                      <div className="imq-rail-card-price">
+                        {plan.unit_cap ? (
+                          plan.portfolio_units + totalUnits <= plan.unit_cap ? (
+                            <>
+                              {plan.portfolio_units.toLocaleString()} in your portfolio — room for{' '}
+                              {(plan.unit_cap - plan.portfolio_units - totalUnits).toLocaleString()}{' '}
+                              more after this save.
+                            </>
+                          ) : (
+                            <span style={{ color: '#b7791f' }}>
+                              This save brings you to{' '}
+                              {(plan.portfolio_units + totalUnits).toLocaleString()} of{' '}
+                              {plan.unit_cap} units — we&apos;ll follow up about the next tier.
+                            </span>
+                          )
+                        ) : (
+                          'Monitored as soon as you save.'
+                        )}
+                      </div>
+                    </>
+                  ) : isMaxTier ? (
+                    <>
+                      <div className="imq-rail-card-tag">Custom plan</div>
+                      <div className="imq-rail-card-name">Over {MAX_TIER_UNITS} units</div>
+                      <div className="imq-rail-card-price">
+                        We&apos;ll set you up on a custom plan.
+                      </div>
+                    </>
+                  ) : band ? (
+                    <>
+                      <div className="imq-rail-card-tag">Recommended plan</div>
+                      <div className="imq-rail-card-name">{bandLabel(band)}</div>
+                      <div className="imq-rail-card-price">
+                        ${band.monthly}/mo · ${band.annualMonthly}/mo billed annually
+                      </div>
+                      <div className="imq-rail-card-trial">30-day free trial, $0 due today</div>
+                    </>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleCommit()}
+                  disabled={!canCommit || committing}
+                  style={{
+                    ...commitBtnStyle,
+                    width: '100%',
+                    opacity: canCommit && !committing ? 1 : 0.45,
+                    cursor: canCommit && !committing ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {committing ? 'Saving…' : 'Save to portfolio'}
+                </button>
+
+                {!canCommit ? (
+                  <div className="imq-rail-note">
+                    {selectedRows.length === 0
+                      ? 'Select the properties you want to monitor.'
+                      : `Enter a unit count for ${missingUnits.length === 1 ? 'the highlighted property' : `all ${missingUnits.length} highlighted properties`} to continue.`}
+                  </div>
+                ) : null}
+
+                {notice ? (
+                  <div role="status" className="imq-rail-note" style={{ color: '#b7791f' }}>
+                    {notice}
+                  </div>
+                ) : null}
+
+                <div className="imq-rail-actions">
+                  {hasImportJob ? (
+                    <button
+                      type="button"
+                      className="imq-rail-action"
+                      onClick={() => {
+                        onClose()
+                        // Defer so this modal unmounts before the review opens.
+                        setTimeout(() => {
+                          window.dispatchEvent(new CustomEvent('ps:open-import', { detail: {} }))
+                        }, 0)
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <line x1="19" y1="12" x2="5" y2="12" />
+                        <polyline points="12 19 5 12 12 5" />
+                      </svg>
+                      Back to import review
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    className="ir-pager-btn"
-                    disabled={qPageClamped >= qTotalPages}
-                    onClick={() => setQPage(qPageClamped + 1)}
+                    className="imq-rail-action imq-rail-action-danger"
+                    onClick={() => void handleClearQueue()}
                   >
-                    Next &rsaquo;
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    {clearArmed ? `Click again to remove all ${rows.length}` : 'Clear queue'}
                   </button>
-                  <select
-                    className="ir-pager-select"
-                    value={qPerPage}
-                    onChange={(e) => {
-                      setQPerPage(Number(e.target.value))
-                      setQPage(1)
-                    }}
-                    aria-label="Properties per page"
-                  >
-                    {[10, 25, 50].map((n) => (
-                      <option key={n} value={n}>
-                        {n} / page
-                      </option>
-                    ))}
-                  </select>
                 </div>
-              ) : null}
+              </div>
             </div>
           )}
 
-          {notice && (
+          {notice && step !== 'queue' && (
             <div role="status" style={noticeStyle}>
               {notice}
             </div>
@@ -718,64 +805,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 {committing ? 'Opening checkout…' : 'Start free trial'}
               </button>
             ) : null}
-          </div>
-        ) : rows.length > 0 ? (
-          <div style={footerStyle}>
-            <div style={{ minWidth: 0 }}>
-              <div style={summaryStyle}>
-                {selectedRows.length} of {rows.length} selected · {totalUnits.toLocaleString()}{' '}
-                unit{totalUnits === 1 ? '' : 's'}
-              </div>
-              <div style={recommendStyle}>
-                {!canCommit ? (
-                  selectedRows.length === 0 ? (
-                    'Select the properties you want to monitor.'
-                  ) : (
-                    `Enter a unit count for ${missingUnits.length === 1 ? 'the highlighted property' : `all ${missingUnits.length} highlighted properties`} to continue.`
-                  )
-                ) : plan?.kind === 'enterprise' ? (
-                  <>Enterprise plan — these properties are monitored as soon as you save.</>
-                ) : plan?.kind === 'sentinel' || plan?.kind === 'sentinel_trial' ? (
-                  plan.unit_cap ? (
-                    plan.portfolio_units + totalUnits <= plan.unit_cap ? (
-                      <>
-                        Sentinel plan · up to {plan.unit_cap} units —{' '}
-                        {plan.portfolio_units.toLocaleString()} in your portfolio, room for{' '}
-                        {(plan.unit_cap - plan.portfolio_units - totalUnits).toLocaleString()} more
-                        after this save.
-                      </>
-                    ) : (
-                      <span style={{ color: '#b7791f' }}>
-                        This save brings you to{' '}
-                        {(plan.portfolio_units + totalUnits).toLocaleString()} of {plan.unit_cap}{' '}
-                        units on your Sentinel plan — we&apos;ll follow up about the next tier.
-                      </span>
-                    )
-                  ) : (
-                    <>Sentinel plan — these properties are monitored as soon as you save.</>
-                  )
-                ) : isMaxTier ? (
-                  <>Over {MAX_TIER_UNITS} units — we&apos;ll set you up on a custom plan.</>
-                ) : band ? (
-                  <>
-                    Recommended plan: <strong>{bandLabel(band)}</strong> — ${band.monthly}/mo, or $
-                    {band.annualMonthly}/mo billed annually. 30-day free trial either way.
-                  </>
-                ) : null}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleCommit()}
-              disabled={!canCommit || committing}
-              style={{
-                ...commitBtnStyle,
-                opacity: canCommit && !committing ? 1 : 0.45,
-                cursor: canCommit && !committing ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {committing ? 'Saving…' : 'Save to portfolio'}
-            </button>
           </div>
         ) : null}
       </div>
@@ -824,56 +853,21 @@ const headerSubStyle: CSSProperties = {
   marginTop: 4,
 }
 
+// Queue step: the split layout (list + rail) owns its own scrolling.
+const queueSplitBodyStyle: CSSProperties = {
+  display: 'flex',
+  flex: 1,
+  minHeight: 0,
+  padding: 0,
+  overflow: 'hidden',
+}
+
 const bodyStyle: CSSProperties = {
   padding: '16px 22px 18px',
   overflowY: 'auto',
   flex: '1 1 auto',
 }
 
-// checkbox | property name | address | units | remove — shared by the head
-// row and data rows so the columns stay aligned.
-const gridRowStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '24px minmax(0, 1.2fr) minmax(0, 1fr) 84px 28px',
-  gap: 12,
-  alignItems: 'center',
-  padding: '9px 0',
-  borderBottom: '1px solid #f2f0eb',
-}
-
-const headRowStyle: CSSProperties = {
-  padding: '2px 0 9px',
-  borderBottom: '1px solid #e8e4dc',
-}
-
-const checkboxStyle: CSSProperties = {
-  width: 15,
-  height: 15,
-  accentColor: '#0f2744',
-  cursor: 'pointer',
-  justifySelf: 'start',
-}
-
-const headLabelStyle: CSSProperties = {
-  fontFamily: 'DM Mono, ui-monospace, monospace',
-  fontSize: 10,
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#8a94a0',
-}
-
-const addressCellStyle: CSSProperties = {
-  minWidth: 0,
-  fontFamily: 'DM Mono, ui-monospace, monospace',
-  fontSize: 11,
-  color: '#4a5568',
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  textDecoration: 'underline dotted',
-  textDecorationColor: '#b5ad9e',
-  textUnderlineOffset: 3,
-}
 
 const removeBtnStyle: CSSProperties = {
   width: 28,

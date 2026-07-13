@@ -5697,18 +5697,14 @@ button.save-toggle-switch {
 }
 
 .ir-group {
-  border: 1px solid #e5e1d6;
-  border-radius: 6px;
-  margin-bottom: 10px;
-  overflow: hidden;
+  border-bottom: 1px solid #eeeae1;
 }
 .ir-group-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: #faf9f5;
-  border-bottom: 1px solid #eeeae1;
+  padding: 9px 20px;
+  background: #fff;
 }
 .ir-group-addr {
   flex: 1;
@@ -5859,6 +5855,7 @@ button.save-toggle-switch {
 .ir-units {
   width: 100%;
   border-collapse: collapse;
+  background: #fcfbf8;
 }
 .ir-units td {
   padding: 5px 8px;
@@ -5866,12 +5863,9 @@ button.save-toggle-switch {
   font-size: 12px;
   color: #374151;
 }
-.ir-units tr:first-child td {
-  border-top: none;
-}
 .ir-unit-check {
-  width: 30px;
-  padding-left: 12px !important;
+  width: 74px;
+  padding-left: 56px !important;
 }
 .ir-unit-label {
   width: 110px;
@@ -5939,7 +5933,201 @@ button.save-toggle-switch {
   transition: background 0.15s ease;
 }
 .ir-group-head-click:hover {
-  background: #f5f3ec;
+  background: #faf9f5;
+}
+
+/* ── Split modal layout: list left, sticky summary rail right.
+   Shared by the import review and the staged queue. ── */
+.imq-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.imq-list {
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid #e5e1d6;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.imq-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.imq-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  border-bottom: 1px solid #eeeae1;
+  background: #fcfbf8;
+  font-size: 12px;
+  color: #8a94a0;
+  flex-shrink: 0;
+}
+.imq-toolbar-count {
+  margin-left: auto;
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 11px;
+}
+.imq-check {
+  width: 15px;
+  height: 15px;
+  accent-color: #0f2744;
+  flex-shrink: 0;
+}
+.imq-rail {
+  width: 252px;
+  flex-shrink: 0;
+  background: #f2f0eb;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+.imq-rail-stats {
+  display: flex;
+  gap: 22px;
+}
+.imq-stat-value {
+  font-family: Merriweather, Georgia, serif;
+  font-size: 26px;
+  font-weight: 900;
+  color: #0f2744;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.imq-stat-value-attention {
+  color: #b7791f;
+}
+.imq-stat-label {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a94a0;
+  margin-top: 1px;
+}
+.imq-rail-card {
+  background: #fff;
+  border: 1px solid #e5e1d6;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.imq-rail-card-tag {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #2d6a4f;
+}
+.imq-rail-card-name {
+  font-weight: 700;
+  color: #0f2744;
+  font-size: 14px;
+  margin-top: 2px;
+}
+.imq-rail-card-price {
+  font-size: 12.5px;
+  color: #4a5568;
+  margin-top: 2px;
+}
+.imq-rail-card-trial {
+  font-size: 11.5px;
+  color: #8a94a0;
+  margin-top: 6px;
+}
+.imq-rail-note {
+  font-size: 11.5px;
+  color: #8a94a0;
+  line-height: 1.5;
+}
+.imq-rail-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+.imq-rail-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f2744;
+  transition: color 0.15s ease;
+}
+.imq-rail-action:hover {
+  text-decoration: underline;
+}
+.imq-rail-action-danger {
+  color: #c0392b;
+}
+.imq-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #eeeae1;
+  font-size: 13.5px;
+}
+.imq-row:hover {
+  background: #faf9f5;
+}
+.imq-row-addr {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.imq-row-addr a {
+  color: inherit;
+  text-decoration: none;
+}
+.imq-row-addr a:hover {
+  color: #0f2744;
+  text-decoration: underline;
+}
+.imq-row-range {
+  display: block;
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: #8a94a0;
+}
+.imq-units-input {
+  font-family: DM Mono, ui-monospace, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  width: 40px;
+  text-align: right;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 3px 5px;
+  color: #1a1a1a;
+}
+.imq-units-input:hover {
+  border-color: #ddd9d0;
+}
+.imq-units-input:focus {
+  outline: none;
+  border-color: #0f2744;
+  background: #fff;
+}
+.imq-units-invalid {
+  background: rgba(192, 57, 43, 0.06);
+  border-color: rgba(192, 57, 43, 0.4);
 }
 .ir-chevron {
   flex-shrink: 0;

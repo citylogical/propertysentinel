@@ -469,7 +469,7 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
           </div>
         </div>
 
-        <div style={bodyStyle}>
+        <div style={step === 'review' ? reviewBodyStyle : bodyStyle}>
           {step === 'drop' ? (
             <div
               className={`ir-dropzone${dragOver ? ' ir-dropzone-over' : ''}`}
@@ -546,8 +546,36 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
           ) : null}
 
           {step === 'review' ? (
-            <div>
-              {error ? <div className="ir-error" style={{ marginBottom: 10 }}>{error}</div> : null}
+            <div className="imq-split">
+              <div className="imq-list">
+                <div className="imq-toolbar">
+                  <input
+                    type="checkbox"
+                    className="imq-check"
+                    checked={units.some((u) => u.included)}
+                    onChange={(e) => {
+                      const included = e.target.checked
+                      setUnits((prev) =>
+                        prev.map((u) =>
+                          u.flags.includes('summary_row') ? u : { ...u, included }
+                        )
+                      )
+                      persistRows(
+                        jobId,
+                        units
+                          .filter((u) => !u.flags.includes('summary_row'))
+                          .map((u) => ({ row_num: u.row_num, included }))
+                      )
+                    }}
+                    aria-label="Select all"
+                  />
+                  <span>Select all</span>
+                  <span className="imq-toolbar-count">
+                    {(pageClamped - 1) * perPage + 1}–{Math.min(pageClamped * perPage, groups.length)} of {groups.length}
+                  </span>
+                </div>
+                <div className="imq-list-scroll">
+              {error ? <div className="ir-error" style={{ margin: 10 }}>{error}</div> : null}
               {pageGroups.map((g) => {
                 const res = g.resolution
                 const green = res && (res.match === 'verified' || res.match === 'range')
@@ -699,69 +727,89 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                 )
               })}
 
-              {totalPages > 1 || groups.length > PER_PAGE_OPTIONS[0] ? (
-                <div className="ir-pager">
-                  <button
-                    type="button"
-                    className="ir-pager-btn"
-                    disabled={pageClamped <= 1}
-                    onClick={() => setPage(pageClamped - 1)}
-                  >
-                    ‹ Prev
-                  </button>
-                  <span className="ir-pager-info">
-                    {(pageClamped - 1) * perPage + 1}–{Math.min(pageClamped * perPage, groups.length)} of{' '}
-                    {groups.length}
-                  </span>
-                  <button
-                    type="button"
-                    className="ir-pager-btn"
-                    disabled={pageClamped >= totalPages}
-                    onClick={() => setPage(pageClamped + 1)}
-                  >
-                    Next ›
-                  </button>
-                  <select
-                    className="ir-pager-select"
-                    value={perPage}
-                    onChange={(e) => {
-                      setPerPage(Number(e.target.value))
-                      setPage(1)
-                    }}
-                    aria-label="Properties per page"
-                  >
-                    {PER_PAGE_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} / page
-                      </option>
-                    ))}
-                  </select>
                 </div>
-              ) : null}
+
+                {totalPages > 1 || groups.length > PER_PAGE_OPTIONS[0] ? (
+                  <div className="ir-pager" style={{ borderTop: '1px solid #eeeae1', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="ir-pager-btn"
+                      disabled={pageClamped <= 1}
+                      onClick={() => setPage(pageClamped - 1)}
+                    >
+                      ‹ Prev
+                    </button>
+                    <span className="ir-pager-info">
+                      {(pageClamped - 1) * perPage + 1}–{Math.min(pageClamped * perPage, groups.length)} of{' '}
+                      {groups.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="ir-pager-btn"
+                      disabled={pageClamped >= totalPages}
+                      onClick={() => setPage(pageClamped + 1)}
+                    >
+                      Next ›
+                    </button>
+                    <select
+                      className="ir-pager-select"
+                      value={perPage}
+                      onChange={(e) => {
+                        setPerPage(Number(e.target.value))
+                        setPage(1)
+                      }}
+                      aria-label="Properties per page"
+                    >
+                      {PER_PAGE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} / page
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="imq-rail">
+                <div className="imq-rail-stats">
+                  <div>
+                    <div className="imq-stat-value">{selectedProperties}</div>
+                    <div className="imq-stat-label">Properties</div>
+                  </div>
+                  <div>
+                    <div className="imq-stat-value">{selected.length}</div>
+                    <div className="imq-stat-label">Units</div>
+                  </div>
+                </div>
+                {flaggedGroups > 0 ? (
+                  <div className="imq-rail-stats">
+                    <div>
+                      <div className="imq-stat-value imq-stat-value-attention">{flaggedGroups}</div>
+                      <div className="imq-stat-label">Need review</div>
+                    </div>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="ps-cta ps-cta-green"
+                  style={{ padding: '11px 18px', fontSize: 13, justifyContent: 'center' }}
+                  disabled={committing || selected.length === 0}
+                  onClick={() => void commitToQueue()}
+                >
+                  {committing
+                    ? 'Adding…'
+                    : jobStatus === 'committed'
+                      ? 'Update queue'
+                      : `Add ${selectedProperties} propert${selectedProperties === 1 ? 'y' : 'ies'} to queue`}
+                </button>
+                <div className="imq-rail-note">
+                  Rows that still need review come along as-is — you can fix them here or from your
+                  dashboard later.
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
-
-        {step === 'review' ? (
-          <div style={footerStyle}>
-            <div style={summaryStyle}>
-              {selectedProperties} PROPERTIES · {selected.length} UNITS SELECTED
-            </div>
-            <button
-              type="button"
-              className="ps-cta ps-cta-green"
-              style={{ padding: '10px 18px', fontSize: 13 }}
-              disabled={committing || selected.length === 0}
-              onClick={() => void commitToQueue()}
-            >
-              {committing
-                ? 'Adding…'
-                : jobStatus === 'committed'
-                  ? 'Update queue'
-                  : `Add ${selectedProperties} propert${selectedProperties === 1 ? 'y' : 'ies'} to queue`}
-            </button>
-          </div>
-        ) : null}
       </div>
     </div>,
     document.body
@@ -772,7 +820,7 @@ const modalStyle: CSSProperties = {
   background: '#ffffff',
   borderRadius: 16,
   width: '100%',
-  maxWidth: 860,
+  maxWidth: 920,
   maxHeight: '86vh',
   display: 'flex',
   flexDirection: 'column',
@@ -816,19 +864,11 @@ const bodyStyle: CSSProperties = {
   flex: 1,
 }
 
-const footerStyle: CSSProperties = {
+// Review step: the split layout (list + rail) owns its own scrolling.
+const reviewBodyStyle: CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 16,
-  padding: '14px 22px',
-  background: '#f2f0eb',
-  borderTop: '1px solid #e8e4dc',
-  flexShrink: 0,
-}
-
-const summaryStyle: CSSProperties = {
-  fontFamily: 'DM Mono, ui-monospace, monospace',
-  fontSize: 11,
-  color: '#0f2744',
+  flex: 1,
+  minHeight: 0,
+  padding: 0,
+  overflow: 'hidden',
 }
