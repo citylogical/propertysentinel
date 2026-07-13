@@ -1,6 +1,6 @@
 'use client'
 
-import { SignInButton, useUser } from '@clerk/nextjs'
+import { SignInButton, useClerk, useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import BuildingDetectionModal from '@/components/BuildingDetectionModal'
@@ -41,6 +41,7 @@ export default function AddressBarButtons({
   saveData,
 }: Props) {
   const { isSignedIn, isLoaded } = useUser()
+  const { openSignIn } = useClerk()
   const router = useRouter()
   const [queueModalOpen, setQueueModalOpen] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
@@ -93,8 +94,8 @@ export default function AddressBarButtons({
   // One-click staging: snapshot the full save payload the page already
   // computed. No modal, no cap, no trial stamp — commitment happens later in
   // the dashboard queue.
-  const stageProperty = useCallback(async () => {
-    if (adding || !saveData.canonicalAddress) return
+  const stageProperty = useCallback(async (): Promise<boolean> => {
+    if (adding || !saveData.canonicalAddress) return false
     setAdding(true)
     try {
       const res = await fetch('/api/dashboard/stage', {
@@ -121,11 +122,13 @@ export default function AddressBarButtons({
       if (res.ok) {
         setIsStaged(true)
         showBlurb('Added to dashboard')
-      } else {
-        showBlurb('Could not add — try again')
+        return true
       }
+      showBlurb('Could not add — try again')
+      return false
     } catch {
       showBlurb('Could not add — try again')
+      return false
     } finally {
       setAdding(false)
     }
@@ -145,29 +148,33 @@ export default function AddressBarButtons({
     }
   }
 
-  // The "See complaint context →" nudge in PropertyFeed dispatches this event.
+  // The "See complaint context" nudge in PropertyFeed dispatches this event.
   // PropertyFeed is rendered deep inside PropertyDataSections (across a Suspense
-  // boundary), so an event is cleaner than threading a callback down. Signed-in
-  // users get the one-click add; signed-out users get redirected to sign-in (the
-  // add button handles that via SignInButton, but the nudge has no wrapper,
-  // so we route here).
+  // boundary), so an event is cleaner than threading a callback down.
+  // Signed-out → Clerk sign-in modal. Signed-in and not yet in the portfolio →
+  // stage the property and open the queue modal so the user can commit it.
+  // Saved properties never dispatch this event (PropertyFeed shows the
+  // complaint context inline instead), so no saved branch is needed.
   useEffect(() => {
     const handler = () => {
       if (!isLoaded) return
       if (!isSignedIn) {
-        const returnTo =
-          typeof window !== 'undefined'
-            ? `${window.location.origin}${window.location.pathname}${window.location.search}`
-            : '/'
-        window.location.href = `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`
+        const returnTo = `${window.location.origin}${window.location.pathname}${window.location.search}`
+        void openSignIn({ forceRedirectUrl: returnTo, signUpForceRedirectUrl: returnTo })
         return
       }
-      // Already saved or staged: the nudge is a no-op. Otherwise stage it.
-      if (!isSaved && !isStaged) void stageProperty()
+      if (isSaved) return
+      if (isStaged) {
+        setQueueModalOpen(true)
+        return
+      }
+      void stageProperty().then((ok) => {
+        if (ok) setQueueModalOpen(true)
+      })
     }
     window.addEventListener('ps:open-save-modal', handler)
     return () => window.removeEventListener('ps:open-save-modal', handler)
-  }, [isLoaded, isSignedIn, isSaved, isStaged, stageProperty])
+  }, [isLoaded, isSignedIn, isSaved, isStaged, stageProperty, openSignIn])
 
   const returnAfterAuth =
     typeof window !== 'undefined'
