@@ -23,8 +23,12 @@ import {
   fetchSiblingPins,
   fetchPropertyChars,
   fetchParcelUniverse,
+  buildAddressRange,
+  collectPinsForUserRangeAddresses,
+  stripUnitSuffix,
 } from '@/lib/supabase-search'
 import { getPortfolioSaveBuildingSnapshot } from '@/lib/portfolio-save-building-snapshot'
+import { ensureHansenRecord } from '@/lib/hansen/ensure'
 
 export type ImportMatchGrade = 'verified' | 'range' | 'nearest' | 'no_match'
 
@@ -129,18 +133,72 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
     let resolved = property
     let grade: ImportMatchGrade = 'verified'
 
-    if (!resolved && nearestParcel) {
-      if (nearestParcel._nearestDist <= NEAREST_ADOPT_DISTANCE) {
-        resolved = nearestParcel
-        grade = 'nearest'
-      } else {
-        return blind({
-          nearest_suggestion: nearestParcel.address_normalized ?? null,
-          nearest_distance: nearestParcel._nearestDist,
-        })
-      }
+    if (!resolved && nearestParcel && nearestParcel._nearestDist <= NEAREST_ADOPT_DISTANCE) {
+      resolved = nearestParcel
+      grade = 'nearest'
     }
-    if (!resolved) return blind()
+
+    if (!resolved) {
+      // No parcel match — Hansen may still know the building (the Assessor
+      // often stores only the low address of a range). Archive-first, live
+      // handshake only on a retry-eligible miss. A multi-address hit whose
+      // range collects real PINs rescues the row to a green range match.
+      const base = stripUnitSuffix(normalized) ?? normalized
+      const hansen = await ensureHansenRecord(base)
+      if (hansen && hansen.allAddresses.length > 1) {
+        const hansenPins = await collectPinsForUserRangeAddresses(hansen.allAddresses)
+        if (hansenPins.length > 0) {
+          let yearBuilt: string | null = null
+          let impliedValue: number | null = null
+          let propertyClass: string | null = null
+          let communityArea: string | null = null
+          try {
+            const { parcel } = await fetchParcelUniverse(hansenPins[0])
+            communityArea = parcel?.community_area_name?.trim() ?? null
+            const snapshot = await getPortfolioSaveBuildingSnapshot({
+              normalizedPin: hansenPins[0],
+              siblingPins: hansenPins,
+              useMultiPinImplied: hansenPins.length > 1,
+              propertyClassFallback: null,
+              communityArea,
+            })
+            yearBuilt = snapshot.yearBuilt
+            impliedValue = snapshot.impliedValue
+            propertyClass = snapshot.propertyClass
+            communityArea = snapshot.communityArea
+          } catch (e) {
+            console.error('[resolveImportAddress] hansen-rescue snapshot failed:', e)
+          }
+          return {
+            raw_address: rawAddress,
+            match: 'range',
+            canonical_address: normalized,
+            slug: generateSlug(normalized, null),
+            pins: hansenPins,
+            address_range: buildAddressRange(hansen.allAddresses) ?? rangeDisplay,
+            sibling_addresses: hansen.allAddresses,
+            zip: null,
+            sqft: null,
+            year_built: yearBuilt,
+            implied_value: impliedValue,
+            community_area: communityArea,
+            property_class: propertyClass,
+            num_units_from_chars: null,
+            nearest_suggestion: null,
+            nearest_distance: null,
+            error: null,
+          }
+        }
+      }
+      return blind(
+        nearestParcel
+          ? {
+              nearest_suggestion: nearestParcel.address_normalized ?? null,
+              nearest_distance: nearestParcel._nearestDist,
+            }
+          : undefined
+      )
+    }
 
     const canonical = resolved.address_normalized ?? normalized
 
@@ -148,6 +206,7 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
     let pins = resolved.pin ? [resolved.pin] : []
     let siblingAddresses = [canonical]
     let addressRange: string | null = rangeDisplay
+    let resolvedVia: string = 'none'
     try {
       if (resolved.pin) {
         const siblings = await fetchSiblingPins(resolved.pin, canonical)
@@ -155,10 +214,33 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
         siblingAddresses = siblings.siblingAddresses.length > 0 ? siblings.siblingAddresses : siblingAddresses
         // Prefer the sibling-derived range over the rent roll's own hint.
         addressRange = siblings.addressRange ?? rangeDisplay
+        resolvedVia = siblings.resolvedVia
       }
     } catch (e) {
       console.error('[resolveImportAddress] sibling fan-out failed:', e)
     }
+
+    // Hansen — the city's own building record, same guarantee a manual
+    // address search provides: archive first, live handshake only on a
+    // retry-eligible miss (negative cache + global rate caps respected;
+    // rate-limited addresses simply keep the fan-out result and get healed
+    // by a later page visit). Manual entries and approved user ranges stay
+    // authoritative, matching the address page's source hierarchy.
+    try {
+      if (resolvedVia !== 'mailing' && resolvedVia !== 'user_range') {
+        const base = stripUnitSuffix(canonical) ?? canonical
+        const hansen = await ensureHansenRecord(base)
+        if (hansen && hansen.allAddresses.length > 1) {
+          const hansenPins = await collectPinsForUserRangeAddresses(hansen.allAddresses)
+          pins = [...new Set([...pins, ...hansenPins])]
+          siblingAddresses = [...new Set([...siblingAddresses, ...hansen.allAddresses])]
+          addressRange = buildAddressRange(hansen.allAddresses) ?? addressRange
+        }
+      }
+    } catch (e) {
+      console.error('[resolveImportAddress] hansen ensure failed:', e)
+    }
+
     if (grade === 'verified' && (addressRange !== null || siblingAddresses.length > 1)) {
       grade = 'range'
     }

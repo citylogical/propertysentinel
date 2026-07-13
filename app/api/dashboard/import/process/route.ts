@@ -19,10 +19,13 @@ import { resolveImportAddress, type ImportResolution } from '@/lib/rentroll/reso
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-// Measured ~2.5s/address against live Supabase from a residential connection
-// (Vercel-to-Supabase should be faster). 12 × 2.5s = ~30s, safe under the
-// 60s ceiling even on a slow chunk.
-const CHUNK_SIZE = 12
+// Per-address cost varies: ~2.5s for pure DB resolution, +2-8s when an
+// address needs a live Hansen handshake (archive misses only). A fixed
+// chunk count could blow the 60s ceiling, so the loop is time-budgeted:
+// process until the budget is spent, hard-capped per call, always at
+// least one.
+const TIME_BUDGET_MS = 35_000
+const MAX_PER_CALL = 12
 
 export async function POST(request: Request) {
   const { userId } = await auth()
@@ -77,19 +80,21 @@ export async function POST(request: Request) {
   }
 
   const queue = Array.isArray(j.resolve_queue) ? j.resolve_queue : []
-  const chunk = queue.slice(0, CHUNK_SIZE)
-  const remaining = queue.slice(CHUNK_SIZE)
 
   const newResults: ImportResolution[] = []
   let failed = j.failed_count
+  const started = Date.now()
 
-  for (const address of chunk) {
+  for (const address of queue) {
+    if (newResults.length >= MAX_PER_CALL) break
+    if (newResults.length > 0 && Date.now() - started > TIME_BUDGET_MS) break
     const resolution = await resolveImportAddress(address)
     newResults.push(resolution)
     if (resolution.match === 'no_match' || resolution.error) failed += 1
   }
 
-  const processed = j.processed_count + chunk.length
+  const remaining = queue.slice(newResults.length)
+  const processed = j.processed_count + newResults.length
   const isDone = remaining.length === 0
   const updatePayload: Record<string, unknown> = {
     resolve_queue: remaining,
