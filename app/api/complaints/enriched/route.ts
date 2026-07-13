@@ -5,7 +5,7 @@ import { computeEntitlement } from '@/lib/entitlement'
 
 const SELECT_FIELDS =
   'sr_number, sr_short_code, sr_type, status, created_date, ' +
-  'complaint_description, complainant_type, unit_number, ' +
+  'standard_description, complaint_description, complainant_type, unit_number, ' +
   'danger_reported, owner_notified, owner_occupied, ' +
   'concern_category, restaurant_name, business_name, problem_category, ' +
   'sla_target_days, actual_mean_days, estimated_completion, ' +

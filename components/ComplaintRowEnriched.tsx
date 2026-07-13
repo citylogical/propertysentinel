@@ -11,6 +11,7 @@ export type EnrichedComplaint = {
   sr_type: string | null
   status: string | null
   created_date: string | null
+  standard_description: string | null
   complaint_description: string | null
   complainant_type: string | null
   unit_number: string | null
@@ -57,6 +58,7 @@ export function mergeComplaintWithEnrichPayload(
     sr_type: c.sr_type,
     status: c.status,
     created_date: c.created_date,
+    standard_description: g('standard_description'),
     complaint_description: g('complaint_description'),
     complainant_type: g('complainant_type'),
     unit_number: g('unit_number'),
