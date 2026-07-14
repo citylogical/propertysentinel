@@ -46,63 +46,11 @@ import { DEMO_PORTFOLIOS } from '../lib/demo-portfolios'
 
 const DEMO = DEMO_PORTFOLIOS['troy-realty']
 
-// Top 50 by 12-month owner-relevant complaints (then total complaints).
-// canonical = the form complaints_311.address_normalized uses (verified by
-// the ranking query). aliases = street-name variants seen in city datasets
-// for the same building; getAllAddresses() expands additional_streets, so
-// activity recorded under either form is picked up.
-const PROPERTIES: { canonical: string; aliases?: string[] }[] = [
-  { canonical: '405 N WABASH AVE' },
-  { canonical: '4343 N CLARENDON AVE', aliases: ['4343 N CLARENDON ST'] },
-  { canonical: '1300 N CLEAVER ST' },
-  { canonical: '450 W BRIAR PL' },
-  { canonical: '30 E HURON ST' },
-  { canonical: '4250 N MARINE DR' },
-  { canonical: '235 W VAN BUREN ST' },
-  { canonical: '222 E PEARSON ST' },
-  { canonical: '2728 N HAMPDEN CT' },
-  { canonical: '840 E 89TH ST' },
-  { canonical: '2719 W HADDON AVE' },
-  { canonical: '4036 W WARWICK AVE' },
-  { canonical: '7206 W WELLINGTON AVE' },
-  { canonical: '1464 S MICHIGAN AVE' },
-  { canonical: '10 E ONTARIO ST' },
-  { canonical: '431 S DEARBORN ST' },
-  { canonical: '360 W ILLINOIS ST' },
-  { canonical: '10509 S EDBROOKE AVE' },
-  { canonical: '5515 S OAKLEY AVE' },
-  { canonical: '2442 W MADISON ST' },
-  { canonical: '4941 N KILDARE AVE' },
-  { canonical: '1400 S MICHIGAN AVE' },
-  { canonical: '1755 E 55TH ST' },
-  { canonical: '3963 W BELMONT AVE' },
-  { canonical: '1841 N CALIFORNIA AVE' },
-  { canonical: '3532 N OZARK AVE' },
-  { canonical: '2623 W EVERGREEN AVE' },
-  { canonical: '8 W MONROE ST' },
-  { canonical: '234 W POLK ST' },
-  { canonical: '933 W VAN BUREN ST' },
-  { canonical: '3750 N LAKE SHORE DR' },
-  { canonical: '1516 W DIVERSEY PKWY', aliases: ['1516 W DIVERSEY AVE'] },
-  { canonical: '3440 N LAKE SHORE DR' },
-  { canonical: '5422 S SAYRE AVE' },
-  { canonical: '1255 S STATE ST' },
-  { canonical: '111 S MORGAN ST' },
-  { canonical: '401 E ONTARIO ST' },
-  { canonical: '7450 S EUCLID AVE', aliases: ['7450 S EUCLID PKWY'] },
-  { canonical: '757 N ORLEANS ST' },
-  { canonical: '640 W BARRY AVE' },
-  { canonical: '363 E WACKER DR' },
-  { canonical: '740 W FULTON ST', aliases: ['740 W FULTON MARKET'] },
-  { canonical: '1320 W GRENSHAW ST' },
-  { canonical: '12238 S ABERDEEN ST' },
-  { canonical: '1454 N CENTRAL AVE' },
-  { canonical: '2322 S CANAL ST' },
-  { canonical: '10122 S LUELLA AVE' },
-  { canonical: '2152 W AINSLIE ST' },
-  { canonical: '3906 W BELMONT AVE' },
-  { canonical: '5412 S NATOMA AVE' },
-]
+// Top 50 by 12-month owner-relevant complaints — single source of truth in
+// lib/demo-portfolios.ts, shared with the browser-clickable admin route
+// (app/api/admin/seed-demo-portfolio), which is the no-local-env alternative
+// to this script.
+const PROPERTIES = DEMO.seedProperties
 
 const args = process.argv.slice(2)
 const DRY_RUN = !args.includes('--apply')
