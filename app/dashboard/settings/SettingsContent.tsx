@@ -179,12 +179,18 @@ export default function SettingsContent() {
           {[1, 2, 3].map((pos) => {
             const existing = emailRecipients.find((r) => r.position === pos)
             const isEditing = editingPosition?.channel === 'email' && editingPosition?.position === pos
+            // With zero configured email recipients, the digest falls back to
+            // the account email (mirrors the daily-digest cron). Surface that
+            // in slot 1 so the list reflects where email will actually go.
+            const defaultAddress =
+              pos === 1 && emailRecipients.length === 0 && primaryEmail ? primaryEmail : undefined
             return (
               <RecipientRow
                 key={`email-${pos}`}
                 channel="email"
                 position={pos}
                 existing={existing}
+                defaultAddress={defaultAddress}
                 isEditing={isEditing}
                 editingValue={editingValue}
                 onStartEdit={() => {
@@ -427,6 +433,7 @@ function RecipientRow({
   channel,
   position,
   existing,
+  defaultAddress,
   isEditing,
   editingValue,
   onStartEdit,
@@ -439,6 +446,7 @@ function RecipientRow({
   channel: 'email' | 'sms'
   position: number
   existing: Recipient | undefined
+  defaultAddress?: string
   isEditing: boolean
   editingValue: string
   onStartEdit: () => void
@@ -518,12 +526,32 @@ function RecipientRow({
       <span
         style={{
           flex: 1,
-          color: existing ? '#1a1a1a' : '#aaa',
-          fontFamily: existing ? 'monospace' : 'inherit',
-          fontSize: existing ? 12 : 13,
+          color: existing || defaultAddress ? '#1a1a1a' : '#aaa',
+          fontFamily: existing || defaultAddress ? 'monospace' : 'inherit',
+          fontSize: existing || defaultAddress ? 12 : 13,
         }}
       >
-        {existing ? existing.address : 'Empty'}
+        {existing ? (
+          existing.address
+        ) : defaultAddress ? (
+          <>
+            {defaultAddress}
+            <span
+              style={{
+                marginLeft: 8,
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: '#888',
+              }}
+            >
+              default &mdash; account email
+            </span>
+          </>
+        ) : (
+          'Empty'
+        )}
       </span>
       {!disabled && (
         <>
@@ -539,7 +567,7 @@ function RecipientRow({
               padding: 0,
             }}
           >
-            {existing ? 'Edit' : '+ Add'}
+            {existing || defaultAddress ? 'Edit' : '+ Add'}
           </button>
           {existing && onRemove && (
             <button
