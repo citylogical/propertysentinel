@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
   const fromAddress =
     process.env.RESEND_FROM_EMAIL ||
-    'Property Sentinel <noreply@updates.propertysentinel.io>'
+    'Property Sentinel <noreply@propertysentinel.io>'
 
   const eName = escapeHtml(name)
   const eEmail = escapeHtml(email)

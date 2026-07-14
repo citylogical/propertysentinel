@@ -781,7 +781,7 @@ export async function GET(request: Request) {
       const html = renderEmailHtml(orgName, events, digestDate, activityDate)
 
       // Send via Resend
-      const fromAddress = process.env.RESEND_FROM_EMAIL || 'Property Sentinel <noreply@updates.propertysentinel.io>'
+      const fromAddress = process.env.RESEND_FROM_EMAIL || 'Property Sentinel <noreply@propertysentinel.io>'
       // BCC delivery: each recipient sees the email as if they're the only one on it.
       // "To" is set to a noreply sender address (most email clients flag empty-To as spam).
       const { error: sendError } = await resend.emails.send({
