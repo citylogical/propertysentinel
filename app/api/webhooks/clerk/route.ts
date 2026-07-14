@@ -78,6 +78,10 @@ export async function POST(req: Request) {
         // svix retry (which finds the existing row) can never double-send.
         // Non-fatal: a Resend failure must not 500 the webhook, or svix
         // would retry against an already-inserted subscriber.
+        //
+        // scheduledAt delays delivery ~2.5 minutes so the note doesn't land
+        // in the same instant as Clerk's verification email and get buried.
+        // Resend holds the send server-side; the webhook returns immediately.
         try {
           const { Resend } = await import('resend')
           const resend = new Resend(process.env.RESEND_API_KEY)
@@ -88,6 +92,7 @@ export async function POST(req: Request) {
             replyTo: 'jim@propertysentinel.io',
             subject: WELCOME_SUBJECT,
             html: welcomeHtml(),
+            scheduledAt: new Date(Date.now() + 2.5 * 60 * 1000).toISOString(),
           })
         } catch (e) {
           console.error('Clerk webhook welcome email:', e)
