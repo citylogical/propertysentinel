@@ -29,6 +29,8 @@ export type DemoPortfolioConfig = {
   initials: string
   /** One-line source description for the Highlights tab. */
   sampleDescription: string
+  /** SR numbers spotlighted in the Highlights "Recent signals" card. */
+  featuredSrNumbers: string[]
   /** Seed list consumed by scripts/seed-troy-demo-portfolio.ts and the
    *  admin seed route (app/api/admin/seed-demo-portfolio). */
   seedProperties: DemoSeedProperty[]
@@ -98,7 +100,9 @@ export const DEMO_PORTFOLIOS: Record<string, DemoPortfolioConfig> = {
     sampleDescription:
       'A sample of 50 residential listings from the Troy Realty portfolio, ' +
       'monitored live against Chicago 311 service requests, Department of ' +
-      'Buildings violations, and building permits.',
+      "Buildings violations, and building permits. Send us a full address list " +
+      "for the city of Chicago and we'll start sending you alerts in less than 24hrs.",
+    featuredSrNumbers: ['SR26-01341696', 'SR26-01337770', 'SR26-01291319'],
     seedProperties: TROY_REALTY_SEED,
   },
 }

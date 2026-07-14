@@ -5,7 +5,7 @@ import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
 import { OWNER_RELEVANT_CODES, DEPARTMENT_BY_CODE } from '@/lib/sr-codes'
 import { getDemoPortfolio } from '@/lib/demo-portfolios'
 import type { PortfolioProperty } from '@/app/dashboard/types'
-import DemoView, { type DemoHighlights } from './DemoView'
+import DemoView, { type DemoHighlights, type DemoFeaturedComplaint } from './DemoView'
 
 // Publicly accessible portfolio demo (anyone with the link). The portfolio is
 // a real portfolio_properties set owned by a synthetic demo user (see
@@ -193,6 +193,22 @@ export default async function DemoPage({ params }: PageProps) {
     }
   }
 
+  // Spotlighted SR numbers for the "Recent signals" card. standard_description
+  // is the paraphrased (PII-safe) summary — never the raw complaint text.
+  let featured: DemoFeaturedComplaint[] = []
+  if (demo.featuredSrNumbers.length > 0) {
+    const { data: featuredRows } = await supabase
+      .from('complaints_311')
+      .select('sr_number, sr_type, sr_short_code, status, created_date, address_normalized, standard_description')
+      .in('sr_number', demo.featuredSrNumbers)
+    const bySr = new Map(
+      ((featuredRows ?? []) as DemoFeaturedComplaint[]).map((r) => [String(r.sr_number), r])
+    )
+    featured = demo.featuredSrNumbers
+      .map((sr) => bySr.get(sr))
+      .filter((r): r is DemoFeaturedComplaint => r != null)
+  }
+
   const highlights: DemoHighlights = {
     complaints12mo: complaintRows.length,
     openComplaints,
@@ -224,6 +240,7 @@ export default async function DemoPage({ params }: PageProps) {
           }}
           properties={properties}
           highlights={highlights}
+          featured={featured}
           todayStr={todayStr}
         />
       </div>

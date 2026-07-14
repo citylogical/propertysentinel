@@ -34,6 +34,9 @@ type Props = {
   /** Feed API base URL. Defaults to the authenticated dashboard feed; the
    *  public demo page points this at /api/demo/activity?slug=… instead. */
   endpoint?: string
+  /** Initial time-range filter. Dashboard keeps the snappy 1wk default; the
+   *  public demo opens at 1mo so the feed lands with a fuller story. */
+  defaultRange?: '12mo' | '6mo' | '3mo' | '1mo' | '1wk'
 }
 
 const PAGE_SIZE = 50
@@ -121,6 +124,7 @@ function statusKindFor(row: ActivityRow): StatusKind | null {
 export default function ActivityFeedClient({
   isAdmin = false,
   endpoint = '/api/dashboard/activity',
+  defaultRange = '1wk',
 }: Props) {
   const [rows, setRows] = useState<ActivityRow[]>([])
   const [total, setTotal] = useState(0)
@@ -129,7 +133,7 @@ export default function ActivityFeedClient({
   const [error, setError] = useState<string | null>(null)
   const [hasProperties, setHasProperties] = useState<boolean | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const [range, setRange] = useState<'12mo' | '6mo' | '3mo' | '1mo' | '1wk'>('1wk')
+  const [range, setRange] = useState<'12mo' | '6mo' | '3mo' | '1mo' | '1wk'>(defaultRange)
   const [category, setCategory] = useState<'all' | '311' | 'violation' | 'permit'>('all')
   const [buildingFilter, setBuildingFilter] = useState<'all' | 'building' | 'other'>('building')
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
