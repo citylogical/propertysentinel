@@ -31,6 +31,9 @@ type ActivityRow = {
 
 type Props = {
   isAdmin?: boolean
+  /** Feed API base URL. Defaults to the authenticated dashboard feed; the
+   *  public demo page points this at /api/demo/activity?slug=… instead. */
+  endpoint?: string
 }
 
 const PAGE_SIZE = 50
@@ -115,7 +118,10 @@ function statusKindFor(row: ActivityRow): StatusKind | null {
   return null
 }
 
-export default function ActivityFeedClient({ isAdmin = false }: Props) {
+export default function ActivityFeedClient({
+  isAdmin = false,
+  endpoint = '/api/dashboard/activity',
+}: Props) {
   const [rows, setRows] = useState<ActivityRow[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -174,7 +180,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
     })
     if (searchDebounced) params.set('search', searchDebounced)
 
-    fetch(`/api/dashboard/activity?${params.toString()}`)
+    fetch(`${endpoint}${endpoint.includes('?') ? '&' : '?'}${params.toString()}`)
       .then((r) => r.json())
       .then((data: { items?: ActivityRow[]; total?: number; error?: string; has_properties?: boolean }) => {
         if (data.error) {
@@ -200,7 +206,7 @@ export default function ActivityFeedClient({ isAdmin = false }: Props) {
         setError(String(e))
       })
       .finally(() => setLoading(false))
-  }, [offset, range, category, buildingFilter, statusFilter, searchDebounced])
+  }, [offset, range, category, buildingFilter, statusFilter, searchDebounced, endpoint])
 
   const selectedRow = rows.find((r) => rowKey(r) === selectedKey) ?? null
 
