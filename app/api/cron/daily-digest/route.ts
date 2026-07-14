@@ -238,7 +238,9 @@ export async function GET(request: Request) {
   // who saved properties but never touched Settings got no digest at all.
   // A missing alert_settings row now means DEFAULTS: digest ON, empty-day
   // "all clear" email OFF, all four triggers ON. Keep defaultSettings below
-  // in sync with the alert_settings column defaults.
+  // in sync with the alert_settings column defaults as set by
+  // docs/sql/alert_settings_send_when_empty_default_false.sql (which flipped
+  // email_digest_send_when_empty's column default to false on 2026-07-13).
   const { data: allSubs } = await supabase
     .from('subscribers')
     .select('id, email, clerk_id, organization, role, plan, subscription_status, trial_started_at')
@@ -311,6 +313,16 @@ export async function GET(request: Request) {
 
   for (const { sub, setting } of enabledSubs) {
     try {
+      // Rows without a Clerk identity can't own portfolio properties
+      // (portfolio_properties.user_id is a clerk_id) — nothing to digest.
+      // Checked first so degenerate rows skip the log queries below.
+      const clerk_id = sub.clerk_id
+      const organization = sub.organization
+      if (!clerk_id) {
+        results.push({ subscriber_id: setting.subscriber_id, status: 'no_clerk_id', count: 0 })
+        continue
+      }
+
       // Skip if already sent today (same-day idempotency guard).
       // Bypassed in test mode so the test can be re-run any number of times.
       if (!testMode) {
@@ -356,15 +368,6 @@ export async function GET(request: Request) {
           for (const id of row.sent_violation_inspection_ids ?? []) sentViolations.add(id)
           for (const pn of row.sent_permit_numbers ?? []) sentPermitsCross.add(pn)
         }
-      }
-
-      // Rows without a Clerk identity can't own portfolio properties
-      // (portfolio_properties.user_id is a clerk_id) — nothing to digest.
-      const clerk_id = sub.clerk_id
-      const organization = sub.organization
-      if (!clerk_id) {
-        results.push({ subscriber_id: setting.subscriber_id, status: 'no_clerk_id', count: 0 })
-        continue
       }
 
       // Entitlement gate: only entitled accounts receive the digest. Admins

@@ -30,15 +30,24 @@ export async function getEnabledCodesForUsers(
 ): Promise<Map<string, Set<string>>> {
   const result = new Map<string, Set<string>>()
   if (userIds.length === 0) return result
-  const { data, error } = await supabase
-    .from('user_sr_preferences')
-    .select('user_id, sr_short_code')
-    .in('user_id', userIds)
-  if (error || !data) return result
-  for (const row of data as Array<{ user_id: string; sr_short_code: string }>) {
-    let set = result.get(row.user_id)
-    if (!set) { set = new Set<string>(); result.set(row.user_id, set) }
-    result.get(row.user_id)!.add(row.sr_short_code)
+  // Page with .range() — an unpaged PostgREST select silently caps at ~1000
+  // rows, which at ~40 seeded codes per user is only ~25 users. Truncation
+  // here makes users' complaints silently vanish from the digest.
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('user_sr_preferences')
+      .select('user_id, sr_short_code')
+      .in('user_id', userIds)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error || !data) break
+    for (const row of data as Array<{ user_id: string; sr_short_code: string }>) {
+      let set = result.get(row.user_id)
+      if (!set) { set = new Set<string>(); result.set(row.user_id, set) }
+      set.add(row.sr_short_code)
+    }
+    if (data.length < PAGE) break
   }
   return result
 }
