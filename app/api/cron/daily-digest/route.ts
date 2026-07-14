@@ -231,67 +231,85 @@ export async function GET(request: Request) {
     day: '2-digit',
   }).format(new Date(yesterdayMs))
 
-  // Get all subscribers where:
-  //   1. Their subscribers.email_alerts is true (account-level master toggle)
-  //   2. Their alert_settings.email_digest_enabled is true (digest-specific toggle)
-  // Both must be true for an email to send.
-  let enabledSubsQuery = supabase
-    .from('alert_settings')
-    .select(
-      `
-      subscriber_id,
-      trigger_complaints,
-      trigger_violations,
-      trigger_permits,
-      trigger_stop_work,
-      email_digest_send_when_empty,
-      subscribers!inner(email_alerts)
-    `
-    )
-    .eq('email_digest_enabled', true)
-    .eq('subscribers.email_alerts', true)
+  // Digest candidates are driven from `subscribers` (account-level
+  // email_alerts master toggle), NOT from alert_settings. An alert_settings
+  // row only exists once the user has opened the Settings tab, and driving
+  // from that table silently excluded every account that never did — signups
+  // who saved properties but never touched Settings got no digest at all.
+  // A missing alert_settings row now means DEFAULTS: digest ON, empty-day
+  // "all clear" email OFF, all four triggers ON. Keep defaultSettings below
+  // in sync with the alert_settings column defaults.
+  const { data: allSubs } = await supabase
+    .from('subscribers')
+    .select('id, email, clerk_id, organization, role, plan, subscription_status, trial_started_at')
+    .eq('email_alerts', true)
+    .range(0, 9999)
+
+  type SubscriberRow = {
+    id: string
+    email: string | null
+    clerk_id: string | null
+    organization: string | null
+    role: string | null
+    plan: string | null
+    subscription_status: string | null
+    trial_started_at: string | null
+  }
 
   // Test mode subscriber filter: process only the named subscriber if given.
+  let candidates = (allSubs ?? []) as SubscriberRow[]
   if (testMode && testSubscriberId) {
-    enabledSubsQuery = enabledSubsQuery.eq('subscriber_id', testSubscriberId)
+    candidates = candidates.filter((s) => s.id === testSubscriberId)
   }
 
-  const { data: enabledSubs } = await enabledSubsQuery
-
-  // Resolve subscriber_id → clerk_id once for all enabled subscribers, then
-  // batch-load every user's SR preferences in a single round-trip. The loop
-  // below slices per-user from these maps instead of querying prefs per
-  // subscriber (the N+1 the seam was designed to avoid). user_sr_preferences
-  // is keyed on clerk_id (matches portfolio_properties.user_id).
-  const subscriberIds = ((enabledSubs ?? []) as Array<{ subscriber_id: string }>).map(
-    (s) => s.subscriber_id
-  )
-  const clerkIdBySubscriber = new Map<string, string>()
-  if (subscriberIds.length > 0) {
-    const { data: subRows } = await supabase
-      .from('subscribers')
-      .select('id, clerk_id')
-      .in('id', subscriberIds)
-    for (const row of (subRows ?? []) as Array<{ id: string; clerk_id: string | null }>) {
-      if (row.clerk_id) clerkIdBySubscriber.set(row.id, row.clerk_id)
-    }
-  }
-  const enabledCodesByClerkId = await getEnabledCodesForUsers(
-    supabase,
-    Array.from(clerkIdBySubscriber.values())
-  )
-
-  const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
-
-  for (const setting of (enabledSubs ?? []) as unknown as Array<{
+  type SettingsRow = {
     subscriber_id: string
     trigger_complaints: boolean
     trigger_violations: boolean
     trigger_permits: boolean
     trigger_stop_work: boolean
+    email_digest_enabled: boolean
     email_digest_send_when_empty: boolean
-    subscribers?: { email_alerts: boolean }
-  }>) {
+  }
+
+  const settingsBySubscriber = new Map<string, SettingsRow>()
+  if (candidates.length > 0) {
+    const { data: settingsRows } = await supabase
+      .from('alert_settings')
+      .select('subscriber_id, trigger_complaints, trigger_violations, trigger_permits, trigger_stop_work, email_digest_enabled, email_digest_send_when_empty')
+      .in('subscriber_id', candidates.map((c) => c.id))
+      .range(0, 9999)
+    for (const row of (settingsRows ?? []) as SettingsRow[]) {
+      settingsBySubscriber.set(row.subscriber_id, row)
+    }
+  }
+
+  const defaultSettings = (subscriberId: string): SettingsRow => ({
+    subscriber_id: subscriberId,
+    trigger_complaints: true,
+    trigger_violations: true,
+    trigger_permits: true,
+    trigger_stop_work: true,
+    email_digest_enabled: true,
+    email_digest_send_when_empty: false,
+  })
+
+  const enabledSubs = candidates
+    .map((sub) => ({ sub, setting: settingsBySubscriber.get(sub.id) ?? defaultSettings(sub.id) }))
+    .filter(({ setting }) => setting.email_digest_enabled)
+
+  // Batch-load every user's SR preferences in a single round-trip. The loop
+  // below slices per-user from this map instead of querying prefs per
+  // subscriber (the N+1 the seam was designed to avoid). user_sr_preferences
+  // is keyed on clerk_id (matches portfolio_properties.user_id).
+  const enabledCodesByClerkId = await getEnabledCodesForUsers(
+    supabase,
+    enabledSubs.map(({ sub }) => sub.clerk_id).filter((c): c is string => Boolean(c))
+  )
+
+  const results: Array<{ subscriber_id: string; status: string; count: number; error?: string }> = []
+
+  for (const { sub, setting } of enabledSubs) {
     try {
       // Skip if already sent today (same-day idempotency guard).
       // Bypassed in test mode so the test can be re-run any number of times.
@@ -340,25 +358,25 @@ export async function GET(request: Request) {
         }
       }
 
-      // Get subscriber's clerk_id and email recipients
-      const { data: subscriber } = await supabase
-        .from('subscribers')
-        .select('clerk_id, organization, role, plan, subscription_status, trial_started_at')
-        .eq('id', setting.subscriber_id)
-        .maybeSingle()
-      if (!subscriber) continue
-      const { clerk_id, organization } = subscriber as { clerk_id: string; organization: string | null }
+      // Rows without a Clerk identity can't own portfolio properties
+      // (portfolio_properties.user_id is a clerk_id) — nothing to digest.
+      const clerk_id = sub.clerk_id
+      const organization = sub.organization
+      if (!clerk_id) {
+        results.push({ subscriber_id: setting.subscriber_id, status: 'no_clerk_id', count: 0 })
+        continue
+      }
 
       // Entitlement gate: only entitled accounts receive the digest. Admins
       // always pass (so test sends to your own account work). Lapsed trials
       // and never-paid users are skipped — alerts stop when entitlement ends.
       // Test mode bypasses this so you can send a test digest to any account.
       if (!testMode) {
-        const digestRole = (subscriber as { role?: string | null }).role ?? ''
+        const digestRole = sub.role ?? ''
         const digestEnt = computeEntitlement({
-          plan: (subscriber as { plan?: string | null }).plan ?? null,
-          subscription_status: (subscriber as { subscription_status?: string | null }).subscription_status ?? null,
-          trial_started_at: (subscriber as { trial_started_at?: string | null }).trial_started_at ?? null,
+          plan: sub.plan,
+          subscription_status: sub.subscription_status,
+          trial_started_at: sub.trial_started_at,
         })
         if (digestRole !== 'admin' && !digestEnt.entitled) {
           results.push({ subscriber_id: setting.subscriber_id, status: 'skipped_not_entitled', count: 0 })
@@ -381,9 +399,21 @@ export async function GET(request: Request) {
       // In test mode every send is redirected to the test_email regardless of
       // the subscriber's configured recipients. testEmail is guaranteed
       // non-null here by the 400-guard at the top of GET.
+      //
+      // Configured recipients win; with none configured, fall back to the
+      // account email (subscribers.email). This is the "default recipient"
+      // behavior — no seeded alert_recipients row required, and it self-heals
+      // if the account email changes in Clerk. The Settings UI mirrors this
+      // by showing the account email in slot 1 as the default.
+      const configured = (recipients ?? [])
+        .map((r) => (r as { address: string }).address)
+        .filter(Boolean)
+      const fallback = sub.email?.trim() ? [sub.email.trim().toLowerCase()] : []
       const emails = testMode
         ? [testEmail as string]
-        : (recipients ?? []).map((r) => (r as { address: string }).address).filter(Boolean)
+        : configured.length > 0
+          ? configured
+          : fallback
       if (emails.length === 0) {
         results.push({ subscriber_id: setting.subscriber_id, status: 'no_recipients', count: 0 })
         continue
