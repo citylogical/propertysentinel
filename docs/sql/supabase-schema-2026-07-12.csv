@@ -108,7 +108,7 @@ trigger_permits boolean not null default true
 trigger_stop_work boolean not null default true
 created_at timestamp with time zone not null default now()
 updated_at timestamp with time zone not null default now()
-email_digest_send_when_empty boolean not null default true"
+email_digest_send_when_empty boolean not null default false"
 assessed_values,"id uuid not null default gen_random_uuid()
 row_id text not null
 pin text
