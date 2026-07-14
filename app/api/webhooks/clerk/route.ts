@@ -6,20 +6,18 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // ── Welcome email (sent once, on first subscriber insert) ──────────────────
-// PLACEHOLDER COPY — Jim owns the message; swap subject/body freely. Kept
-// deliberately plain (no digest-style branding): a short personal note from
-// Jim reads as 1:1 mail, not marketing.
+// Copy approved by Jim 2026-07-13. Kept deliberately plain (no digest-style
+// branding): a short personal note from Jim reads as 1:1 mail, not marketing.
 const WELCOME_SUBJECT = 'Welcome to Property Sentinel'
 
 function welcomeHtml(): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #1a1a1a; line-height: 1.6;">
-      <p>Hi — Jim here, I run Property Sentinel.</p>
-      <p>Thanks for signing up. The whole point of the service is watching your buildings for you — 311 complaints, DOB violations, permits, stop-work orders — and emailing you a daily digest when anything happens.</p>
-      <p>None of that starts until you add your first property, so that&rsquo;s the one thing to do next:</p>
-      <p><a href="https://propertysentinel.io/dashboard/portfolio" style="color: #1e3a5f;">Add a property to your portfolio &rarr;</a></p>
-      <p>Hit reply if anything&rsquo;s confusing or you have a building that&rsquo;s giving you trouble — I read every email.</p>
-      <p>— Jim</p>
+      <p>Hello!</p>
+      <p>Thank you for becoming an early member of Property Sentinel.</p>
+      <p>Search your property, add it to your portfolio, and read the actual complaint description as the city records it. We&rsquo;ll watch your buildings and email you a daily digest when anything happens &mdash; so you hear about problems while there&rsquo;s still time to act. <strong>All free for 30 days, then starting at $25/mo.</strong></p>
+      <p>Questions about our data or products? Reach out &mdash; I build custom data solutions for Chicago property owners, and I read every email.</p>
+      <p>&mdash;Jim</p>
     </div>
   `
 }
