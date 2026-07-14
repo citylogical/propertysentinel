@@ -14,7 +14,9 @@
       "Bash(rm -f scripts/.verify-bundle.cjs)",
       "Bash(npx eslint *)",
       "Bash(node scripts/verify-addressbar.mjs)",
-      "Bash(grep -Ev \"^\\\\s*$|warning\")"
+      "Bash(grep -Ev \"^\\\\s*$|warning\")",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__subscribe_pr_activity",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later"
     ]
   }
 }
