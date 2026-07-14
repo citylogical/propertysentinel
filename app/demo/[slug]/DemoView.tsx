@@ -2,7 +2,8 @@
 
 import { useState, type CSSProperties } from 'react'
 import ActivityFeedClient from '@/app/dashboard/activity/ActivityFeedClient'
-import PortfolioDetail from '@/app/dashboard/PortfolioDetail'
+import AddPropertyModal from '@/app/dashboard/AddPropertyModal'
+import { formatAddressForDisplay } from '@/lib/formatAddress'
 import type { PortfolioProperty } from '@/app/dashboard/types'
 
 export type DemoHighlights = {
@@ -16,6 +17,16 @@ export type DemoHighlights = {
   departments: { department: string; count: number; open: number }[]
 }
 
+export type DemoFeaturedComplaint = {
+  sr_number: string | null
+  sr_type: string | null
+  sr_short_code?: string | null
+  status: string | null
+  created_date: string | null
+  address_normalized: string | null
+  standard_description?: string | null
+}
+
 type Props = {
   demo: {
     slug: string
@@ -25,15 +36,15 @@ type Props = {
   }
   properties: PortfolioProperty[]
   highlights: DemoHighlights
+  featured: DemoFeaturedComplaint[]
   todayStr: string
 }
 
-type TabKey = 'highlights' | 'activity' | 'portfolio'
+type TabKey = 'highlights' | 'activity'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'highlights', label: 'Highlights' },
   { key: 'activity', label: 'Activity Feed' },
-  { key: 'portfolio', label: 'Portfolio' },
 ]
 
 // Digest-style category colors (see renderEmailHtml in the daily-digest cron).
@@ -67,11 +78,14 @@ function formatCityDate(dateStr: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default function DemoView({ demo, properties, highlights, todayStr }: Props) {
-  const [tab, setTab] = useState<TabKey>('highlights')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+// Same link the dashboard's "Full property page →" button uses.
+function propertyHref(p: PortfolioProperty): string {
+  return `/address/${encodeURIComponent(p.slug)}?building=true`
+}
 
-  const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
+export default function DemoView({ demo, properties, highlights, featured, todayStr }: Props) {
+  const [tab, setTab] = useState<TabKey>('highlights')
+  const [addPropOpen, setAddPropOpen] = useState(false)
 
   const sorted = [...properties].sort((a, b) => {
     const ao = a.open_building_complaints ?? 0
@@ -123,6 +137,20 @@ export default function DemoView({ demo, properties, highlights, todayStr }: Pro
               <div style={statValueStyle}>{properties.length}</div>
               <div style={statLabelStyle}>Properties</div>
             </div>
+            <div style={dividerStyle} />
+            <button
+              type="button"
+              className="ps-cta ps-cta-green ps-cta-collapse"
+              style={headerCtaSizeStyle}
+              onClick={() => setAddPropOpen(true)}
+              title="Add property"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="ps-cta-label">Add property</span>
+            </button>
           </div>
         </div>
 
@@ -166,7 +194,11 @@ export default function DemoView({ demo, properties, highlights, todayStr }: Pro
                 {highlights.propertiesWithActivity} of {properties.length} properties in this
                 sample had reportable activity in the last 12 months. Counts update automatically
                 as the City of Chicago publishes new records — 311 complaints sync every
-                15&nbsp;minutes.
+                30&nbsp;minutes.{' '}
+                <strong style={{ color: '#0f2744' }}>
+                  A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
+                  subscription for your portfolio size would be less than $1/unit/month.
+                </strong>
               </p>
               <div style={monoFootnoteStyle}>
                 TRACKING 29 OWNER-RELEVANT 311 CATEGORIES · DOB VIOLATIONS · BUILDING PERMITS
@@ -217,61 +249,93 @@ export default function DemoView({ demo, properties, highlights, todayStr }: Pro
           </div>
 
           <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {/* Department exposure */}
-            <div style={{ ...cardStyle, flex: '2 1 420px', marginTop: 0 }}>
-              <div style={cardHeaderStyle}>311 exposure by city department</div>
-              <div style={cardBodyStyle}>
-                {highlights.departments.length === 0 ? (
-                  <div style={{ fontSize: 13, color: '#888' }}>
-                    No owner-relevant complaints in the last 12 months.
+            <div style={{ flex: '2 1 420px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Recent signals — spotlighted SRs */}
+              {featured.length > 0 ? (
+                <div style={cardStyle}>
+                  <div style={cardHeaderStyle}>Recent signals on your listings</div>
+                  <div style={{ ...cardBodyStyle, padding: '4px 0' }}>
+                    {featured.map((f) => {
+                      const isOpen = String(f.status ?? '').toLowerCase() === 'open'
+                      return (
+                        <div key={String(f.sr_number)} style={featuredRowStyle}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                            <span style={featuredSrStyle}>#{f.sr_number}</span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>
+                              {f.sr_type ?? 'Complaint'}
+                            </span>
+                            <span
+                              style={{
+                                ...featuredStatusStyle,
+                                color: isOpen ? VIOLATION_RED : PERMIT_GREEN,
+                              }}
+                            >
+                              {isOpen ? 'OPEN' : 'COMPLETED'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                            {f.address_normalized
+                              ? formatAddressForDisplay(f.address_normalized)
+                              : ''}
+                            {' · '}
+                            {formatCityDate(f.created_date)}
+                            {f.standard_description ? ` — ${f.standard_description}` : ''}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                ) : (
-                  highlights.departments.map((d) => (
-                    <div
-                      key={d.department}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 0' }}
-                    >
-                      <div style={deptLabelStyle}>{deptLabel(d.department)}</div>
-                      <div style={{ flex: 1, height: 14, background: '#eeebe3' }}>
-                        <div
-                          style={{
-                            width: `${Math.max(2, Math.round((d.count / maxDeptCount) * 100))}%`,
-                            height: '100%',
-                            background: COMPLAINT_NAVY,
-                          }}
-                        />
-                      </div>
-                      <div style={deptCountStyle}>
-                        {d.count}
-                        {d.open > 0 ? (
-                          <span style={{ color: VIOLATION_RED, fontWeight: 600 }}>
-                            {' '}
-                            · {d.open} open
-                          </span>
-                        ) : null}
-                      </div>
+                </div>
+              ) : null}
+
+              {/* Department exposure */}
+              <div style={cardStyle}>
+                <div style={cardHeaderStyle}>311 exposure by city department</div>
+                <div style={cardBodyStyle}>
+                  {highlights.departments.length === 0 ? (
+                    <div style={{ fontSize: 13, color: '#888' }}>
+                      No owner-relevant complaints in the last 12 months.
                     </div>
-                  ))
-                )}
+                  ) : (
+                    highlights.departments.map((d) => (
+                      <div
+                        key={d.department}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 0' }}
+                      >
+                        <div style={deptLabelStyle}>{deptLabel(d.department)}</div>
+                        <div style={{ flex: 1, height: 14, background: '#eeebe3' }}>
+                          <div
+                            style={{
+                              width: `${Math.max(2, Math.round((d.count / maxDeptCount) * 100))}%`,
+                              height: '100%',
+                              background: COMPLAINT_NAVY,
+                            }}
+                          />
+                        </div>
+                        <div style={deptCountStyle}>
+                          {d.count}
+                          {d.open > 0 ? (
+                            <span style={{ color: VIOLATION_RED, fontWeight: 600 }}>
+                              {' '}
+                              · {d.open} open
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Top buildings */}
-            <div style={{ ...cardStyle, flex: '1 1 320px', marginTop: 0 }}>
+            <div style={{ ...cardStyle, flex: '1 1 320px' }}>
               <div style={cardHeaderStyle}>Buildings to watch</div>
               <div style={{ ...cardBodyStyle, padding: '4px 0' }}>
                 {topBuildings.map((p) => {
                   const flag = getFlag(p)
                   return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(p.id)
-                        setTab('portfolio')
-                      }}
-                      style={topBuildingRowStyle}
-                    >
+                    <a key={p.id} href={propertyHref(p)} style={topBuildingRowStyle}>
                       <span>
                         <span className="dashboard-addr">
                           {p.display_name || p.canonical_address}
@@ -293,8 +357,9 @@ export default function DemoView({ demo, properties, highlights, todayStr }: Pro
                         {(p.open_violations ?? 0) > 0
                           ? ` · ${p.open_violations} open viol.`
                           : ''}
+                        {' · full property page →'}
                       </span>
-                    </button>
+                    </a>
                   )
                 })}
                 <div style={{ padding: '8px 18px 10px', fontSize: 12, color: '#888' }}>
@@ -307,150 +372,13 @@ export default function DemoView({ demo, properties, highlights, todayStr }: Pro
       ) : null}
 
       {tab === 'activity' ? (
-        <ActivityFeedClient endpoint={`/api/demo/activity?slug=${encodeURIComponent(demo.slug)}`} />
+        <ActivityFeedClient
+          endpoint={`/api/demo/activity?slug=${encodeURIComponent(demo.slug)}`}
+          defaultRange="1mo"
+        />
       ) : null}
 
-      {tab === 'portfolio' ? (
-        <div style={{ padding: '20px 28px' }}>
-          {selectedProperty ? (
-            <PortfolioDetail
-              property={selectedProperty}
-              onClose={() => setSelectedId(null)}
-              detailEndpoint={`/api/demo/detail?slug=${encodeURIComponent(demo.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
-              showHistoricalActivityBar={false}
-              showItemDetails={true}
-              isAdmin={false}
-            />
-          ) : null}
-
-          <div className="dashboard-table-wrap">
-            <table className="dashboard-table">
-              <thead>
-                <tr className="dashboard-thead-group">
-                  <th rowSpan={2}>Address</th>
-                  <th
-                    className="r dashboard-th-group"
-                    colSpan={3}
-                    style={{ borderBottom: '1px solid #e5e1d6' }}
-                  >
-                    Complaints
-                  </th>
-                  <th className="r" rowSpan={2} style={{ width: 95 }}>
-                    Violations
-                  </th>
-                  <th className="r" rowSpan={2} style={{ width: 80 }}>
-                    Permits
-                  </th>
-                  <th className="r" rowSpan={2} style={{ width: 100 }}>
-                    STR Listings
-                  </th>
-                  <th rowSpan={2} style={{ width: 130 }}>
-                    Flags
-                  </th>
-                </tr>
-                <tr>
-                  <th className="r dashboard-th-sub" style={{ width: 80 }}>
-                    Open
-                  </th>
-                  <th className="r dashboard-th-sub" style={{ width: 95 }}>
-                    Building
-                  </th>
-                  <th className="r dashboard-th-sub" style={{ width: 90 }}>
-                    All
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((p) => {
-                  const flag = getFlag(p)
-                  return (
-                    <tr
-                      key={p.id}
-                      className={selectedId === p.id ? 'selected' : ''}
-                      onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
-                    >
-                      <td>
-                        <span className="dashboard-addr">
-                          {p.display_name || p.address_range || p.canonical_address}
-                        </span>
-                        <span className="dashboard-addr-hood">{p.community_area || ''}</span>
-                      </td>
-                      <td className="r">
-                        {p.open_building_complaints == null ? (
-                          <span className="zero">—</span>
-                        ) : p.open_building_complaints > 0 ? (
-                          <span style={{ color: VIOLATION_RED, fontWeight: 600 }}>
-                            {p.open_building_complaints}
-                          </span>
-                        ) : (
-                          <span className="zero">0</span>
-                        )}
-                      </td>
-                      <td className="r">
-                        {p.total_building_complaints_12mo == null ? (
-                          <span className="zero">—</span>
-                        ) : p.total_building_complaints_12mo > 0 ? (
-                          p.total_building_complaints_12mo
-                        ) : (
-                          <span className="zero">0</span>
-                        )}
-                      </td>
-                      <td className="r">
-                        {(p.total_complaints_12mo ?? 0) > 0 ? (
-                          p.total_complaints_12mo
-                        ) : (
-                          <span className="zero">0</span>
-                        )}
-                      </td>
-                      <td className="r">
-                        {(p.total_violations_12mo ?? 0) > 0 ? (
-                          p.total_violations_12mo
-                        ) : (
-                          <span className="zero">0</span>
-                        )}
-                      </td>
-                      <td className="r">
-                        {(p.total_permits ?? 0) > 0 ? p.total_permits : <span className="zero">0</span>}
-                      </td>
-                      <td className="r">
-                        {(p.nearby_listings ?? 0) > 0 ? (
-                          <span style={{ color: '#b87514', fontWeight: 500 }}>{p.nearby_listings}</span>
-                        ) : (
-                          <span className="zero">0</span>
-                        )}
-                      </td>
-                      <td>
-                        {flag ? (
-                          <span className={`dashboard-flag ${flag.color}`}>
-                            <span className={`dashboard-flag-dot ${flag.color}`} />
-                            {flag.label}
-                          </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div
-            style={{
-              marginTop: 20,
-              padding: '14px 18px',
-              background: '#f7f6f2',
-              border: '1px solid #e5e1d6',
-              fontSize: 13,
-              color: '#666',
-              lineHeight: 1.6,
-              fontStyle: 'italic',
-            }}
-          >
-            Compiled from publicly available City of Chicago records. Counts refresh
-            automatically as new data is published.
-          </div>
-        </div>
-      ) : null}
+      <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
     </div>
   )
 }
@@ -483,6 +411,19 @@ const statLabelStyle: CSSProperties = {
   letterSpacing: '0.08em',
   color: '#8a94a0',
   marginTop: 2,
+}
+
+const dividerStyle: CSSProperties = {
+  width: 1,
+  height: 28,
+  background: '#e5e1d6',
+}
+
+// Colors, hover pop, label reveal, and press feedback come from
+// .ps-cta / .ps-cta-collapse in globals.css; only sizing lives here.
+const headerCtaSizeStyle: CSSProperties = {
+  padding: '10px 11px',
+  fontSize: 13,
 }
 
 const cardStyle: CSSProperties = {
@@ -561,6 +502,24 @@ const deptCountStyle: CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 }
 
+const featuredRowStyle: CSSProperties = {
+  padding: '9px 18px',
+  borderBottom: '1px solid #f0ede5',
+}
+
+const featuredSrStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 12,
+  color: '#0f2744',
+  fontWeight: 500,
+}
+
+const featuredStatusStyle: CSSProperties = {
+  fontFamily: 'DM Mono, ui-monospace, monospace',
+  fontSize: 10,
+  letterSpacing: '0.08em',
+}
+
 const topBuildingRowStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -568,11 +527,11 @@ const topBuildingRowStyle: CSSProperties = {
   gap: 2,
   width: '100%',
   padding: '9px 18px',
-  background: 'none',
-  border: 'none',
   borderBottom: '1px solid #f0ede5',
   cursor: 'pointer',
   textAlign: 'left',
+  textDecoration: 'none',
+  color: 'inherit',
 }
 
 const topBuildingCountsStyle: CSSProperties = {
