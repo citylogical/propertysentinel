@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchPortfolioActivity } from '@/lib/portfolio-stats'
 import { OWNER_RELEVANT_CODES } from '@/lib/sr-codes'
+import { fetchParcelUniverse } from '@/lib/supabase-search'
+import { getPortfolioSaveBuildingSnapshot } from '@/lib/portfolio-save-building-snapshot'
 
 // Promotion: copy staged_properties rows into portfolio_properties. The two
 // callers are the entitled direct-commit route (admin/paying/enterprise skip
@@ -8,6 +10,13 @@ import { OWNER_RELEVANT_CODES } from '@/lib/sr-codes'
 // fat snapshot of the save payload, so this is a pure column copy plus the
 // same post-save work the old save route did: SR-preference seeding on the
 // user's first property, then activity stats per property.
+//
+// Parcel-characteristics invariant: the two UI entry points populate
+// year_built / implied_value / community_area / property_class BEFORE staging
+// (the address page ships its rendered assessor sidebar with the stage POST;
+// the rent-roll importer resolves them server-side). Direct seeders — demo
+// portfolios, ad-hoc scripts — stage rows without them, so promotion now
+// enforces the invariant itself: see resolveParcelCharacteristics.
 
 type StagedPropertyRow = {
   id: string
@@ -54,6 +63,92 @@ async function seedSrPreferences(supabase: SupabaseClient, clerkId: string): Pro
   }
 }
 
+type ParcelCharacteristics = {
+  year_built: string | null
+  implied_value: number | null
+  community_area: string | null
+  property_class: string | null
+}
+
+/**
+ * Decide what the four parcel-characteristic columns should be for a row
+ * being promoted. Three cases, cheapest first:
+ *
+ *   1. The staged row carries any of them (both UI flows do) → use staged
+ *      values verbatim, exactly as promotion always has.
+ *   2. The staged row has none, but the portfolio row being upserted over
+ *      already does (e.g. a rederive-buildings backfill, or a prior
+ *      promotion that derived them) → preserve the existing values instead
+ *      of clobbering them back to null on re-promotion.
+ *   3. Nothing anywhere and the row has PINs → derive from parcel data with
+ *      the same helpers the assessor sidebar and rederive-buildings use
+ *      (fetchParcelUniverse for community area, getPortfolioSaveBuildingSnapshot
+ *      for the rest). Non-fatal: on any failure the row promotes with nulls,
+ *      same as before this fallback existed.
+ */
+async function resolveParcelCharacteristics(
+  supabase: SupabaseClient,
+  row: StagedPropertyRow
+): Promise<ParcelCharacteristics> {
+  const staged: ParcelCharacteristics = {
+    year_built: row.year_built,
+    implied_value: row.implied_value,
+    community_area: row.community_area,
+    property_class: row.property_class,
+  }
+  const stagedHasAny =
+    staged.year_built != null ||
+    staged.implied_value != null ||
+    staged.community_area != null ||
+    staged.property_class != null
+  if (stagedHasAny) return staged
+
+  try {
+    const { data: existing } = await supabase
+      .from('portfolio_properties')
+      .select('year_built, implied_value, community_area, property_class')
+      .eq('user_id', row.clerk_id)
+      .eq('canonical_address', row.canonical_address)
+      .maybeSingle()
+    if (
+      existing &&
+      (existing.year_built != null ||
+        existing.implied_value != null ||
+        existing.community_area != null ||
+        existing.property_class != null)
+    ) {
+      return {
+        year_built: (existing.year_built as string | null) ?? null,
+        implied_value: (existing.implied_value as number | null) ?? null,
+        community_area: (existing.community_area as string | null) ?? null,
+        property_class: (existing.property_class as string | null) ?? null,
+      }
+    }
+
+    const pins = row.pins ?? []
+    if (pins.length === 0) return staged
+
+    const primaryPin = pins[0]
+    const { parcel } = await fetchParcelUniverse(primaryPin)
+    const snapshot = await getPortfolioSaveBuildingSnapshot({
+      normalizedPin: primaryPin,
+      siblingPins: pins,
+      useMultiPinImplied: pins.length > 1,
+      propertyClassFallback: null,
+      communityArea: parcel?.community_area_name?.trim() ?? null,
+    })
+    return {
+      year_built: snapshot.yearBuilt,
+      implied_value: snapshot.impliedValue,
+      community_area: snapshot.communityArea,
+      property_class: snapshot.propertyClass,
+    }
+  } catch (err) {
+    console.error('Parcel characteristics fallback failed (non-fatal):', row.canonical_address, err)
+    return staged
+  }
+}
+
 type PromoteOptions = {
   /**
    * Skip the per-property activity-stats computation (the slow part —
@@ -77,6 +172,8 @@ async function promoteRows(
   await seedSrPreferences(supabase, rows[0].clerk_id)
 
   for (const row of rows) {
+    const chars = await resolveParcelCharacteristics(supabase, row)
+
     const { data: inserted, error } = await supabase
       .from('portfolio_properties')
       .upsert(
@@ -94,10 +191,10 @@ async function promoteRows(
           alert_email: true,
           alert_sms: false,
           updated_at: new Date().toISOString(),
-          year_built: row.year_built,
-          implied_value: row.implied_value,
-          community_area: row.community_area,
-          property_class: row.property_class,
+          year_built: chars.year_built,
+          implied_value: chars.implied_value,
+          community_area: chars.community_area,
+          property_class: chars.property_class,
         },
         { onConflict: 'user_id,canonical_address' }
       )
