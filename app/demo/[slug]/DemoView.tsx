@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useClerk, useUser } from '@clerk/nextjs'
 import ActivityFeedClient from '@/app/dashboard/activity/ActivityFeedClient'
 import AddPropertyModal from '@/app/dashboard/AddPropertyModal'
 import PortfolioDetail from '@/app/dashboard/PortfolioDetail'
+import StagedQueueModal from '@/components/StagedQueueModal'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import type { PortfolioProperty } from '@/app/dashboard/types'
 
@@ -34,11 +37,15 @@ type Props = {
     companyName: string
     initials: string
     sampleDescription: string
+    cta: 'add_property' | 'claim_portfolio'
   }
   properties: PortfolioProperty[]
   highlights: DemoHighlights
   featured: DemoFeaturedComplaint[]
   todayStr: string
+  /** Sum of portfolio_property_units rows across the portfolio; 0 when the
+   *  seed carried no unit counts (Troy) — the Units stat/column then hide. */
+  unitsTotal: number
 }
 
 type TabKey = 'highlights' | 'activity' | 'portfolio'
@@ -85,10 +92,103 @@ function propertyHref(p: PortfolioProperty): string {
   return `/address/${encodeURIComponent(p.slug)}?building=true`
 }
 
-export default function DemoView({ demo, properties, highlights, featured, todayStr }: Props) {
+export default function DemoView({
+  demo,
+  properties,
+  highlights,
+  featured,
+  todayStr,
+  unitsTotal,
+}: Props) {
   const [tab, setTab] = useState<TabKey>('highlights')
   const [addPropOpen, setAddPropOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // ── Claim portfolio flow ──────────────────────────────────────────────────
+  // Stage this demo's properties under the visitor's own account, then run
+  // the SAME commit path every customer hits: entitled accounts promote
+  // straight to the dashboard; everyone else lands on the plan step of the
+  // staged-queue modal (opened right here, skipping the queue review).
+  const { isSignedIn, isLoaded } = useUser()
+  const { openSignIn } = useClerk()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [claimBusy, setClaimBusy] = useState(false)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  const [claimIds, setClaimIds] = useState<string[]>([])
+  const [claimModalOpen, setClaimModalOpen] = useState(false)
+  // Once per page load — without this, the ?claim=1 return from sign-in would
+  // re-claim on every effect pass.
+  const claimFiredRef = useRef(false)
+
+  const runClaim = useCallback(async () => {
+    setClaimBusy(true)
+    setClaimError(null)
+    try {
+      const claimRes = await fetch('/api/demo/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: demo.slug }),
+      })
+      const claimData = (await claimRes.json()) as {
+        staged_ids?: string[]
+        already_claimed?: boolean
+        error?: string
+      }
+      if (claimData.already_claimed) {
+        window.location.assign('/dashboard/portfolio')
+        return
+      }
+      if (!claimRes.ok || !claimData.staged_ids || claimData.staged_ids.length === 0) {
+        throw new Error(claimData.error || 'claim failed')
+      }
+      const commitRes = await fetch('/api/dashboard/stage/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staged_ids: claimData.staged_ids }),
+      })
+      const commitData = (await commitRes.json()) as {
+        promoted?: number
+        requires_checkout?: boolean
+        error?: string
+      }
+      if (commitData.promoted) {
+        window.location.assign('/dashboard/portfolio?build=1')
+        return
+      }
+      if (commitData.requires_checkout) {
+        setClaimIds(claimData.staged_ids)
+        setClaimModalOpen(true)
+        return
+      }
+      throw new Error(commitData.error || 'commit failed')
+    } catch (err) {
+      console.error('Claim portfolio failed:', err)
+      setClaimError('Could not claim this portfolio — please try again.')
+    } finally {
+      setClaimBusy(false)
+    }
+  }, [demo.slug])
+
+  const handleClaim = () => {
+    if (!isLoaded || claimBusy) return
+    if (!isSignedIn) {
+      const returnTo = `${window.location.origin}/demo/${encodeURIComponent(demo.slug)}?claim=1`
+      void openSignIn({ forceRedirectUrl: returnTo, signUpForceRedirectUrl: returnTo })
+      return
+    }
+    void runClaim()
+  }
+
+  // Continue the claim after the sign-in round trip lands back on ?claim=1.
+  useEffect(() => {
+    if (demo.cta !== 'claim_portfolio' || claimFiredRef.current) return
+    if (searchParams.get('claim') !== '1') return
+    if (!isLoaded || !isSignedIn) return
+    claimFiredRef.current = true
+    router.replace(`/demo/${encodeURIComponent(demo.slug)}`)
+    void runClaim()
+  }, [demo.cta, demo.slug, searchParams, isLoaded, isSignedIn, router, runClaim])
 
   const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
 
@@ -142,22 +242,64 @@ export default function DemoView({ demo, properties, highlights, featured, today
               <div style={statValueStyle}>{properties.length}</div>
               <div style={statLabelStyle}>Properties</div>
             </div>
+            {unitsTotal > 0 ? (
+              <>
+                <div style={dividerStyle} />
+                <div style={statBlockStyle}>
+                  <div style={statValueStyle}>{unitsTotal.toLocaleString()}</div>
+                  <div style={statLabelStyle}>Units</div>
+                </div>
+              </>
+            ) : null}
             <div style={dividerStyle} />
-            <button
-              type="button"
-              className="ps-cta ps-cta-green ps-cta-collapse"
-              style={headerCtaSizeStyle}
-              onClick={() => setAddPropOpen(true)}
-              title="Add property"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span className="ps-cta-label">Add property</span>
-            </button>
+            {demo.cta === 'claim_portfolio' ? (
+              <button
+                type="button"
+                className="ps-cta ps-cta-green ps-cta-collapse"
+                style={headerCtaSizeStyle}
+                onClick={handleClaim}
+                disabled={claimBusy}
+                title="Claim portfolio"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M5 21V4" />
+                  <path d="M5 4h13l-3 4.5 3 4.5H5" />
+                </svg>
+                <span className="ps-cta-label">{claimBusy ? 'Claiming…' : 'Claim portfolio'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="ps-cta ps-cta-green ps-cta-collapse"
+                style={headerCtaSizeStyle}
+                onClick={() => setAddPropOpen(true)}
+                title="Add property"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span className="ps-cta-label">Add property</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {claimError ? (
+          <div
+            style={{
+              margin: '0 32px 10px',
+              padding: '8px 12px',
+              background: '#fdf2f1',
+              border: '1px solid #e8c5c2',
+              fontSize: 13,
+              color: VIOLATION_RED,
+            }}
+            role="alert"
+          >
+            {claimError}
+          </div>
+        ) : null}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 32, padding: '0 32px' }}>
           {TABS.map((t) => {
@@ -401,6 +543,11 @@ export default function DemoView({ demo, properties, highlights, featured, today
               <thead>
                 <tr className="dashboard-thead-group">
                   <th rowSpan={2}>Address</th>
+                  {unitsTotal > 0 ? (
+                    <th className="r" rowSpan={2} style={{ width: 65 }}>
+                      Units
+                    </th>
+                  ) : null}
                   <th
                     className="r dashboard-th-group"
                     colSpan={3}
@@ -448,6 +595,11 @@ export default function DemoView({ demo, properties, highlights, featured, today
                         </span>
                         <span className="dashboard-addr-hood">{p.community_area || ''}</span>
                       </td>
+                      {unitsTotal > 0 ? (
+                        <td className="r">
+                          {(p.units_total ?? 0) > 0 ? p.units_total : <span className="zero">0</span>}
+                        </td>
+                      ) : null}
                       <td className="r">
                         {p.open_building_complaints == null ? (
                           <span className="zero">—</span>
@@ -525,7 +677,16 @@ export default function DemoView({ demo, properties, highlights, featured, today
         </div>
       ) : null}
 
-      <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
+      {demo.cta === 'claim_portfolio' ? (
+        <StagedQueueModal
+          isOpen={claimModalOpen}
+          onClose={() => setClaimModalOpen(false)}
+          initialStep="plan"
+          initialSelectedIds={claimIds}
+        />
+      ) : (
+        <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
+      )}
     </div>
   )
 }

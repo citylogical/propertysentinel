@@ -59,14 +59,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error ?? 'Parse failed' }, { status: 422 })
   }
 
-  // Distinct addresses awaiting resolution (summary/unparsed rows have none).
+  // Distinct addresses awaiting resolution (summary/unparsed rows have none;
+  // non-Chicago rows are default-excluded and resolution only knows Chicago
+  // parcels, so resolving them would waste ~2.5s each for guaranteed misses).
   const resolveQueue = [...new Set(
-    result.rows.map((r) => r.address).filter((a): a is string => !!a)
+    result.rows
+      .filter((r) => !r.flags.includes('non_chicago'))
+      .map((r) => r.address)
+      .filter((a): a is string => !!a)
   )]
 
   if (resolveQueue.length === 0) {
+    // Distinguish "no address column" from "every address is outside Chicago"
+    // — the latter file parsed fine and deserves an honest explanation.
+    const nonChicago = result.rows.filter((r) => r.address && r.flags.includes('non_chicago'))
     return NextResponse.json(
-      { error: 'No addresses found in the file. Check that it has a Property/Address column.' },
+      {
+        error:
+          nonChicago.length > 0
+            ? `All ${nonChicago.length} address${nonChicago.length === 1 ? '' : 'es'} in this file are outside Chicago — Property Sentinel monitors City of Chicago records only.`
+            : 'No addresses found in the file. Check that it has a Property/Address column.',
+      },
       { status: 422 }
     )
   }

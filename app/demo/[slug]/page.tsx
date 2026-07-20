@@ -101,6 +101,22 @@ export default async function DemoPage({ params }: PageProps) {
 
   if (!rows || rows.length === 0) return notFound()
 
+  // Unit counts come from portfolio_property_units rows (materialized by
+  // promoteRows when the seed carries unit counts) — the same source of truth
+  // the dashboard list route aggregates.
+  const { data: unitRows } = await supabase
+    .from('portfolio_property_units')
+    .select('portfolio_property_id')
+    .in(
+      'portfolio_property_id',
+      rows.map((p) => p.id as string)
+    )
+    .limit(5000)
+  const unitCounts = new Map<string, number>()
+  for (const u of (unitRows ?? []) as { portfolio_property_id: string }[]) {
+    unitCounts.set(u.portfolio_property_id, (unitCounts.get(u.portfolio_property_id) ?? 0) + 1)
+  }
+
   const properties: PortfolioProperty[] = rows.map((p) => ({
     id: p.id as string,
     canonical_address: p.canonical_address as string,
@@ -109,8 +125,8 @@ export default async function DemoPage({ params }: PageProps) {
     pins: (p.pins as string[] | null) ?? null,
     slug: (p.slug as string) ?? '',
     display_name: (p.display_name as string | null) ?? null,
-    units_override: null,
-    units_total: 0,
+    units_override: (p.units_override as number | null) ?? null,
+    units_total: unitCounts.get(p.id as string) ?? 0,
     units_status_breakdown: {},
     units_tag_breakdown: {},
     sqft_override: (p.sqft_override as number | null) ?? null,
@@ -237,11 +253,13 @@ export default async function DemoPage({ params }: PageProps) {
             companyName: demo.companyName,
             initials: demo.initials,
             sampleDescription: demo.sampleDescription,
+            cta: demo.cta ?? 'add_property',
           }}
           properties={properties}
           highlights={highlights}
           featured={featured}
           todayStr={todayStr}
+          unitsTotal={properties.reduce((s, p) => s + (p.units_total ?? 0), 0)}
         />
       </div>
     </div>

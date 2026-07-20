@@ -13,6 +13,7 @@ export type RowFlag =
   | 'llm_rescued'      // deterministic extraction failed; Gemini recovered the row
   | 'unit_in_address'  // unit designation was embedded in the address cell
   | 'dual_range'       // address covers a street-number range ("1113 - 1115 W Patterson")
+  | 'non_chicago'      // city/zip evidence says outside Chicago — default-excluded (no city data)
   | 'unparsed'         // no usable address found — needs manual attention in review
 
 export type ParsedUnitRow = {

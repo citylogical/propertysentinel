@@ -132,6 +132,45 @@ export function cleanAddressCell(rawAddress: string): {
   return { address: s, unitFromAddress, flags }
 }
 
+// Chicago proper is 606xx, plus the split-boundary zips (60707 Galewood /
+// Elmwood Park, 60827 Riverdale) where we give the benefit of the doubt —
+// resolution against the parcel data settles those.
+const CHICAGO_ZIP_RE = /^(?:606\d{2}|60707|60827)$/
+
+/**
+ * True when the raw address cell carries positive evidence the property is
+ * OUTSIDE Chicago — a "<city>, IL" tail that isn't Chicago, or a non-Chicago
+ * zip. Cells with no city/zip evidence (plain street addresses) return false:
+ * exclusion needs proof, not absence.
+ *
+ * A zip outranks the city text: "West Chicago, IL 60185" ends in the word
+ * "chicago" but the zip gives it away. A trailing 5-digit token that is a
+ * unit/account number ("#20514", "Apt 30512") is NOT a zip and is ignored.
+ */
+export function isNonChicagoAddress(rawAddress: string): boolean {
+  const s = rawAddress.trim()
+  if (!s) return false
+
+  const zipMatch = s.match(/\b(\d{5})(?:-\d{4})?\s*$/)
+  const zipIsUnitNumber = /(?:#|\b(?:unit|apt|apartment|suite|ste|no)\.?\s*)\d{5}(?:-\d{4})?\s*$/i.test(s)
+  if (zipMatch && !zipIsUnitNumber) return !CHICAGO_ZIP_RE.test(zipMatch[1])
+
+  // No zip — fall back to the city name before ", IL" / ", Illinois". City
+  // names can be multi-word ("Calumet City"), so the safe test is whether the
+  // tail's last word is "chicago" itself ("Chicago Heights" and friends end
+  // with a different word) — except the municipalities that END in "chicago"
+  // (West Chicago, North Chicago), caught by the preceding word.
+  const cityMatch = s.match(/([A-Za-z][A-Za-z .'-]*?)\s*,\s*(?:IL|Illinois)\b/i)
+  if (cityMatch) {
+    const words = cityMatch[1].trim().toLowerCase().split(/\s+/)
+    if (words[words.length - 1] !== 'chicago') return true
+    const prev = words[words.length - 2]
+    return prev === 'west' || prev === 'north' || prev === 'east'
+  }
+
+  return false
+}
+
 function cellAt(row: string[], idx: number): string {
   return idx >= 0 ? (row[idx] ?? '') : ''
 }

@@ -14,12 +14,13 @@ import {
 } from '@/lib/pricing'
 
 // The staging-queue review modal for the onboarding/activation flow.
-// Opens from the dashboard ("Review added properties") and from the green
-// check on an address page. Rows live in staged_properties; units and
-// property name are editable inline (saved on blur), rows are removable,
-// and "Save to portfolio" stays disabled until every SELECTED row has a
-// unit count. Checkout wiring is the next build step — the button currently
-// reports that in place.
+// Opens from the dashboard ("Review added properties"), from the green
+// check on an address page, and from the demo "Claim portfolio" flow
+// (initialStep='plan' with its staged ids preselected). Rows live in
+// staged_properties; units and property name are editable inline (saved on
+// blur), rows are removable, and "Save to portfolio" stays disabled until
+// every SELECTED row has a unit count. Commit promotes entitled accounts
+// directly; everyone else goes plan step → embedded Stripe checkout.
 
 export type StagedRow = {
   id: string
@@ -43,6 +44,13 @@ type Props = {
   onClose: () => void
   /** Fired whenever the queue size changes (remove), so triggers can update badges. */
   onQueueChange?: (count: number) => void
+  /** Open directly on a later step — the demo "Claim portfolio" flow lands on
+   *  'plan' after the claim route stages + commit says requires_checkout. */
+  initialStep?: 'queue' | 'plan'
+  /** Pre-select only these staged row ids (default: everything fetched).
+   *  Lets a claim select just its own rows, leaving any pre-existing queue
+   *  rows deselected. */
+  initialSelectedIds?: string[]
 }
 
 function parseUnitsInput(raw: string): number | null {
@@ -52,7 +60,13 @@ function parseUnitsInput(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Props) {
+export default function StagedQueueModal({
+  isOpen,
+  onClose,
+  onQueueChange,
+  initialStep,
+  initialSelectedIds,
+}: Props) {
   const [rows, setRows] = useState<StagedRow[]>([])
   const [plan, setPlan] = useState<PlanContext | null>(null)
   const [loading, setLoading] = useState(false)
@@ -93,7 +107,7 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     if (!isOpen) return
     let cancelled = false
     setLoading(true)
-    setStep('queue')
+    setStep(initialStep ?? 'queue')
     setBilling('yearly')
     setPlanChoice('recommended')
     setCommitting(false)
@@ -116,8 +130,13 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
         setRows(fetched)
         setPlan(data.plan ?? null)
         // Default: everything selected — committing the whole queue is the
-        // common case; deselecting is the exception.
-        setSelected(new Set(fetched.map((r) => r.id)))
+        // common case; deselecting is the exception. A caller-supplied id list
+        // narrows the selection to its own rows (claim flow).
+        setSelected(
+          initialSelectedIds
+            ? new Set(fetched.filter((r) => initialSelectedIds.includes(r.id)).map((r) => r.id))
+            : new Set(fetched.map((r) => r.id))
+        )
         setUnitsDraft(
           Object.fromEntries(fetched.map((r) => [r.id, r.units != null ? String(r.units) : '']))
         )
@@ -132,7 +151,8 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
     return () => {
       cancelled = true
     }
-    // onQueueChange deliberately omitted: refetch only on open.
+    // onQueueChange/initialStep/initialSelectedIds deliberately omitted:
+    // refetch only on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, showNotice])
 
@@ -418,6 +438,8 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
               {/* Stripe embedded checkout mounts here. */}
               <div ref={checkoutMountRef} style={{ minHeight: 460 }} />
             </div>
+          ) : loading ? (
+            <div style={emptyStyle}>Loading your queue…</div>
           ) : step === 'plan' ? (
             <div>
               <div style={planTopRowStyle}>
@@ -522,8 +544,6 @@ export default function StagedQueueModal({ isOpen, onClose, onQueueChange }: Pro
                 </>
               )}
             </div>
-          ) : loading ? (
-            <div style={emptyStyle}>Loading your queue…</div>
           ) : rows.length === 0 ? (
             <div style={emptyStyle}>
               Nothing in your queue. Search any Chicago address and click the + button to add it.
