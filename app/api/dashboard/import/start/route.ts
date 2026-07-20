@@ -70,8 +70,16 @@ export async function POST(request: Request) {
   )]
 
   if (resolveQueue.length === 0) {
+    // Distinguish "no address column" from "every address is outside Chicago"
+    // — the latter file parsed fine and deserves an honest explanation.
+    const nonChicago = result.rows.filter((r) => r.address && r.flags.includes('non_chicago'))
     return NextResponse.json(
-      { error: 'No addresses found in the file. Check that it has a Property/Address column.' },
+      {
+        error:
+          nonChicago.length > 0
+            ? `All ${nonChicago.length} address${nonChicago.length === 1 ? '' : 'es'} in this file are outside Chicago — Property Sentinel monitors City of Chicago records only.`
+            : 'No addresses found in the file. Check that it has a Property/Address column.',
+      },
       { status: 422 }
     )
   }

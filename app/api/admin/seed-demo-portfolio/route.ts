@@ -152,6 +152,12 @@ async function buildStagedRows(
       continue
     }
     const canonical = r.canonical_address.trim().toUpperCase()
+    // A garbage raw can normalize to '' — surface it instead of upserting a
+    // bogus empty-address row (or merging several into one).
+    if (!canonical) {
+      missing.push(p.raw as string)
+      continue
+    }
     const streets = new Set<string>(p.aliases ?? [])
     for (const sibling of r.sibling_addresses) {
       if (sibling !== canonical) streets.add(sibling)
@@ -410,6 +416,7 @@ async function seedDemoPortfolio(slugParam: string | null, dryRun: boolean, rese
     .order('canonical_address')
   const promoteIds = ((toPromote ?? []) as { id: string }[]).map((r) => r.id)
 
+  let promoteStuck: string[] = []
   if (promoteIds.length > 0) {
     const deadline = Date.now() + PROMOTE_TIME_BUDGET_MS
     let promoted = 0
@@ -424,18 +431,25 @@ async function seedDemoPortfolio(slugParam: string | null, dryRun: boolean, rese
       promotionErrors.push(...result.errors)
     }
     const remaining = promoteIds.length - promoted - promotionErrors.length
-    return NextResponse.json({
-      phase: 'promoting',
-      demo_user: demo.userId,
-      promoted_this_call: promoted,
-      promotion_errors: promotionErrors,
-      promote_remaining: Math.max(0, remaining),
-      done: false,
-      hint:
-        remaining > 0
-          ? 'Hit this endpoint again to continue promoting.'
-          : 'Hit this endpoint again to compute activity stats.',
-    })
+    if (promoted > 0 || promotionErrors.length === 0 || remaining > 0) {
+      return NextResponse.json({
+        phase: 'promoting',
+        demo_user: demo.userId,
+        promoted_this_call: promoted,
+        promotion_errors: promotionErrors,
+        promote_remaining: Math.max(0, remaining),
+        done: false,
+        hint:
+          remaining > 0
+            ? 'Hit this endpoint again to continue promoting.'
+            : 'Hit this endpoint again to compute activity stats.',
+      })
+    }
+    // Zero progress: every remaining staged row failed to promote (a failing
+    // row keeps status 'staged', so it would be re-selected forever). Fall
+    // through to stats instead of stalling the seed, and surface the stuck
+    // rows in the response.
+    promoteStuck = promotionErrors
   }
 
   // ── Phase 4: stats ────────────────────────────────────────────────────────
@@ -487,11 +501,14 @@ async function seedDemoPortfolio(slugParam: string | null, dryRun: boolean, rese
     stats_done_this_call: statsDone,
     stats_errors: statsErrors,
     stats_remaining: statsRemaining,
-    done: statsRemaining === 0 && statsErrors.length === 0,
+    promote_stuck: promoteStuck,
+    done: statsRemaining === 0 && statsErrors.length === 0 && promoteStuck.length === 0,
     hint:
       statsRemaining > 0
         ? 'Hit this endpoint again to continue computing stats.'
-        : 'Seed complete — visit /demo/' + demo.slug,
+        : promoteStuck.length > 0
+          ? `Stats complete, but ${promoteStuck.length} row(s) repeatedly fail promotion — check the server logs.`
+          : 'Seed complete — visit /demo/' + demo.slug,
   })
 }
 

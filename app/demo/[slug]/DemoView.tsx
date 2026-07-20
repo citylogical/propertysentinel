@@ -130,7 +130,15 @@ export default function DemoView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug: demo.slug }),
       })
-      const claimData = (await claimRes.json()) as { staged_ids?: string[]; error?: string }
+      const claimData = (await claimRes.json()) as {
+        staged_ids?: string[]
+        already_claimed?: boolean
+        error?: string
+      }
+      if (claimData.already_claimed) {
+        window.location.assign('/dashboard/portfolio')
+        return
+      }
       if (!claimRes.ok || !claimData.staged_ids || claimData.staged_ids.length === 0) {
         throw new Error(claimData.error || 'claim failed')
       }

@@ -144,23 +144,28 @@ const CHICAGO_ZIP_RE = /^(?:606\d{2}|60707|60827)$/
  * exclusion needs proof, not absence.
  *
  * A zip outranks the city text: "West Chicago, IL 60185" ends in the word
- * "chicago" but the zip gives it away.
+ * "chicago" but the zip gives it away. A trailing 5-digit token that is a
+ * unit/account number ("#20514", "Apt 30512") is NOT a zip and is ignored.
  */
 export function isNonChicagoAddress(rawAddress: string): boolean {
   const s = rawAddress.trim()
   if (!s) return false
 
   const zipMatch = s.match(/\b(\d{5})(?:-\d{4})?\s*$/)
-  if (zipMatch) return !CHICAGO_ZIP_RE.test(zipMatch[1])
+  const zipIsUnitNumber = /(?:#|\b(?:unit|apt|apartment|suite|ste|no)\.?\s*)\d{5}(?:-\d{4})?\s*$/i.test(s)
+  if (zipMatch && !zipIsUnitNumber) return !CHICAGO_ZIP_RE.test(zipMatch[1])
 
   // No zip — fall back to the city name before ", IL" / ", Illinois". City
-  // names can be multi-word ("Calumet City"), so the only safe test is
-  // whether the tail's last word is "chicago" itself ("Chicago Heights" and
-  // friends end with a different word).
+  // names can be multi-word ("Calumet City"), so the safe test is whether the
+  // tail's last word is "chicago" itself ("Chicago Heights" and friends end
+  // with a different word) — except the municipalities that END in "chicago"
+  // (West Chicago, North Chicago), caught by the preceding word.
   const cityMatch = s.match(/([A-Za-z][A-Za-z .'-]*?)\s*,\s*(?:IL|Illinois)\b/i)
   if (cityMatch) {
     const words = cityMatch[1].trim().toLowerCase().split(/\s+/)
-    return words[words.length - 1] !== 'chicago'
+    if (words[words.length - 1] !== 'chicago') return true
+    const prev = words[words.length - 2]
+    return prev === 'west' || prev === 'north' || prev === 'east'
   }
 
   return false

@@ -77,8 +77,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Demo portfolio is not seeded yet' }, { status: 409 })
   }
 
+  // Skip properties the visitor already owns — re-claiming after a completed
+  // checkout would otherwise flip their promoted staged rows back to 'staged'
+  // and, if the follow-up commit request failed, strand owned properties in
+  // the queue as seemingly pending checkout.
+  const { data: ownedRows } = await supabase
+    .from('portfolio_properties')
+    .select('canonical_address')
+    .eq('user_id', userId)
+    .in(
+      'canonical_address',
+      demoRows.map((p) => p.canonical_address.trim().toUpperCase())
+    )
+  const owned = new Set(
+    ((ownedRows ?? []) as { canonical_address: string }[]).map((r) => r.canonical_address)
+  )
+  const toStage = demoRows.filter((p) => !owned.has(p.canonical_address.trim().toUpperCase()))
+  if (toStage.length === 0) {
+    return NextResponse.json({ already_claimed: true, staged_ids: [], total_units: 0 })
+  }
+
   const now = new Date().toISOString()
-  const stagedRows = demoRows.map((p) => ({
+  const stagedRows = toStage.map((p) => ({
     clerk_id: userId,
     canonical_address: p.canonical_address.trim().toUpperCase(),
     slug: p.slug ?? '',
