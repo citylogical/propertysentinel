@@ -50,7 +50,11 @@ const DEMO = DEMO_PORTFOLIOS['troy-realty']
 // lib/demo-portfolios.ts, shared with the browser-clickable admin route
 // (app/api/admin/seed-demo-portfolio), which is the no-local-env alternative
 // to this script.
-const PROPERTIES = DEMO.seedProperties
+// This script only handles pre-resolved entries; raw entries (customer rent
+// rolls) are resolved by the admin seed route's resolve phase instead.
+const PROPERTIES = DEMO.seedProperties.filter(
+  (p): p is (typeof DEMO.seedProperties)[number] & { canonical: string } => !!p.canonical
+)
 
 const args = process.argv.slice(2)
 const DRY_RUN = !args.includes('--apply')
@@ -79,7 +83,7 @@ async function main() {
       canonical_address: p.canonical,
       slug: addressToSlug(p.canonical),
       property_name: null,
-      units: null, // unit mix unknown for the demo — no unit rows materialized
+      units: p.units ?? null, // when unit mix is unknown, no unit rows materialize
       address_range: null,
       additional_streets: p.aliases?.length ? p.aliases : null,
       pins: pins.size > 0 ? Array.from(pins) : null,

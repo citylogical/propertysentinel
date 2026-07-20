@@ -121,7 +121,9 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     const rows: ReviewUnit[] = (job.parsed_rows ?? []).map((row, i) => ({
       ...row,
       key: i,
-      included: row.included ?? !row.flags.includes('summary_row'),
+      included:
+        row.included ??
+        (!row.flags.includes('summary_row') && !row.flags.includes('non_chicago')),
       draft_unit_label: row.unit_label ?? '',
       draft_rent: formatMoney(row.rent),
     }))
@@ -322,11 +324,19 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     }
     const list = [...map.entries()].map(([key, list]) => {
       const resolution = resolutions[key] ?? null
-      return { key, units: list, resolution, hasAddress: !key.startsWith('__row_') }
+      return {
+        key,
+        units: list,
+        resolution,
+        hasAddress: !key.startsWith('__row_'),
+        nonChicago: list.every((u) => u.flags.includes('non_chicago')),
+      }
     })
-    // Rows that need a human float to the top; verified sink below. Sort is
+    // Rows that need a human float to the top; verified sink below, and
+    // non-Chicago rows (excluded, nothing to do) sink to the bottom. Sort is
     // stable, so file order holds within each band.
     const rank = (g: (typeof list)[number]): number => {
+      if (g.nonChicago) return 2
       if (!g.hasAddress) return 0
       const m = g.resolution?.match
       return !m || m === 'nearest' || m === 'no_match' ? 0 : 1
@@ -341,19 +351,29 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
     [groups, pageClamped, perPage]
   )
 
-  const selected = useMemo(() => units.filter((u) => u.included && u.address), [units])
+  // Non-Chicago rows are hard-excluded: never selectable here and skipped by
+  // the commit route regardless — city data covers Chicago only.
+  const selected = useMemo(
+    () => units.filter((u) => u.included && u.address && !u.flags.includes('non_chicago')),
+    [units]
+  )
   const selectedProperties = useMemo(
     () => new Set(selected.map((u) => u.address)).size,
     [selected]
+  )
+  const nonChicagoUnits = useMemo(
+    () => units.filter((u) => u.flags.includes('non_chicago') && !u.flags.includes('summary_row')),
+    [units]
   )
   const flaggedGroups = useMemo(
     () =>
       groups.filter(
         (g) =>
-          !g.hasAddress ||
-          !g.resolution ||
-          g.resolution.match === 'nearest' ||
-          g.resolution.match === 'no_match'
+          !g.nonChicago &&
+          (!g.hasAddress ||
+            !g.resolution ||
+            g.resolution.match === 'nearest' ||
+            g.resolution.match === 'no_match')
       ).length,
     [groups]
   )
@@ -540,6 +560,9 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                 <div className="ir-progress-note">
                   {parseStats.parsed_rows - parseStats.flag_counts.summary_row} unit rows found ·{' '}
                   {parseStats.distinct_addresses} distinct properties
+                  {parseStats.flag_counts.non_chicago > 0
+                    ? ` · not including ${parseStats.flag_counts.non_chicago} unit${parseStats.flag_counts.non_chicago === 1 ? '' : 's'} outside Chicago`
+                    : ''}
                 </div>
               ) : null}
             </div>
@@ -557,13 +580,18 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                       const included = e.target.checked
                       setUnits((prev) =>
                         prev.map((u) =>
-                          u.flags.includes('summary_row') ? u : { ...u, included }
+                          u.flags.includes('summary_row') || u.flags.includes('non_chicago')
+                            ? u
+                            : { ...u, included }
                         )
                       )
                       persistRows(
                         jobId,
                         units
-                          .filter((u) => !u.flags.includes('summary_row'))
+                          .filter(
+                            (u) =>
+                              !u.flags.includes('summary_row') && !u.flags.includes('non_chicago')
+                          )
                           .map((u) => ({ row_num: u.row_num, included }))
                       )
                     }}
@@ -590,13 +618,21 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                     >
                       <input
                         type="checkbox"
-                        checked={groupIncluded}
+                        checked={g.nonChicago ? false : groupIncluded}
+                        disabled={g.nonChicago}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => setGroupIncluded(g.units, e.target.checked)}
                         aria-label="Include property"
                       />
                       <span className="ir-chip-slot">
-                        {g.hasAddress && res ? (
+                        {g.nonChicago ? (
+                          <span
+                            className="ir-chip ir-chip-warn"
+                            title="Outside Chicago — city data covers Chicago only, so this property can't be monitored and won't be uploaded"
+                          >
+                            Outside Chicago
+                          </span>
+                        ) : g.hasAddress && res ? (
                           green ? (
                             <span className="ir-chip ir-chip-ok" title="Matched to city records">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -671,7 +707,8 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                               <td className="ir-unit-check">
                                 <input
                                   type="checkbox"
-                                  checked={u.included}
+                                  checked={u.flags.includes('non_chicago') ? false : u.included}
+                                  disabled={u.flags.includes('non_chicago')}
                                   onChange={(e) => toggleUnitIncluded(u, e.target.checked)}
                                   aria-label="Include unit"
                                 />
@@ -715,6 +752,9 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                                 ) : null}
                                 {u.flags.includes('llm_rescued') ? (
                                   <span className="ir-flag" title={`Original: ${u.raw_address}`}>recovered</span>
+                                ) : null}
+                                {u.flags.includes('non_chicago') ? (
+                                  <span className="ir-flag" title={`Original: ${u.raw_address}`}>outside Chicago</span>
                                 ) : null}
                               </td>
                               <td className="ir-unit-status">{u.status ?? ''}</td>
@@ -787,6 +827,13 @@ export default function ImportRentRollModal({ isOpen, onClose, initialFile }: Pr
                       <div className="imq-stat-value imq-stat-value-attention">{flaggedGroups}</div>
                       <div className="imq-stat-label">Need review</div>
                     </div>
+                  </div>
+                ) : null}
+                {nonChicagoUnits.length > 0 ? (
+                  <div className="imq-rail-note">
+                    Not including {nonChicagoUnits.length} unit
+                    {nonChicagoUnits.length === 1 ? '' : 's'} outside Chicago — city data covers
+                    Chicago only.
                   </div>
                 ) : null}
                 <button

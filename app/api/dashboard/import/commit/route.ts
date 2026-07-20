@@ -62,11 +62,14 @@ export async function POST(request: Request) {
     resolutionByAddress.set(r.raw_address, r)
   }
 
-  // Included unit rows only; summary rows and unaddressed rows never stage.
+  // Included unit rows only; summary rows, unaddressed rows, and non-Chicago
+  // rows never stage (the latter have no city-data coverage and were never
+  // resolved — the review UI default-excludes them, this is the backstop).
   const rows = (Array.isArray(j.parsed_rows) ? j.parsed_rows : []).filter(
     (r) =>
       r.address &&
       !r.flags.includes('summary_row') &&
+      !r.flags.includes('non_chicago') &&
       (r.included ?? true)
   )
   if (rows.length === 0) {

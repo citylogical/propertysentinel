@@ -8,7 +8,7 @@
 import type { ParseResult, ParseStats, RowFlag } from './types'
 import { MAX_SHEET_COLS, MAX_SHEET_ROWS } from './types'
 import { resolveColumnMap } from './column-map'
-import { extractRows, sanitizeCell } from './extract'
+import { extractRows, isNonChicagoAddress, sanitizeCell } from './extract'
 import { rescueUnparsedRows } from './rescue'
 
 const COLUMN_MAP_SAMPLE_ROWS = 15
@@ -19,6 +19,7 @@ const EMPTY_FLAG_COUNTS: Record<RowFlag, number> = {
   llm_rescued: 0,
   unit_in_address: 0,
   dual_range: 0,
+  non_chicago: 0,
   unparsed: 0,
 }
 
@@ -58,6 +59,16 @@ export async function parseRentRoll(
 
   if (!opts?.skipGemini) {
     await rescueUnparsedRows(sheet, rows)
+  }
+
+  // City data covers Chicago only — rows whose raw cell carries suburb
+  // city/zip evidence get flagged (default-excluded in review, skipped by
+  // resolution and commit). Runs after the rescue pass so LLM-recovered rows
+  // are checked too.
+  for (const row of rows) {
+    if (row.address && !row.flags.includes('non_chicago') && isNonChicagoAddress(row.raw_address)) {
+      row.flags.push('non_chicago')
+    }
   }
 
   const flagCounts = { ...EMPTY_FLAG_COUNTS }

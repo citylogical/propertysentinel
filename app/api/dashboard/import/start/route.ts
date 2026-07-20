@@ -59,9 +59,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error ?? 'Parse failed' }, { status: 422 })
   }
 
-  // Distinct addresses awaiting resolution (summary/unparsed rows have none).
+  // Distinct addresses awaiting resolution (summary/unparsed rows have none;
+  // non-Chicago rows are default-excluded and resolution only knows Chicago
+  // parcels, so resolving them would waste ~2.5s each for guaranteed misses).
   const resolveQueue = [...new Set(
-    result.rows.map((r) => r.address).filter((a): a is string => !!a)
+    result.rows
+      .filter((r) => !r.flags.includes('non_chicago'))
+      .map((r) => r.address)
+      .filter((a): a is string => !!a)
   )]
 
   if (resolveQueue.length === 0) {
