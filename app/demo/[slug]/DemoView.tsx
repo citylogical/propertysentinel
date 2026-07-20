@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from 'react'
 import ActivityFeedClient from '@/app/dashboard/activity/ActivityFeedClient'
 import AddPropertyModal from '@/app/dashboard/AddPropertyModal'
+import PortfolioDetail from '@/app/dashboard/PortfolioDetail'
 import { formatAddressForDisplay } from '@/lib/formatAddress'
 import type { PortfolioProperty } from '@/app/dashboard/types'
 
@@ -40,11 +41,12 @@ type Props = {
   todayStr: string
 }
 
-type TabKey = 'highlights' | 'activity'
+type TabKey = 'highlights' | 'activity' | 'portfolio'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'highlights', label: 'Highlights' },
   { key: 'activity', label: 'Activity Feed' },
+  { key: 'portfolio', label: 'Portfolio' },
 ]
 
 // Digest-style category colors (see renderEmailHtml in the daily-digest cron).
@@ -86,6 +88,9 @@ function propertyHref(p: PortfolioProperty): string {
 export default function DemoView({ demo, properties, highlights, featured, todayStr }: Props) {
   const [tab, setTab] = useState<TabKey>('highlights')
   const [addPropOpen, setAddPropOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const selectedProperty = properties.find((p) => p.id === selectedId) ?? null
 
   const sorted = [...properties].sort((a, b) => {
     const ao = a.open_building_complaints ?? 0
@@ -376,6 +381,148 @@ export default function DemoView({ demo, properties, highlights, featured, today
           endpoint={`/api/demo/activity?slug=${encodeURIComponent(demo.slug)}`}
           defaultRange="1mo"
         />
+      ) : null}
+
+      {tab === 'portfolio' ? (
+        <div style={{ padding: '20px 28px' }}>
+          {selectedProperty ? (
+            <PortfolioDetail
+              property={selectedProperty}
+              onClose={() => setSelectedId(null)}
+              detailEndpoint={`/api/demo/detail?slug=${encodeURIComponent(demo.slug)}&property_id=${encodeURIComponent(selectedProperty.id)}`}
+              showHistoricalActivityBar={false}
+              showItemDetails={true}
+              isAdmin={false}
+            />
+          ) : null}
+
+          <div className="dashboard-table-wrap">
+            <table className="dashboard-table">
+              <thead>
+                <tr className="dashboard-thead-group">
+                  <th rowSpan={2}>Address</th>
+                  <th
+                    className="r dashboard-th-group"
+                    colSpan={3}
+                    style={{ borderBottom: '1px solid #e5e1d6' }}
+                  >
+                    Complaints
+                  </th>
+                  <th className="r" rowSpan={2} style={{ width: 95 }}>
+                    Violations
+                  </th>
+                  <th className="r" rowSpan={2} style={{ width: 80 }}>
+                    Permits
+                  </th>
+                  <th className="r" rowSpan={2} style={{ width: 100 }}>
+                    STR Listings
+                  </th>
+                  <th rowSpan={2} style={{ width: 130 }}>
+                    Flags
+                  </th>
+                </tr>
+                <tr>
+                  <th className="r dashboard-th-sub" style={{ width: 80 }}>
+                    Open
+                  </th>
+                  <th className="r dashboard-th-sub" style={{ width: 95 }}>
+                    Building
+                  </th>
+                  <th className="r dashboard-th-sub" style={{ width: 90 }}>
+                    All
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => {
+                  const flag = getFlag(p)
+                  return (
+                    <tr
+                      key={p.id}
+                      className={selectedId === p.id ? 'selected' : ''}
+                      onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                    >
+                      <td>
+                        <span className="dashboard-addr">
+                          {p.display_name || p.address_range || p.canonical_address}
+                        </span>
+                        <span className="dashboard-addr-hood">{p.community_area || ''}</span>
+                      </td>
+                      <td className="r">
+                        {p.open_building_complaints == null ? (
+                          <span className="zero">—</span>
+                        ) : p.open_building_complaints > 0 ? (
+                          <span style={{ color: VIOLATION_RED, fontWeight: 600 }}>
+                            {p.open_building_complaints}
+                          </span>
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {p.total_building_complaints_12mo == null ? (
+                          <span className="zero">—</span>
+                        ) : p.total_building_complaints_12mo > 0 ? (
+                          p.total_building_complaints_12mo
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {(p.total_complaints_12mo ?? 0) > 0 ? (
+                          p.total_complaints_12mo
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {(p.total_violations_12mo ?? 0) > 0 ? (
+                          p.total_violations_12mo
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td className="r">
+                        {(p.total_permits ?? 0) > 0 ? p.total_permits : <span className="zero">0</span>}
+                      </td>
+                      <td className="r">
+                        {(p.nearby_listings ?? 0) > 0 ? (
+                          <span style={{ color: '#b87514', fontWeight: 500 }}>{p.nearby_listings}</span>
+                        ) : (
+                          <span className="zero">0</span>
+                        )}
+                      </td>
+                      <td>
+                        {flag ? (
+                          <span className={`dashboard-flag ${flag.color}`}>
+                            <span className={`dashboard-flag-dot ${flag.color}`} />
+                            {flag.label}
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div
+            style={{
+              marginTop: 20,
+              padding: '14px 18px',
+              background: '#f7f6f2',
+              border: '1px solid #e5e1d6',
+              fontSize: 13,
+              color: '#666',
+              lineHeight: 1.6,
+              fontStyle: 'italic',
+            }}
+          >
+            Compiled from publicly available City of Chicago records. Counts refresh
+            automatically as new data is published.
+          </div>
+        </div>
       ) : null}
 
       <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />
