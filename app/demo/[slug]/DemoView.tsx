@@ -153,20 +153,14 @@ export default function DemoView({
       })
       const claimData = (await claimRes.json()) as {
         staged_ids?: string[]
-        already_claimed?: boolean
         error?: string
-      }
-      if (claimData.already_claimed) {
-        // Same build-bar landing as a fresh save, so a re-claim isn't a silent
-        // redirect.
-        window.location.assign('/dashboard/portfolio?build=1')
-        return
       }
       if (!claimRes.ok || !claimData.staged_ids || claimData.staged_ids.length === 0) {
         throw new Error(claimData.error || 'claim failed')
       }
-      // Open the review/queue step — the visitor confirms the list, fixes any
-      // unmatched address, and adjusts units before committing.
+      // Always open the review/queue step — the visitor confirms the list, fixes
+      // any unmatched address, and adjusts units before committing. Properties
+      // only reach the portfolio on an explicit "Save to portfolio" click.
       setClaimIds(claimData.staged_ids)
       setClaimModalOpen(true)
     } catch (err) {
