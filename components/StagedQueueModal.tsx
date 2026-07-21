@@ -29,6 +29,9 @@ export type StagedRow = {
   property_name: string | null
   units: number | null
   address_range: string | null
+  // Null/empty when the address didn't match a Chicago parcel — the queue
+  // surfaces those as "not matched" with an inline re-resolve affordance.
+  pins: string[] | null
   status: string
   created_at: string
 }
@@ -73,6 +76,10 @@ export default function StagedQueueModal({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Local text state for units inputs so typing isn't fought by row state.
   const [unitsDraft, setUnitsDraft] = useState<Record<string, string>>({})
+  // Address re-resolution (rows that didn't match a Chicago parcel): draft
+  // text per row + in-flight flag.
+  const [addrDraft, setAddrDraft] = useState<Record<string, string>>({})
+  const [rechecking, setRechecking] = useState<Record<string, boolean>>({})
   const [notice, setNotice] = useState<string | null>(null)
   // Wizard: 'queue' (review/edit rows) → 'plan' (pick a band) → 'checkout'
   // (Stripe embedded checkout mounted in place — the user never leaves).
@@ -190,6 +197,60 @@ export default function StagedQueueModal({
     setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, units: parsed } : r)))
     if (parsed !== row.units) persistField(row.id, 'units', parsed)
   }
+
+  // Re-resolve a row whose address didn't match city records. Rewrites the
+  // staged_properties snapshot server-side and repoints the row locally.
+  const recheckStagedAddress = useCallback(
+    async (row: StagedRow) => {
+      const draft = (addrDraft[row.id] ?? '').trim()
+      if (!draft || draft.toUpperCase() === row.canonical_address.toUpperCase()) return
+      setRechecking((prev) => ({ ...prev, [row.id]: true }))
+      try {
+        const res = await fetch('/api/dashboard/stage/reresolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ staged_id: row.id, address: draft }),
+        })
+        const data = (await res.json()) as {
+          resolution?: {
+            canonical_address: string
+            slug: string
+            pins: string[]
+            address_range: string | null
+          }
+          error?: string
+        }
+        if (!res.ok || !data.resolution) throw new Error(data.error ?? 'Check failed')
+        const r = data.resolution
+        setRows((prev) =>
+          prev.map((x) =>
+            x.id === row.id
+              ? {
+                  ...x,
+                  canonical_address: r.canonical_address,
+                  slug: r.slug,
+                  address_range: r.address_range,
+                  pins: r.pins,
+                }
+              : x
+          )
+        )
+        setAddrDraft((prev) => {
+          const next = { ...prev }
+          delete next[row.id]
+          return next
+        })
+        if (r.pins.length === 0) {
+          showNotice('Still no city match for that address — check the spelling')
+        }
+      } catch (e) {
+        showNotice(e instanceof Error ? e.message : 'Address check failed')
+      } finally {
+        setRechecking((prev) => ({ ...prev, [row.id]: false }))
+      }
+    },
+    [addrDraft, showNotice]
+  )
 
   const removeRow = async (row: StagedRow) => {
     try {
@@ -572,6 +633,8 @@ export default function StagedQueueModal({
                     // entered — selection-independent, so the queue reads at a
                     // glance which rows still need input.
                     const rowMissingUnits = parseUnitsInput(unitsDraft[row.id] ?? '') == null
+                    const unmatched = !row.pins || row.pins.length === 0
+                    const isRechecking = rechecking[row.id] ?? false
                     return (
                       <div key={row.id} className="imq-row">
                         <input
@@ -582,17 +645,41 @@ export default function StagedQueueModal({
                           aria-label={`Select ${row.property_name || row.canonical_address}`}
                         />
                         <div className="imq-row-addr">
-                          <a
-                            href={`/address/${row.slug}?building=true`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={row.property_name ?? row.canonical_address}
-                          >
-                            {row.property_name || row.canonical_address}
-                          </a>
-                          {row.address_range && row.address_range !== row.canonical_address ? (
-                            <span className="imq-row-range">{row.address_range}</span>
-                          ) : null}
+                          {unmatched ? (
+                            <>
+                              <input
+                                className="ir-addr-input"
+                                value={addrDraft[row.id] ?? row.canonical_address}
+                                onChange={(e) =>
+                                  setAddrDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
+                                }
+                                onBlur={() => void recheckStagedAddress(row)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                                }}
+                                aria-label="Fix address"
+                              />
+                              <span className="imq-row-range" style={unmatchedNoteStyle}>
+                                {isRechecking
+                                  ? 'checking…'
+                                  : 'not matched to city records — edit to fix'}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <a
+                                href={`/address/${row.slug}?building=true`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={row.property_name ?? row.canonical_address}
+                              >
+                                {row.property_name || row.canonical_address}
+                              </a>
+                              {row.address_range && row.address_range !== row.canonical_address ? (
+                                <span className="imq-row-range">{row.address_range}</span>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                         <input
                           className={`imq-units-input${rowMissingUnits ? ' imq-units-invalid' : ''}`}
@@ -902,6 +989,10 @@ const removeBtnStyle: CSSProperties = {
   lineHeight: 1,
   color: '#8a94a0',
   cursor: 'pointer',
+}
+
+const unmatchedNoteStyle: CSSProperties = {
+  color: '#b8302a',
 }
 
 // --- Plan step ---

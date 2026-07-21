@@ -38,14 +38,31 @@ export type DemoPortfolioConfig = {
   initials: string
   /** One-line source description for the Highlights tab. */
   sampleDescription: string
-  /** SR numbers spotlighted in the Highlights "Recent signals" card. */
+  /** SR numbers spotlighted in the Highlights "Recent signals" card.
+   *  Legacy path (Troy). Prefer featuredAddresses for new demos. */
   featuredSrNumbers: string[]
+  /** Addresses (normalized/canonical form) whose most-recent owner-relevant
+   *  311 complaint is spotlighted in the "Recent signals" card — one card per
+   *  address, resolved live at render time. Takes precedence over
+   *  featuredSrNumbers when present. */
+  featuredAddresses?: string[]
   /** Seed list consumed by scripts/seed-troy-demo-portfolio.ts and the
    *  admin seed route (app/api/admin/seed-demo-portfolio). */
   seedProperties: DemoSeedProperty[]
   /** Header CTA. 'claim_portfolio' routes visitors into the real
    *  stage → commit → checkout path with this portfolio pre-staged. */
   cta?: 'add_property' | 'claim_portfolio'
+  /** Rent-roll totals for the claim-page intro copy (static facts about the
+   *  uploaded roll — the suburb rows aren't in the DB). Present only for
+   *  claim demos; when set, the intro renders the rent-roll framing. */
+  rentRoll?: {
+    totalProperties: number
+    totalUnits: number
+    chicagoProperties: number
+    chicagoUnits: number
+    outsideProperties: number
+    outsideUnits: number
+  }
 }
 
 // Top 50 Troy Realty listings by 12-month owner-relevant complaints (then
@@ -230,8 +247,17 @@ export const DEMO_PORTFOLIOS: Record<string, DemoPortfolioConfig> = {
       'Department of Buildings violations, and building permits. Claim this ' +
       'portfolio to start receiving alerts on these exact buildings.',
     featuredSrNumbers: [],
+    featuredAddresses: ['7421 S DANTE AVE', '6646 S GREENWOOD AVE', '1235 S KOLIN AVE'],
     seedProperties: CHICAGO_STYLE_SEED,
     cta: 'claim_portfolio',
+    rentRoll: {
+      totalProperties: 132,
+      totalUnits: 283,
+      chicagoProperties: 93,
+      chicagoUnits: 217,
+      outsideProperties: 39,
+      outsideUnits: 66,
+    },
   },
 }
 
