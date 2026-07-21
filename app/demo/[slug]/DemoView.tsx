@@ -215,10 +215,14 @@ export default function DemoView({
   // JSX whitespace collapsing between text and {expressions}).
   const rr = demo.rentRoll
   const claimLeadText = rr
-    ? `${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit inside ` +
-      `Chicago city limits and are covered; ${rr.outsideProperties} properties ` +
-      `(${rr.outsideUnits} units) fall outside the city and aren't monitored. Claim this ` +
-      `portfolio to start receiving alerts on your Chicago buildings.`
+    ? rr.outsideProperties > 0
+      ? `${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit inside ` +
+        `Chicago city limits and are covered; ${rr.outsideProperties} properties ` +
+        `(${rr.outsideUnits} units) fall outside the city and aren't monitored. Claim this ` +
+        `portfolio to start receiving alerts on your Chicago buildings.`
+      : `All ${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit ` +
+        `inside Chicago city limits and are covered. Claim this portfolio to start ` +
+        `receiving alerts on these exact buildings.`
     : ''
   const claimStatsText =
     `In the past 3 months the monitored portfolio logged ${highlights.complaints3mo} new 311 ` +
