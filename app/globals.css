@@ -5870,7 +5870,7 @@ button.save-toggle-switch {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 12px 0 2px;
+  padding: 12px 0 14px;
 }
 .ir-pager-btn {
   font-family: Inter, system-ui, sans-serif;

@@ -177,9 +177,18 @@ export default function StagedQueueModal({
     setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
   }
 
+  // Float rows that still need attention — those that didn't match a Chicago
+  // parcel (empty pins) — to the top, so the "not matched to city records"
+  // fixes are on the first page (mirrors the imported-portfolio review). Stable
+  // within each group, so file order otherwise holds.
+  const sortedRows = useMemo(() => {
+    const rank = (r: StagedRow) => (!r.pins || r.pins.length === 0 ? 0 : 1)
+    return [...rows].sort((a, b) => rank(a) - rank(b))
+  }, [rows])
+
   const qTotalPages = Math.max(1, Math.ceil(rows.length / qPerPage))
   const qPageClamped = Math.min(qPage, qTotalPages)
-  const pagedRows = rows.slice((qPageClamped - 1) * qPerPage, qPageClamped * qPerPage)
+  const pagedRows = sortedRows.slice((qPageClamped - 1) * qPerPage, qPageClamped * qPerPage)
 
   const persistField = useCallback(
     (id: string, field: 'units' | 'property_name', value: number | string | null) => {
