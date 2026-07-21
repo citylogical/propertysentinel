@@ -13,6 +13,8 @@ import type { PortfolioProperty } from '@/app/dashboard/types'
 export type DemoHighlights = {
   complaints12mo: number
   openComplaints: number
+  complaints3mo: number
+  openComplaints3mo: number
   latestComplaint: string | null
   violations12mo: number
   openViolations: number
@@ -29,6 +31,18 @@ export type DemoFeaturedComplaint = {
   created_date: string | null
   address_normalized: string | null
   standard_description?: string | null
+  /** Total recent owner-relevant complaints on this building (address-based
+   *  featuring), so one card can stand in for several. */
+  count?: number
+}
+
+export type DemoRentRoll = {
+  totalProperties: number
+  totalUnits: number
+  chicagoProperties: number
+  chicagoUnits: number
+  outsideProperties: number
+  outsideUnits: number
 }
 
 type Props = {
@@ -38,6 +52,7 @@ type Props = {
     initials: string
     sampleDescription: string
     cta: 'add_property' | 'claim_portfolio'
+    rentRoll: DemoRentRoll | null
   }
   properties: PortfolioProperty[]
   highlights: DemoHighlights
@@ -105,10 +120,11 @@ export default function DemoView({
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // ── Claim portfolio flow ──────────────────────────────────────────────────
-  // Stage this demo's properties under the visitor's own account, then run
-  // the SAME commit path every customer hits: entitled accounts promote
-  // straight to the dashboard; everyone else lands on the plan step of the
-  // staged-queue modal (opened right here, skipping the queue review).
+  // Stage this demo's properties under the visitor's own account, then open
+  // the staged-queue review modal so they can check the list, fix any address
+  // that didn't match city records, and set unit counts before saving. From
+  // there "Save to portfolio" runs the same commit path every customer hits
+  // (entitled → promote, else → plan → checkout).
   const { isSignedIn, isLoaded } = useUser()
   const { openSignIn } = useClerk()
   const router = useRouter()
@@ -142,26 +158,10 @@ export default function DemoView({
       if (!claimRes.ok || !claimData.staged_ids || claimData.staged_ids.length === 0) {
         throw new Error(claimData.error || 'claim failed')
       }
-      const commitRes = await fetch('/api/dashboard/stage/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staged_ids: claimData.staged_ids }),
-      })
-      const commitData = (await commitRes.json()) as {
-        promoted?: number
-        requires_checkout?: boolean
-        error?: string
-      }
-      if (commitData.promoted) {
-        window.location.assign('/dashboard/portfolio?build=1')
-        return
-      }
-      if (commitData.requires_checkout) {
-        setClaimIds(claimData.staged_ids)
-        setClaimModalOpen(true)
-        return
-      }
-      throw new Error(commitData.error || 'commit failed')
+      // Open the review/queue step — the visitor confirms the list, fixes any
+      // unmatched address, and adjusts units before committing.
+      setClaimIds(claimData.staged_ids)
+      setClaimModalOpen(true)
     } catch (err) {
       console.error('Claim portfolio failed:', err)
       setClaimError('Could not claim this portfolio — please try again.')
@@ -207,6 +207,8 @@ export default function DemoView({
 
   const topBuildings = sorted.slice(0, 5)
   const maxDeptCount = Math.max(1, ...highlights.departments.map((d) => d.count))
+  // "Chicago Style Management Demo" → "Chicago Style Management" for body copy.
+  const companyShort = demo.companyName.replace(/\s+Demo$/i, '')
 
   const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
@@ -334,19 +336,51 @@ export default function DemoView({
           {/* Intro */}
           <div style={cardStyle}>
             <div style={cardBodyStyle}>
-              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
-                {demo.sampleDescription}
-              </p>
-              <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.7, color: '#666' }}>
-                {highlights.propertiesWithActivity} of {properties.length} properties in this
-                sample had reportable activity in the last 12 months. Counts update automatically
-                as the City of Chicago publishes new records — 311 complaints sync every
-                30&nbsp;minutes.{' '}
-                <strong style={{ color: '#0f2744' }}>
-                  A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
-                  subscription for your portfolio size would be less than $1/unit/month.
-                </strong>
-              </p>
+              {demo.rentRoll ? (
+                <>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
+                    {companyShort}&apos;s full rent roll — {demo.rentRoll.totalProperties} properties,{' '}
+                    {demo.rentRoll.totalUnits.toLocaleString()} units — uploaded and monitored live
+                    against Chicago 311 service requests, Department of Buildings violations, and
+                    building permits. {demo.rentRoll.chicagoProperties} buildings (
+                    {demo.rentRoll.chicagoUnits.toLocaleString()} units) sit inside Chicago city
+                    limits and are covered; {demo.rentRoll.outsideProperties} properties (
+                    {demo.rentRoll.outsideUnits} units) fall outside the city and aren&apos;t
+                    monitored. Claim this portfolio to start receiving alerts on your Chicago
+                    buildings.
+                  </p>
+                  <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.7, color: '#666' }}>
+                    {highlights.complaints3mo} 311 complaint
+                    {highlights.complaints3mo === 1 ? ' was' : 's were'} opened across the monitored
+                    portfolio in the past 3 months
+                    {highlights.openComplaints3mo > 0
+                      ? ` (${highlights.openComplaints3mo} still open)`
+                      : ''}
+                    . Counts update automatically as the City of Chicago publishes new records — 311
+                    complaints sync every 30&nbsp;minutes.{' '}
+                    <strong style={{ color: '#0f2744' }}>
+                      A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
+                      subscription for your portfolio size costs ~$2/unit/month.
+                    </strong>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
+                    {demo.sampleDescription}
+                  </p>
+                  <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.7, color: '#666' }}>
+                    {highlights.propertiesWithActivity} of {properties.length} properties in this
+                    sample had reportable activity in the last 12 months. Counts update
+                    automatically as the City of Chicago publishes new records — 311 complaints sync
+                    every 30&nbsp;minutes.{' '}
+                    <strong style={{ color: '#0f2744' }}>
+                      A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
+                      subscription for your portfolio size would be less than $1/unit/month.
+                    </strong>
+                  </p>
+                </>
+              )}
               <div style={monoFootnoteStyle}>
                 TRACKING 29 OWNER-RELEVANT 311 CATEGORIES · DOB VIOLATIONS · BUILDING PERMITS
               </div>
@@ -419,6 +453,11 @@ export default function DemoView({
                             >
                               {isOpen ? 'OPEN' : 'COMPLETED'}
                             </span>
+                            {(f.count ?? 0) > 1 ? (
+                              <span style={{ fontSize: 11, color: '#8a94a0' }}>
+                                {f.count} recent complaints
+                              </span>
+                            ) : null}
                           </div>
                           <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                             {f.address_normalized
@@ -450,7 +489,7 @@ export default function DemoView({
                         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 0' }}
                       >
                         <div style={deptLabelStyle}>{deptLabel(d.department)}</div>
-                        <div style={{ flex: 1, height: 14, background: '#eeebe3' }}>
+                        <div style={{ flex: 1, minWidth: 0, height: 14, background: '#eeebe3' }}>
                           <div
                             style={{
                               width: `${Math.max(2, Math.round((d.count / maxDeptCount) * 100))}%`,
@@ -504,7 +543,6 @@ export default function DemoView({
                         {(p.open_violations ?? 0) > 0
                           ? ` · ${p.open_violations} open viol.`
                           : ''}
-                        {' · full property page →'}
                       </span>
                     </a>
                   )
@@ -677,11 +715,31 @@ export default function DemoView({
         </div>
       ) : null}
 
+      {/* Mobile-only claim bar: the header CTA cluster is hidden ≤640px, so
+          this keeps "Claim portfolio" reachable while scrolling on a phone. */}
+      {demo.cta === 'claim_portfolio' ? (
+        <div className="demo-claim-mobilebar">
+          <button
+            type="button"
+            className="ps-cta ps-cta-green"
+            style={mobileClaimBtnStyle}
+            onClick={handleClaim}
+            disabled={claimBusy}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 21V4" />
+              <path d="M5 4h13l-3 4.5 3 4.5H5" />
+            </svg>
+            <span>{claimBusy ? 'Claiming…' : 'Claim portfolio'}</span>
+          </button>
+        </div>
+      ) : null}
+
       {demo.cta === 'claim_portfolio' ? (
         <StagedQueueModal
           isOpen={claimModalOpen}
           onClose={() => setClaimModalOpen(false)}
-          initialStep="plan"
+          initialStep="queue"
           initialSelectedIds={claimIds}
         />
       ) : (
@@ -732,6 +790,14 @@ const dividerStyle: CSSProperties = {
 const headerCtaSizeStyle: CSSProperties = {
   padding: '10px 11px',
   fontSize: 13,
+}
+
+const mobileClaimBtnStyle: CSSProperties = {
+  width: '100%',
+  justifyContent: 'center',
+  gap: 8,
+  padding: '13px 16px',
+  fontSize: 15,
 }
 
 const cardStyle: CSSProperties = {
@@ -794,15 +860,20 @@ const tileSubStyle: CSSProperties = {
 }
 
 const deptLabelStyle: CSSProperties = {
-  width: 190,
+  width: 150,
   flexShrink: 0,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
   fontFamily: 'DM Mono, ui-monospace, monospace',
   fontSize: 11,
   color: '#333',
 }
 
 const deptCountStyle: CSSProperties = {
-  minWidth: 88,
+  width: 96,
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
   textAlign: 'right',
   fontFamily: 'DM Mono, ui-monospace, monospace',
   fontSize: 12,

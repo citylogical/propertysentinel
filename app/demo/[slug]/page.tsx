@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { chunkedIn, getAllAddresses } from '@/lib/portfolio-stats'
+import { normalizeAddress } from '@/lib/supabase-search'
 import { OWNER_RELEVANT_CODES, DEPARTMENT_BY_CODE } from '@/lib/sr-codes'
 import { getDemoPortfolio } from '@/lib/demo-portfolios'
 import type { PortfolioProperty } from '@/app/dashboard/types'
@@ -42,6 +43,10 @@ type ComplaintLite = {
 // request; kept out of the component body for the react purity lint).
 function twelveMonthsAgoIso(): string {
   return new Date(Date.now() - 365 * 86400000).toISOString()
+}
+
+function threeMonthsAgoIso(): string {
+  return new Date(Date.now() - 92 * 86400000).toISOString()
 }
 
 function chicagoTodayStr(): string {
@@ -190,8 +195,11 @@ export default async function DemoPage({ params }: PageProps) {
   )
 
   const complaintRows = complaints ?? []
+  const threeMonthsAgo = threeMonthsAgoIso()
   const deptCounts = new Map<string, { count: number; open: number }>()
   let openComplaints = 0
+  let complaints3mo = 0
+  let openComplaints3mo = 0
   let latestComplaint: string | null = null
   for (const c of complaintRows) {
     const code = (c.sr_short_code ?? '').toUpperCase()
@@ -204,15 +212,61 @@ export default async function DemoPage({ params }: PageProps) {
       openComplaints++
     }
     deptCounts.set(dept, entry)
+    if (c.created_date && c.created_date >= threeMonthsAgo) {
+      complaints3mo++
+      if (isOpen) openComplaints3mo++
+    }
     if (c.created_date && (!latestComplaint || c.created_date > latestComplaint)) {
       latestComplaint = c.created_date
     }
   }
 
-  // Spotlighted SR numbers for the "Recent signals" card. standard_description
+  // Spotlighted complaints for the "Recent signals" card. standard_description
   // is the paraphrased (PII-safe) summary — never the raw complaint text.
   let featured: DemoFeaturedComplaint[] = []
-  if (demo.featuredSrNumbers.length > 0) {
+  if (demo.featuredAddresses && demo.featuredAddresses.length > 0) {
+    // Address-based: one card per featured address, showing its most-recent
+    // owner-relevant complaint (plus a count so several complaints on one
+    // building read as a single card). Match each featured address to a loaded
+    // property (suffix-agnostic) so the query uses the building's real address
+    // set — robust to how the address was resolved at seed time.
+    const stripSuffix = (s: string) =>
+      normalizeAddress(s)
+        .replace(/\s+(ST|AVE|BLVD|DR|CT|PL|LN|RD|PKWY|TER|CIR|HWY)$/, '')
+        .trim()
+    const addrToIdx = new Map<string, number>()
+    const featuredMatchAddresses: string[] = []
+    demo.featuredAddresses.forEach((addr, i) => {
+      const key = stripSuffix(addr)
+      const prop = properties.find((p) => stripSuffix(p.canonical_address) === key)
+      if (!prop) return
+      for (const a of getAllAddresses(prop.canonical_address, prop.address_range, prop.additional_streets)) {
+        if (!addrToIdx.has(a)) addrToIdx.set(a, i)
+        featuredMatchAddresses.push(a)
+      }
+    })
+    if (featuredMatchAddresses.length > 0) {
+      const { data: featuredRows } = await supabase
+        .from('complaints_311')
+        .select('sr_number, sr_type, sr_short_code, status, created_date, address_normalized, standard_description')
+        .in('address_normalized', Array.from(new Set(featuredMatchAddresses)))
+        .in('sr_short_code', ownerCodes)
+        .order('created_date', { ascending: false })
+        .limit(500)
+      const byIdx = new Map<number, { row: DemoFeaturedComplaint; count: number }>()
+      for (const r of (featuredRows ?? []) as DemoFeaturedComplaint[]) {
+        const idx = addrToIdx.get(String(r.address_normalized ?? ''))
+        if (idx == null) continue
+        const existing = byIdx.get(idx)
+        if (existing) existing.count++
+        else byIdx.set(idx, { row: r, count: 1 })
+      }
+      featured = demo.featuredAddresses
+        .map((_, i) => byIdx.get(i))
+        .filter((x): x is { row: DemoFeaturedComplaint; count: number } => x != null)
+        .map((x) => ({ ...x.row, count: x.count }))
+    }
+  } else if (demo.featuredSrNumbers.length > 0) {
     const { data: featuredRows } = await supabase
       .from('complaints_311')
       .select('sr_number, sr_type, sr_short_code, status, created_date, address_normalized, standard_description')
@@ -228,6 +282,8 @@ export default async function DemoPage({ params }: PageProps) {
   const highlights: DemoHighlights = {
     complaints12mo: complaintRows.length,
     openComplaints,
+    complaints3mo,
+    openComplaints3mo,
     latestComplaint,
     violations12mo: properties.reduce((s, p) => s + (p.total_violations_12mo ?? 0), 0),
     openViolations: properties.reduce((s, p) => s + (p.open_violations ?? 0), 0),
@@ -254,6 +310,7 @@ export default async function DemoPage({ params }: PageProps) {
             initials: demo.initials,
             sampleDescription: demo.sampleDescription,
             cta: demo.cta ?? 'add_property',
+            rentRoll: demo.rentRoll ?? null,
           }}
           properties={properties}
           highlights={highlights}

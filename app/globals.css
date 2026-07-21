@@ -3143,6 +3143,31 @@ button.save-toggle-switch {
   }
 }
 
+/* Demo "Claim portfolio" CTA on mobile: the header cluster (which holds the
+   desktop Claim button) is hidden ≤640px, so surface a full-width sticky bar
+   pinned to the bottom of the viewport instead. Desktop keeps the header CTA. */
+.demo-claim-mobilebar {
+  display: none;
+}
+@media (max-width: 640px) {
+  .demo-claim-mobilebar {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--bg, #f2f0eb);
+    border-top: 1px solid #e5e1d6;
+    box-shadow: 0 -2px 12px rgba(15, 39, 68, 0.1);
+  }
+  /* Clear the fixed bar so it never covers the last row of content. */
+  .prop-main-content {
+    padding-bottom: 76px;
+  }
+}
+
 .dashboard-inline-stats {
   display: flex;
   gap: 20px;
