@@ -222,6 +222,35 @@ const CHICAGO_STYLE_SEED: DemoSeedProperty[] = [
   { raw: '9716 S LUELLA AVE', units: 1 },
 ]
 
+// Regal Shore — full rent roll (17 buildings, pasted address list 2026-07-21),
+// all inside Chicago: South Shore / South Chicago (60649, 60617), Woodlawn
+// (60637), and Bronzeville (60615). Ranged addresses are kept as written —
+// resolveImportAddress parses abbreviated high ends ("1949-57" → 1949–1957)
+// and Hansen supplies the definitive building range.
+//
+// NOTE: unit counts are pending from the customer. The seed route rejects a
+// claimable portfolio until every entry carries units >= 1 — fill these in
+// before seeding.
+const REGAL_SHORE_SEED: DemoSeedProperty[] = [
+  { raw: '2445 E 72ND ST' },
+  { raw: '1949-57 E 73RD PL' },
+  { raw: '4725 S MICHIGAN AVE' },
+  { raw: '6600 S INGLESIDE AVE' },
+  { raw: '6625 S DREXEL AVE' },
+  { raw: '6650-58 S DREXEL AVE' },
+  { raw: '6700-12 S CHAPPEL AVE' },
+  { raw: '6800 S DORCHESTER AVE' },
+  { raw: '7001 S CHAPPEL AVE' },
+  { raw: '7048-50 S MERRILL AVE' },
+  { raw: '7131-43 S BENNETT AVE' },
+  { raw: '7201-09 S CONSTANCE AVE' },
+  { raw: '7270 S SOUTH SHORE DR' },
+  { raw: '7419-35 S COLFAX AVE' },
+  { raw: '7451-59 S BENNETT AVE' },
+  { raw: '7733 S SOUTH SHORE DR' },
+  { raw: '8624 S HOUSTON AVE' },
+]
+
 export const DEMO_PORTFOLIOS: Record<string, DemoPortfolioConfig> = {
   'troy-realty': {
     slug: 'troy-realty',
@@ -258,6 +287,26 @@ export const DEMO_PORTFOLIOS: Record<string, DemoPortfolioConfig> = {
       outsideProperties: 39,
       outsideUnits: 66,
     },
+  },
+  'regal-shore': {
+    slug: 'regal-shore',
+    userId: 'demo_regal_shore',
+    companyName: 'Regal Shore Demo',
+    initials: 'RS',
+    sampleDescription:
+      'The full Regal Shore rent roll — 17 Chicago buildings across South Shore, ' +
+      'Woodlawn, Bronzeville, and South Chicago — monitored live against Chicago ' +
+      '311 service requests, Department of Buildings violations, and building ' +
+      'permits. Claim this portfolio to start receiving alerts on these exact buildings.',
+    featuredSrNumbers: [],
+    // Provisional picks (single-frontage buildings whose canonical form is
+    // predictable). Revisit after seeding, once real activity is visible.
+    featuredAddresses: ['7270 S SOUTH SHORE DR', '2445 E 72ND ST', '4725 S MICHIGAN AVE'],
+    seedProperties: REGAL_SHORE_SEED,
+    cta: 'claim_portfolio',
+    // rentRoll intro block intentionally omitted until the customer's unit
+    // counts arrive — the page falls back to sampleDescription. All 17
+    // properties are inside Chicago (outside* would be 0).
   },
 }
 
