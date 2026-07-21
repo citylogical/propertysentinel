@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useClerk, useUser } from '@clerk/nextjs'
 import ActivityFeedClient from '@/app/dashboard/activity/ActivityFeedClient'
@@ -118,6 +119,10 @@ export default function DemoView({
   const [tab, setTab] = useState<TabKey>('highlights')
   const [addPropOpen, setAddPropOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Gate the portal render until after mount — createPortal needs `document`,
+  // absent during SSR.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   // ── Claim portfolio flow ──────────────────────────────────────────────────
   // Stage this demo's properties under the visitor's own account, then open
@@ -152,7 +157,9 @@ export default function DemoView({
         error?: string
       }
       if (claimData.already_claimed) {
-        window.location.assign('/dashboard/portfolio')
+        // Same build-bar landing as a fresh save, so a re-claim isn't a silent
+        // redirect.
+        window.location.assign('/dashboard/portfolio?build=1')
         return
       }
       if (!claimRes.ok || !claimData.staged_ids || claimData.staged_ids.length === 0) {
@@ -210,6 +217,25 @@ export default function DemoView({
   // "Chicago Style Management Demo" → "Chicago Style Management" for body copy.
   const companyShort = demo.companyName.replace(/\s+Demo$/i, '')
 
+  // Claim-page intro copy, composed as plain strings (real spaces — immune to
+  // JSX whitespace collapsing between text and {expressions}).
+  const rr = demo.rentRoll
+  const claimLeadText = rr
+    ? `${companyShort}'s full rent roll — ${rr.totalProperties} properties, ` +
+      `${rr.totalUnits.toLocaleString()} units — is monitored live against Chicago 311 ` +
+      `service requests, Department of Buildings violations, and building permits. ` +
+      `${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit inside ` +
+      `Chicago city limits and are covered; ${rr.outsideProperties} properties ` +
+      `(${rr.outsideUnits} units) fall outside the city and aren't monitored. Claim this ` +
+      `portfolio to start receiving alerts on your Chicago buildings.`
+    : ''
+  const claimStatsText =
+    `In the past 3 months the monitored portfolio logged ${highlights.complaints3mo} new 311 ` +
+    `complaint${highlights.complaints3mo === 1 ? '' : 's'}` +
+    `${highlights.openComplaints3mo > 0 ? ` (${highlights.openComplaints3mo} still open)` : ''}. ` +
+    `Counts update automatically as the City of Chicago publishes new records — 311 complaints ` +
+    `sync every 30 minutes.`
+
   const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
     if (p.is_pbl) return { label: 'PBL', color: 'amber' }
@@ -233,7 +259,7 @@ export default function DemoView({
             <div className="dashboard-logo">{demo.initials}</div>
             <div className="dashboard-identity-text">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h1 style={{ margin: 0 }}>{demo.companyName}</h1>
+                <h1 style={{ margin: 0 }}>{companyShort}</h1>
               </div>
               <div className="dashboard-identity-sub">Live demo · Last 12 months · {todayStr}</div>
             </div>
@@ -338,30 +364,15 @@ export default function DemoView({
             <div style={cardBodyStyle}>
               {demo.rentRoll ? (
                 <>
-                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
-                    {companyShort}&apos;s full rent roll — {demo.rentRoll.totalProperties} properties,{' '}
-                    {demo.rentRoll.totalUnits.toLocaleString()} units — uploaded and monitored live
-                    against Chicago 311 service requests, Department of Buildings violations, and
-                    building permits. {demo.rentRoll.chicagoProperties} buildings (
-                    {demo.rentRoll.chicagoUnits.toLocaleString()} units) sit inside Chicago city
-                    limits and are covered; {demo.rentRoll.outsideProperties} properties (
-                    {demo.rentRoll.outsideUnits} units) fall outside the city and aren&apos;t
-                    monitored. Claim this portfolio to start receiving alerts on your Chicago
-                    buildings.
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#0f2744', fontWeight: 600 }}>
+                    A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
+                    subscription for your portfolio size costs ~$2/unit/month.
+                  </p>
+                  <p style={{ margin: '10px 0 0', fontSize: 14, lineHeight: 1.7, color: '#333' }}>
+                    {claimLeadText}
                   </p>
                   <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.7, color: '#666' }}>
-                    {highlights.complaints3mo} 311 complaint
-                    {highlights.complaints3mo === 1 ? ' was' : 's were'} opened across the monitored
-                    portfolio in the past 3 months
-                    {highlights.openComplaints3mo > 0
-                      ? ` (${highlights.openComplaints3mo} still open)`
-                      : ''}
-                    . Counts update automatically as the City of Chicago publishes new records — 311
-                    complaints sync every 30&nbsp;minutes.{' '}
-                    <strong style={{ color: '#0f2744' }}>
-                      A single Streets &amp; Sanitation fine costs ~$500/day; a Property Sentinel
-                      subscription for your portfolio size costs ~$2/unit/month.
-                    </strong>
+                    {claimStatsText}
                   </p>
                 </>
               ) : (
@@ -716,24 +727,30 @@ export default function DemoView({
       ) : null}
 
       {/* Mobile-only claim bar: the header CTA cluster is hidden ≤640px, so
-          this keeps "Claim portfolio" reachable while scrolling on a phone. */}
-      {demo.cta === 'claim_portfolio' ? (
-        <div className="demo-claim-mobilebar">
-          <button
-            type="button"
-            className="ps-cta ps-cta-green"
-            style={mobileClaimBtnStyle}
-            onClick={handleClaim}
-            disabled={claimBusy}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M5 21V4" />
-              <path d="M5 4h13l-3 4.5 3 4.5H5" />
-            </svg>
-            <span>{claimBusy ? 'Claiming…' : 'Claim portfolio'}</span>
-          </button>
-        </div>
-      ) : null}
+          this keeps "Claim portfolio" reachable while scrolling on a phone.
+          Portaled to <body> because .prop-main-content is the scroll container
+          — a fixed child of it would scroll with the content instead of pinning
+          to the viewport. */}
+      {mounted && demo.cta === 'claim_portfolio'
+        ? createPortal(
+            <div className="demo-claim-mobilebar">
+              <button
+                type="button"
+                className="ps-cta ps-cta-green"
+                style={mobileClaimBtnStyle}
+                onClick={handleClaim}
+                disabled={claimBusy}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M5 21V4" />
+                  <path d="M5 4h13l-3 4.5 3 4.5H5" />
+                </svg>
+                <span>{claimBusy ? 'Claiming…' : 'Claim portfolio'}</span>
+              </button>
+            </div>,
+            document.body
+          )
+        : null}
 
       {demo.cta === 'claim_portfolio' ? (
         <StagedQueueModal

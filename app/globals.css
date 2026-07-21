@@ -6044,6 +6044,27 @@ button.save-toggle-switch {
   gap: 14px;
   overflow-y: auto;
 }
+
+/* Review/import modal on mobile: the horizontal list + 252px rail split
+   overflows a phone (the rail — PROPERTIES/UNITS · plan · Save to portfolio —
+   gets clipped off the right edge, and reads as "missing"). Stack vertically
+   with the summary rail ABOVE the list, full width, always visible. Shared by
+   StagedQueueModal and ImportRentRollModal. */
+@media (max-width: 640px) {
+  .imq-split {
+    flex-direction: column;
+  }
+  .imq-rail {
+    order: -1;
+    width: auto;
+    overflow-y: visible;
+    border-bottom: 1px solid #e5e1d6;
+  }
+  .imq-list {
+    border-right: none;
+  }
+}
+
 .imq-rail-stats {
   display: flex;
   gap: 22px;
