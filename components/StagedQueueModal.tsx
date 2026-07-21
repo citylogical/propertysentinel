@@ -54,6 +54,12 @@ type Props = {
    *  Lets a claim select just its own rows, leaving any pre-existing queue
    *  rows deselected. */
   initialSelectedIds?: string[]
+  /** Canonical addresses (UPPERCASE) that DO have a city-data footprint
+   *  (permits/violations/complaints or a Hansen range) even if they have no
+   *  assessor parcel. A parcel-less row in this set reads as a soft "no parcels
+   *  found" note rather than the red "not matched — edit to fix". Supplied by
+   *  the demo claim flow; absent for imports (which keep the red treatment). */
+  knownAddresses?: Set<string>
 }
 
 function parseUnitsInput(raw: string): number | null {
@@ -69,6 +75,7 @@ export default function StagedQueueModal({
   onQueueChange,
   initialStep,
   initialSelectedIds,
+  knownAddresses,
 }: Props) {
   const [rows, setRows] = useState<StagedRow[]>([])
   const [plan, setPlan] = useState<PlanContext | null>(null)
@@ -177,14 +184,29 @@ export default function StagedQueueModal({
     setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
   }
 
-  // Float rows that still need attention — those that didn't match a Chicago
-  // parcel (empty pins) — to the top, so the "not matched to city records"
-  // fixes are on the first page (mirrors the imported-portfolio review). Stable
+  // Row classification for the address column:
+  //  • matched      → has a parcel PIN (normal link).
+  //  • no-parcel    → no PIN but a known building (city-data footprint) — a soft
+  //                   "no parcels found" note, not an error.
+  //  • needs-fix    → no PIN and no city match at all — the red editable "edit
+  //                   to fix" row.
+  const isNoParcel = useCallback((r: StagedRow) => !r.pins || r.pins.length === 0, [])
+  const isKnownBuilding = useCallback(
+    (r: StagedRow) =>
+      knownAddresses?.has(r.canonical_address.trim().toUpperCase()) ?? false,
+    [knownAddresses]
+  )
+  const needsFix = useCallback(
+    (r: StagedRow) => isNoParcel(r) && !isKnownBuilding(r),
+    [isNoParcel, isKnownBuilding]
+  )
+
+  // Float only the rows that actually need a fix (no city match) to the top, so
+  // they land on the first page (mirrors the imported-portfolio review). Stable
   // within each group, so file order otherwise holds.
   const sortedRows = useMemo(() => {
-    const rank = (r: StagedRow) => (!r.pins || r.pins.length === 0 ? 0 : 1)
-    return [...rows].sort((a, b) => rank(a) - rank(b))
-  }, [rows])
+    return [...rows].sort((a, b) => (needsFix(a) ? 0 : 1) - (needsFix(b) ? 0 : 1))
+  }, [rows, needsFix])
 
   const qTotalPages = Math.max(1, Math.ceil(rows.length / qPerPage))
   const qPageClamped = Math.min(qPage, qTotalPages)
@@ -642,7 +664,8 @@ export default function StagedQueueModal({
                     // entered — selection-independent, so the queue reads at a
                     // glance which rows still need input.
                     const rowMissingUnits = parseUnitsInput(unitsDraft[row.id] ?? '') == null
-                    const unmatched = !row.pins || row.pins.length === 0
+                    const rowNeedsFix = needsFix(row)
+                    const noParcelKnown = isNoParcel(row) && !rowNeedsFix
                     const isRechecking = rechecking[row.id] ?? false
                     return (
                       <div key={row.id} className="imq-row">
@@ -654,7 +677,7 @@ export default function StagedQueueModal({
                           aria-label={`Select ${row.property_name || row.canonical_address}`}
                         />
                         <div className="imq-row-addr">
-                          {unmatched ? (
+                          {rowNeedsFix ? (
                             <>
                               <input
                                 className="ir-addr-input"
@@ -686,6 +709,10 @@ export default function StagedQueueModal({
                               </a>
                               {row.address_range && row.address_range !== row.canonical_address ? (
                                 <span className="imq-row-range">{row.address_range}</span>
+                              ) : noParcelKnown ? (
+                                <span className="imq-row-range" style={noParcelNoteStyle}>
+                                  no parcels found
+                                </span>
                               ) : null}
                             </>
                           )}
@@ -1002,6 +1029,10 @@ const removeBtnStyle: CSSProperties = {
 
 const unmatchedNoteStyle: CSSProperties = {
   color: '#b8302a',
+}
+
+const noParcelNoteStyle: CSSProperties = {
+  color: '#b87514',
 }
 
 // --- Plan step ---

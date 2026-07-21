@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useClerk, useUser } from '@clerk/nextjs'
@@ -215,10 +215,7 @@ export default function DemoView({
   // JSX whitespace collapsing between text and {expressions}).
   const rr = demo.rentRoll
   const claimLeadText = rr
-    ? `${companyShort}'s full rent roll — ${rr.totalProperties} properties, ` +
-      `${rr.totalUnits.toLocaleString()} units — is monitored live against Chicago 311 ` +
-      `service requests, Department of Buildings violations, and building permits. ` +
-      `${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit inside ` +
+    ? `${rr.chicagoProperties} buildings (${rr.chicagoUnits.toLocaleString()} units) sit inside ` +
       `Chicago city limits and are covered; ${rr.outsideProperties} properties ` +
       `(${rr.outsideUnits} units) fall outside the city and aren't monitored. Claim this ` +
       `portfolio to start receiving alerts on your Chicago buildings.`
@@ -229,6 +226,27 @@ export default function DemoView({
     `${highlights.openComplaints3mo > 0 ? ` (${highlights.openComplaints3mo} still open)` : ''}. ` +
     `Counts update automatically as the City of Chicago publishes new records — 311 complaints ` +
     `sync every 30 minutes.`
+
+  // Buildings that DO have a city-data footprint (permit/violation/complaint
+  // history, a Hansen address range, or a parcel) but may lack an assessor
+  // parcel PIN. The claim queue uses this to show a soft "no parcels found"
+  // note for these instead of the red "not matched — edit to fix" (which should
+  // only appear for addresses with no city match at all).
+  const knownBuildingAddresses = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of properties) {
+      const known =
+        (p.pins?.length ?? 0) > 0 ||
+        !!p.address_range ||
+        (p.additional_streets?.length ?? 0) > 0 ||
+        (p.total_complaints_12mo ?? 0) > 0 ||
+        (p.total_building_complaints_12mo ?? 0) > 0 ||
+        (p.total_violations_12mo ?? 0) > 0 ||
+        (p.total_permits ?? 0) > 0
+      if (known) s.add(p.canonical_address.trim().toUpperCase())
+    }
+    return s
+  }, [properties])
 
   const getFlag = (p: PortfolioProperty): { label: string; color: 'red' | 'amber' } | null => {
     if (p.has_stop_work) return { label: 'Stop work', color: 'red' }
@@ -752,6 +770,7 @@ export default function DemoView({
           onClose={() => setClaimModalOpen(false)}
           initialStep="queue"
           initialSelectedIds={claimIds}
+          knownAddresses={knownBuildingAddresses}
         />
       ) : (
         <AddPropertyModal isOpen={addPropOpen} onClose={() => setAddPropOpen(false)} />

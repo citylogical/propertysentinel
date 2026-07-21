@@ -146,12 +146,19 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
       const base = stripUnitSuffix(normalized) ?? normalized
       const hansen = await ensureHansenRecord(base)
       if (hansen && hansen.allAddresses.length > 1) {
+        // Hansen (the city's building record) knows this as a multi-address
+        // building. Collect any assessor PINs for the range — but keep Hansen's
+        // range + sibling addresses even when there are ZERO parcels, so the
+        // building is recognized and its 311/permit/violation activity matches
+        // across the whole range (e.g. permits filed under the high address of
+        // a range). Without this the row was discarded as no_match and read as
+        // an "incomplete address".
         const hansenPins = await collectPinsForUserRangeAddresses(hansen.allAddresses)
+        let yearBuilt: string | null = null
+        let impliedValue: number | null = null
+        let propertyClass: string | null = null
+        let communityArea: string | null = null
         if (hansenPins.length > 0) {
-          let yearBuilt: string | null = null
-          let impliedValue: number | null = null
-          let propertyClass: string | null = null
-          let communityArea: string | null = null
           try {
             const { parcel } = await fetchParcelUniverse(hansenPins[0])
             communityArea = parcel?.community_area_name?.trim() ?? null
@@ -169,25 +176,25 @@ export async function resolveImportAddress(rawAddress: string): Promise<ImportRe
           } catch (e) {
             console.error('[resolveImportAddress] hansen-rescue snapshot failed:', e)
           }
-          return {
-            raw_address: rawAddress,
-            match: 'range',
-            canonical_address: normalized,
-            slug: generateSlug(normalized, null),
-            pins: hansenPins,
-            address_range: buildAddressRange(hansen.allAddresses) ?? rangeDisplay,
-            sibling_addresses: hansen.allAddresses,
-            zip: null,
-            sqft: null,
-            year_built: yearBuilt,
-            implied_value: impliedValue,
-            community_area: communityArea,
-            property_class: propertyClass,
-            num_units_from_chars: null,
-            nearest_suggestion: null,
-            nearest_distance: null,
-            error: null,
-          }
+        }
+        return {
+          raw_address: rawAddress,
+          match: 'range',
+          canonical_address: normalized,
+          slug: generateSlug(normalized, null),
+          pins: hansenPins,
+          address_range: buildAddressRange(hansen.allAddresses) ?? rangeDisplay,
+          sibling_addresses: hansen.allAddresses,
+          zip: null,
+          sqft: null,
+          year_built: yearBuilt,
+          implied_value: impliedValue,
+          community_area: communityArea,
+          property_class: propertyClass,
+          num_units_from_chars: null,
+          nearest_suggestion: null,
+          nearest_distance: null,
+          error: null,
         }
       }
       return blind(
