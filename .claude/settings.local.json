@@ -16,7 +16,31 @@
       "Bash(node scripts/verify-addressbar.mjs)",
       "Bash(grep -Ev \"^\\\\s*$|warning\")",
       "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__subscribe_pr_activity",
-      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later"
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later",
+      "Bash(node -e ' *)",
+      "PowerShell(git add docs/sql/rentroll_import_migration.sql)",
+      "PowerShell(npx eslint \"app/address/[slug]/PropertyFeed.tsx\" \"app/address/[slug]/AddressBarButtons.tsx\" components/ComplaintRowEnriched.tsx app/api/complaints/enriched/route.ts)",
+      "PowerShell(npx eslint app/api/cron/daily-digest/route.ts)",
+      "PowerShell(git fetch origin)",
+      "Bash(ls \"C:\\\\Users\\\\jrmcm\\\\Documents\" | head -30)",
+      "WebFetch(domain:dwellsy.com)",
+      "Bash(curl -s https://dwellsy.com/robots.txt)",
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\\\\chicago_hud.csv\" | Measure-Object -Line\\).Lines)",
+      "WebSearch",
+      "WebFetch(domain:www.hud.gov)",
+      "PowerShell(python \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\\\\backfill\\\\pm_normalize.py\")",
+      "PowerShell(git -C \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\" status --short)",
+      "PowerShell(git -C \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\" branch --show-current)",
+      "PowerShell(git -C \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\" add backfill/pm_normalize.py sql/pm_universe_setup.sql)",
+      "PowerShell(python -m py_compile \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\\\\backfill\\\\pm_hud.py\")",
+      "PowerShell(if \\($?\\) { \"compile ok\" })",
+      "PowerShell(python -c \"import supabase, dotenv; print\\('deps ok'\\)\")",
+      "PowerShell(python \"C:\\\\Users\\\\jrmcm\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-jrmcm-Documents-propertysentinel\\\\9c57d65a-a604-4acd-ae75-d561f52eebd4\\\\scratchpad\\\\qa_probe.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\jrmcm\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-jrmcm-Documents-propertysentinel\\\\9c57d65a-a604-4acd-ae75-d561f52eebd4\\\\scratchpad\\\\qa_probe2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\jrmcm\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-jrmcm-Documents-propertysentinel\\\\9c57d65a-a604-4acd-ae75-d561f52eebd4\\\\scratchpad\\\\qa_classify.py\")",
+      "PowerShell(git -C \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\" add backfill/pm_hud.py chicago_hud.csv chicago_hud_agents.csv)",
+      "PowerShell(git -C \"C:\\\\Users\\\\jrmcm\\\\Documents\\\\property-sentinel-workers\" add backfill/pm_hud.py backfill/pm_normalize.py)",
+      "PowerShell(python \"C:\\\\Users\\\\jrmcm\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-jrmcm-Documents-propertysentinel\\\\9c57d65a-a604-4acd-ae75-d561f52eebd4\\\\scratchpad\\\\test_addrs.py\")"
     ]
   }
 }
