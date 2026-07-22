@@ -18,7 +18,21 @@ export default function CityLogicCard({ cityLogic }: Props) {
     isRestrictedZone,
     floodFemaSfha,
     ohareNoiseContour,
+    hudAssisted,
   } = cityLogic
+
+  // "Section 8 · 120 units" — programs joined, falling back to the HUD
+  // category when no program flags were set; units appended when present.
+  const hudAssistedLabel = hudAssisted
+    ? [
+        hudAssisted.programs.length > 0 ? hudAssisted.programs.join(', ') : hudAssisted.category,
+        hudAssisted.unitsAssisted != null && hudAssisted.unitsAssisted > 0
+          ? `${hudAssisted.unitsAssisted} units`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Yes'
+    : null
 
   // If literally nothing populated, hide the entire card. Should be rare
   // since parcel_universe almost always has ward + community area.
@@ -33,7 +47,8 @@ export default function CityLogicCard({ cityLogic }: Props) {
     isPbl ||
     isRestrictedZone ||
     floodFemaSfha ||
-    ohareNoiseContour
+    ohareNoiseContour ||
+    hudAssisted != null
 
   if (!hasAnyContent) return null
 
@@ -95,6 +110,13 @@ export default function CityLogicCard({ cityLogic }: Props) {
           </div>
         )}
 
+        {hudAssistedLabel != null && (
+          <div className="detail-row">
+            <span className="detail-key">HUD Assisted</span>
+            <span className="detail-val">{hudAssistedLabel}</span>
+          </div>
+        )}
+
         {isRestrictedZone && (
           <div className="detail-row">
             <span className="detail-key">STR Restricted Zone</span>
@@ -111,7 +133,7 @@ export default function CityLogicCard({ cityLogic }: Props) {
 
         {ohareNoiseContour && (
           <div className="detail-row">
-            <span className="detail-key">O'Hare Noise Zone</span>
+            <span className="detail-key">O&apos;Hare Noise Zone</span>
             <span className="detail-val">Yes</span>
           </div>
         )}
