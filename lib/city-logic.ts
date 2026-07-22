@@ -18,6 +18,14 @@ export type CityLogic = {
     isRestrictedZone: boolean
     floodFemaSfha: boolean
     ohareNoiseContour: boolean
+    /** HUD multifamily assistance at this building (from hud_assisted); null when none. */
+    hudAssisted: {
+      propertyName: string | null
+      /** Short program labels, e.g. ["Section 8", "202/811"]. May be empty — fall back to category. */
+      programs: string[]
+      category: string | null
+      unitsAssisted: number | null
+    } | null
   }
 
 type ParcelRow = {
@@ -63,7 +71,7 @@ export async function fetchCityLogic(params: {
   ]
 
   try {
-    const [parcelRes, neighborhoodRes, pblRes, restrictedZoneRes] = await Promise.all([
+    const [parcelRes, neighborhoodRes, pblRes, hudRes, restrictedZoneRes] = await Promise.all([
       // 1. parcel_universe — latest tax_year for this PIN
       supabase
         .from('parcel_universe')
@@ -93,7 +101,18 @@ export async function fetchCityLogic(params: {
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
 
-      // 4. Restricted zone — derive ward+precinct from a 311 record at this address,
+      // 4. HUD assisted — any of this building's addresses on hud_assisted
+      //    (flat lookup rebuilt by the workers-repo HUD loader; one row per
+      //    expanded address, so a range development matches on any entrance).
+      cleanedAddresses.length > 0
+        ? supabase
+            .from('hud_assisted')
+            .select('property_id, property_name, category, programs, units_assisted')
+            .in('address_normalized', cleanedAddresses)
+            .limit(20)
+        : Promise.resolve({ data: null, error: null }),
+
+      // 5. Restricted zone — derive ward+precinct from a 311 record at this address,
       //    then check str_restricted_zones for an active restriction.
       (async () => {
         if (cleanedAddresses.length === 0) return false
@@ -142,6 +161,38 @@ export async function fetchCityLogic(params: {
     const isPbl = pblData != null
     const pblAssociation = (pblData?.association_cooperative_or_owner ?? '').trim() || null
 
+    // Multiple hud_assisted rows can match one building (a range development
+    // stores one row per expanded address, and sibling addresses can hit
+    // several of them). Dedupe on property_id; if a building genuinely holds
+    // more than one HUD property, show the largest assisted one.
+    type HudRow = {
+      property_id: string
+      property_name: string | null
+      category: string | null
+      programs: string[] | null
+      units_assisted: number | null
+    }
+    const hudRows = ((hudRes.data ?? []) as HudRow[]).filter(Boolean)
+    const hudByProperty = new Map<string, HudRow>()
+    for (const r of hudRows) {
+      if (r.property_id && !hudByProperty.has(r.property_id)) hudByProperty.set(r.property_id, r)
+    }
+    const hudBest =
+      [...hudByProperty.values()].sort(
+        (a, b) => (b.units_assisted ?? 0) - (a.units_assisted ?? 0)
+      )[0] ?? null
+    const hudAssisted = hudBest
+      ? {
+          propertyName: hudBest.property_name?.trim() || null,
+          programs: (hudBest.programs ?? []).filter(Boolean),
+          category: hudBest.category?.trim() || null,
+          unitsAssisted:
+            hudBest.units_assisted != null && Number.isFinite(Number(hudBest.units_assisted))
+              ? Number(hudBest.units_assisted)
+              : null,
+        }
+      : null
+
     return {
       cityLogic: {
         ward: parcel?.ward ?? null,
@@ -162,6 +213,7 @@ export async function fetchCityLogic(params: {
         isRestrictedZone: restrictedZoneRes === true,
         floodFemaSfha: parcel?.flood_fema_sfha === true,
         ohareNoiseContour: parcel?.ohare_noise_contour === true,
+        hudAssisted,
       },
       error: null,
     }
