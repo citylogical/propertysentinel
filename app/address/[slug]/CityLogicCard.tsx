@@ -21,14 +21,16 @@ export default function CityLogicCard({ cityLogic }: Props) {
     hudAssisted,
   } = cityLogic
 
-  // "Section 8 · 120 units" — programs joined, falling back to the HUD
-  // category when no program flags were set; units appended when present.
+  // "Section 8 · 120 units · Ludwig and Company" — programs joined, falling
+  // back to the HUD category when no program flags were set; units and
+  // management agent appended when present.
   const hudAssistedLabel = hudAssisted
     ? [
         hudAssisted.programs.length > 0 ? hudAssisted.programs.join(', ') : hudAssisted.category,
         hudAssisted.unitsAssisted != null && hudAssisted.unitsAssisted > 0
           ? `${hudAssisted.unitsAssisted} units`
           : null,
+        hudAssisted.managerName,
       ]
         .filter(Boolean)
         .join(' · ') || 'Yes'

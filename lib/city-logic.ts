@@ -25,6 +25,8 @@ export type CityLogic = {
       programs: string[]
       category: string | null
       unitsAssisted: number | null
+      /** Management agent ORG NAME only (public HUD data) — phones/emails stay in the lead tables. */
+      managerName: string | null
     } | null
   }
 
@@ -181,6 +183,23 @@ export async function fetchCityLogic(params: {
       [...hudByProperty.values()].sort(
         (a, b) => (b.units_assisted ?? 0) - (a.units_assisted ?? 0)
       )[0] ?? null
+
+    // Management agent org name lives on the HUD staging row (hud_mf_raw has
+    // no display column on hud_assisted, so one follow-up lookup keyed by
+    // property_id — only fires on HUD-assisted pages). order by load_id desc
+    // so a mid-reload window (two batches briefly coexist) reads the newest.
+    let hudManagerName: string | null = null
+    if (hudBest?.property_id) {
+      const { data: mgmtRow } = await supabase
+        .from('hud_mf_raw')
+        .select('mgmt_name')
+        .eq('property_id', hudBest.property_id)
+        .order('load_id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      hudManagerName = ((mgmtRow as { mgmt_name: string | null } | null)?.mgmt_name ?? '').trim() || null
+    }
+
     const hudAssisted = hudBest
       ? {
           propertyName: hudBest.property_name?.trim() || null,
@@ -190,6 +209,7 @@ export async function fetchCityLogic(params: {
             hudBest.units_assisted != null && Number.isFinite(Number(hudBest.units_assisted))
               ? Number(hudBest.units_assisted)
               : null,
+          managerName: hudManagerName,
         }
       : null
 
