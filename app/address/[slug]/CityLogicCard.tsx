@@ -19,7 +19,36 @@ export default function CityLogicCard({ cityLogic }: Props) {
     floodFemaSfha,
     ohareNoiseContour,
     hudAssisted,
+    affordableHousing,
+    foreclosureRegistry,
   } = cityLogic
+
+  // "ARO · 23 units · Willow Bridge"
+  const affordableLabel = affordableHousing
+    ? [
+        affordableHousing.propertyType,
+        affordableHousing.units != null && affordableHousing.units > 0
+          ? `${affordableHousing.units} units`
+          : null,
+        affordableHousing.managementCompany,
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Listed'
+    : null
+
+  // "Oak River Property Management · Jul 2026" — month formatted from the
+  // ISO date string directly (Date parsing would shift days across timezones)
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const foreclosureLabel = foreclosureRegistry
+    ? [
+        foreclosureRegistry.agentName,
+        foreclosureRegistry.latestSubmission
+          ? `${MONTHS[parseInt(foreclosureRegistry.latestSubmission.slice(5, 7), 10) - 1] ?? ''} ${foreclosureRegistry.latestSubmission.slice(0, 4)}`.trim()
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Registered'
+    : null
 
   // "Section 8 · 120 units · Ludwig and Company" — programs joined, falling
   // back to the HUD category when no program flags were set; units and
@@ -50,7 +79,9 @@ export default function CityLogicCard({ cityLogic }: Props) {
     isRestrictedZone ||
     floodFemaSfha ||
     ohareNoiseContour ||
-    hudAssisted != null
+    hudAssisted != null ||
+    affordableHousing != null ||
+    foreclosureRegistry != null
 
   if (!hasAnyContent) return null
 
@@ -116,6 +147,20 @@ export default function CityLogicCard({ cityLogic }: Props) {
           <div className="detail-row">
             <span className="detail-key">HUD Assisted</span>
             <span className="detail-val">{hudAssistedLabel}</span>
+          </div>
+        )}
+
+        {affordableLabel != null && (
+          <div className="detail-row">
+            <span className="detail-key">Affordable Housing</span>
+            <span className="detail-val">{affordableLabel}</span>
+          </div>
+        )}
+
+        {foreclosureLabel != null && (
+          <div className="detail-row">
+            <span className="detail-key">Foreclosure Registry</span>
+            <span className="detail-val">{foreclosureLabel}</span>
           </div>
         )}
 

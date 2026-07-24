@@ -1149,7 +1149,10 @@ export default function ExploreClient() {
         }
         return formatCell(displayValue, col.type)
       },
-      enableSorting: true,
+      // computed columns are populated post-fetch by the API route and don't
+      // exist in the DB — the route ignores sort/filter on them, so don't
+      // offer sorting in the UI either
+      enableSorting: !col.computed,
       meta: { type: col.type, sticky: col.sticky },
     }))
   }, [tableDef, selectedTable, handleDrillClick, pblExploreAnnotations])

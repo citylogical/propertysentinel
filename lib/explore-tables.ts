@@ -12,6 +12,12 @@ export type ColumnDef = {
   defaultVisible?: boolean
   /** If true, this is the sticky left-hand identifier column */
   sticky?: boolean
+  /**
+   * If true, this column does not exist in the underlying table/view — the
+   * API route excludes it from SELECT/sort/filter and populates it after the
+   * page is fetched (e.g. pm_manager on enriched_complaints). Not sortable.
+   */
+  computed?: boolean
 }
 
 export type TableDef = {
@@ -116,6 +122,7 @@ const enriched_complaints: TableDef = {
     { key: 'sr_short_code', label: 'SR Code', type: 'text', defaultVisible: true },
     { key: 'sr_type', label: 'SR Type', type: 'text', defaultVisible: true },
     { key: 'address_normalized', label: 'Address', type: 'text', defaultVisible: true },
+    { key: 'pm_manager', label: 'Owner/Mgr', type: 'text', defaultVisible: true, computed: true },
     { key: 'status', label: 'Status', type: 'text', defaultVisible: true },
     { key: 'standard_description', label: 'Standardized', type: 'text', defaultVisible: true },
     { key: 'complaint_description', label: 'Raw Description', type: 'text', defaultVisible: true },
@@ -493,11 +500,49 @@ const airbnb_listings: TableDef = {
   ],
 }
 
+const pm_lead_intel: TableDef = {
+  name: 'pm_lead_intel',
+  label: 'PM Lead Intel',
+  rowEstimate: '~900',
+  defaultSort: 'hot_open',
+  defaultSortDesc: true,
+  columns: [
+    { key: 'name', label: 'Company', type: 'text', defaultVisible: true, sticky: true },
+    { key: 'segment', label: 'Segment', type: 'text', defaultVisible: true },
+    { key: 'buildings_managed', label: 'Managed', type: 'number', defaultVisible: true },
+    { key: 'buildings_owned', label: 'Owned', type: 'number' },
+    { key: 'units_managed', label: 'Units', type: 'number', defaultVisible: true },
+    { key: 'sources', label: 'Sources', type: 'json', defaultVisible: true },
+    { key: 'hot_open', label: 'Open Hot', type: 'number', defaultVisible: true },
+    { key: 'hot_total', label: 'Hot 90d', type: 'number', defaultVisible: true },
+    { key: 'building', label: 'Building', type: 'number', defaultVisible: true },
+    { key: 'plumbing', label: 'Plumbing', type: 'number', defaultVisible: true },
+    { key: 'sanitation', label: 'Sanitation', type: 'number', defaultVisible: true },
+    { key: 'fly_dumping', label: 'Fly Dumping', type: 'number' },
+    { key: 'rodents', label: 'Rodents', type: 'number', defaultVisible: true },
+    { key: 'vacant_bldg', label: 'Vacant Bldg', type: 'number', defaultVisible: true },
+    { key: 'no_permit', label: 'No Permit', type: 'number' },
+    { key: 'porch', label: 'Porch', type: 'number' },
+    { key: 'water_basement', label: 'Water/Bsmt', type: 'number' },
+    { key: 'no_ac', label: 'No AC', type: 'number' },
+    { key: 'vacant_lot', label: 'Vacant Lot', type: 'number' },
+    { key: 'weeds', label: 'Weeds', type: 'number' },
+    { key: 'last_hot_complaint', label: 'Last Hot', type: 'date', defaultVisible: true },
+    { key: 'review_status', label: 'Review', type: 'text' },
+    { key: 'hq_city', label: 'HQ City', type: 'text', defaultVisible: true },
+    { key: 'hq_state', label: 'HQ State', type: 'text', defaultVisible: true },
+    { key: 'hq_phone', label: 'HQ Phone', type: 'text' },
+    { key: 'hq_email', label: 'HQ Email', type: 'text' },
+    { key: 'id', label: 'ID', type: 'number' },
+  ],
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 export const EXPLORE_TABLES: Record<string, TableDef> = {
+  pm_lead_intel: pm_lead_intel,
   pbl_intelligence_live: pbl_intelligence,
   str_prohibited_buildings: str_prohibited_buildings,
   str_registrations: str_registrations,
@@ -518,6 +563,7 @@ export const EXPLORE_TABLES: Record<string, TableDef> = {
 
 /** Ordered list for the table selector dropdown */
 export const EXPLORE_TABLE_LIST: TableDef[] = [
+  pm_lead_intel,
   pbl_intelligence,
   str_prohibited_buildings,
   str_registrations,

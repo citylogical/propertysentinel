@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { EXPLORE_TABLES, isValidTable, isValidColumn } from '@/lib/explore-tables'
+import { fetchPmManagersByAddresses } from '@/lib/pm-lookup'
 import { auth } from '@clerk/nextjs/server'
 
 function getSupabaseAdmin() {
@@ -66,7 +67,20 @@ export async function POST(req: NextRequest) {
     safeCols.push(...tableDef.columns.map((c) => c.key))
   }
 
-  const selectStr = safeCols.join(',')
+  // Computed columns don't exist in the underlying table/view — they're
+  // populated after the page is fetched (see post-fetch enrichment below).
+  const computedKeys = new Set(tableDef.columns.filter((c) => c.computed).map((c) => c.key))
+  const selectCols = safeCols.filter((c) => !computedKeys.has(c))
+  const wantsPmManager = table === 'enriched_complaints' && safeCols.includes('pm_manager')
+  if (wantsPmManager && !selectCols.includes('address_normalized')) {
+    // enrichment is keyed by address — make sure it rides along
+    selectCols.push('address_normalized')
+  }
+  if (selectCols.length === 0) {
+    selectCols.push(...tableDef.columns.filter((c) => !c.computed).map((c) => c.key))
+  }
+
+  const selectStr = selectCols.join(',')
 
   // ── Validate page size ─────────────────────────────────────────────────
   const safePageSize = Math.min(Math.max(pageSize || 50, 10), 200)
@@ -83,16 +97,18 @@ export async function POST(req: NextRequest) {
    * (created_date DESC) WHERE enriched_at IS NOT NULL, exact COUNT(*)
    * on this view is sub-millisecond.
    */
-  const EXACT_COUNT_TABLES = new Set(['enriched_complaints'])
+  // pm_lead_intel is an aggregate view (~900 rows) — estimated count reads
+  // the underlying 13M-row complaints reltuples and is meaningless there.
+  const EXACT_COUNT_TABLES = new Set(['enriched_complaints', 'pm_lead_intel'])
   const countStrategy: 'estimated' | 'exact' = EXACT_COUNT_TABLES.has(table) ? 'exact' : 'estimated'
 
   let query = supabase
     .from(table)
     .select(selectStr, { count: countStrategy })
 
-  // Apply filters
+  // Apply filters (computed columns don't exist in the DB — never filter on them)
   const safeFilters = (filters ?? []).filter(
-    (f) => f.value && f.value.trim() !== '' && isValidColumn(table, f.id)
+    (f) => f.value && f.value.trim() !== '' && isValidColumn(table, f.id) && !computedKeys.has(f.id)
   )
 
   /**
@@ -188,8 +204,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Apply sorting
-  const safeSorting = (sorting ?? []).filter((s) => isValidColumn(table, s.id))
+  // Apply sorting (computed columns are not sortable)
+  const safeSorting = (sorting ?? []).filter(
+    (s) => isValidColumn(table, s.id) && !computedKeys.has(s.id)
+  )
   if (safeSorting.length > 0) {
     for (const s of safeSorting) {
       query = query.order(s.id, { ascending: !s.desc })
@@ -217,8 +235,21 @@ export async function POST(req: NextRequest) {
   const totalRows = count ?? 0
   const pageCount = Math.ceil(totalRows / safePageSize)
 
+  // ── Post-fetch enrichment: Owner/Mgr column on enriched_complaints ──────
+  // Page-size-bounded (≤200 addresses) lookup against the PM staging tables;
+  // failure degrades to a blank column.
+  let rows = (data ?? []) as unknown as Record<string, unknown>[]
+  if (wantsPmManager && rows.length > 0) {
+    const addrs = [...new Set(rows.map((r) => String(r.address_normalized ?? '')).filter(Boolean))]
+    const managers = await fetchPmManagersByAddresses(addrs)
+    rows = rows.map((r) => ({
+      ...r,
+      pm_manager: managers.get(String(r.address_normalized ?? '')) ?? null,
+    }))
+  }
+
   return NextResponse.json({
-    data: data ?? [],
+    data: rows,
     totalRows,
     pageCount,
   })

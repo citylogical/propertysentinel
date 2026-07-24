@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from './supabase-admin'
 import { normalizePinSilent } from './supabase-search'
+import { fetchPmPresence, type ArhdPresence, type KcroPresence } from './pm-lookup'
 
 export type CityLogic = {
     ward: number | null
@@ -28,6 +29,10 @@ export type CityLogic = {
       /** Management agent ORG NAME only (public HUD data) — phones/emails stay in the lead tables. */
       managerName: string | null
     } | null
+    /** City ARHD affordable-housing development at this building; null when none. */
+    affordableHousing: ArhdPresence | null
+    /** KCRO foreclosed-rental registration (latest) at this building; null when none. */
+    foreclosureRegistry: KcroPresence | null
   }
 
 type ParcelRow = {
@@ -73,7 +78,7 @@ export async function fetchCityLogic(params: {
   ]
 
   try {
-    const [parcelRes, neighborhoodRes, pblRes, hudRes, restrictedZoneRes] = await Promise.all([
+    const [parcelRes, neighborhoodRes, pblRes, hudRes, pmPresence, restrictedZoneRes] = await Promise.all([
       // 1. parcel_universe — latest tax_year for this PIN
       supabase
         .from('parcel_universe')
@@ -114,7 +119,11 @@ export async function fetchCityLogic(params: {
             .limit(20)
         : Promise.resolve({ data: null, error: null }),
 
-      // 5. Restricted zone — derive ward+precinct from a 311 record at this address,
+      // 5. ARHD + KCRO presence (affordable-housing development / foreclosed-
+      //    rental registration) — matched via addresses_expanded overlaps.
+      fetchPmPresence(cleanedAddresses),
+
+      // 6. Restricted zone — derive ward+precinct from a 311 record at this address,
       //    then check str_restricted_zones for an active restriction.
       (async () => {
         if (cleanedAddresses.length === 0) return false
@@ -234,6 +243,8 @@ export async function fetchCityLogic(params: {
         floodFemaSfha: parcel?.flood_fema_sfha === true,
         ohareNoiseContour: parcel?.ohare_noise_contour === true,
         hudAssisted,
+        affordableHousing: pmPresence.arhd,
+        foreclosureRegistry: pmPresence.kcro,
       },
       error: null,
     }
