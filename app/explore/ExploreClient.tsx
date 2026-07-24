@@ -22,6 +22,7 @@ import {
   type TableDef,
 } from '@/lib/explore-tables'
 import LeadExplorer from './LeadExplorer'
+import PmHotBuildingsModal from '@/components/PmHotBuildingsModal'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type QueryResponse = {
@@ -988,6 +989,15 @@ export default function ExploreClient() {
     setDrillModal((p) => ({ ...p, open: false }))
   }, [])
 
+  // ── PM company drill-down (pm_lead_intel → buildings modal) ──────────
+  const [pmCompanyModal, setPmCompanyModal] = useState<{ id: number; name: string } | null>(null)
+
+  const handlePmCompanyClick = useCallback((id: number, name: string) => {
+    setPmCompanyModal({ id, name })
+  }, [])
+
+  const closePmCompanyModal = useCallback(() => setPmCompanyModal(null), [])
+
   // ── Fetch data ───────────────────────────────────────────────────────
   useEffect(() => {
     if (activeExploreTab !== 'data') return
@@ -1001,8 +1011,14 @@ export default function ExploreClient() {
 
     // Include any filtered columns even if not visible
     const filterCols = debouncedFilters.map((f) => f.id)
-    // Always include lat/lng for PBL drill-down even if columns are hidden
-    const extraCols = selectedTable === 'pbl_intelligence_live' ? ['lat', 'lng'] : []
+    // Always include lat/lng for PBL drill-down even if columns are hidden;
+    // pm_lead_intel needs id/name so the company modal can open from any row
+    const extraCols =
+      selectedTable === 'pbl_intelligence_live'
+        ? ['lat', 'lng']
+        : selectedTable === 'pm_lead_intel'
+          ? ['id', 'name']
+          : []
     const allCols = [...new Set([...visibleCols, ...filterCols, ...extraCols])]
 
     const body = {
@@ -1123,6 +1139,25 @@ export default function ExploreClient() {
           numDisplay > 0
         const canDrillShvr = isPbl && col.key === 'shvr_total' && Number(value) > 0
 
+        // pm_lead_intel: company name opens the buildings/hot-complaints modal
+        if (selectedTable === 'pm_lead_intel' && col.key === 'name' && value) {
+          const companyId = Number(row.id)
+          if (Number.isFinite(companyId) && companyId > 0) {
+            return (
+              <button
+                type="button"
+                className="explore-drill-link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handlePmCompanyClick(companyId, String(value))
+                }}
+              >
+                {formatCell(value, col.type)}
+              </button>
+            )
+          }
+        }
+
         if (canDrillShvr || canDrillAirbnb) {
           const type = col.key === 'shvr_total' ? 'shvr' : 'airbnb'
           const ff = col.key === 'flagged_yes' ? 'yes' : col.key === 'flagged_maybe' ? 'maybe' : undefined
@@ -1155,7 +1190,7 @@ export default function ExploreClient() {
       enableSorting: !col.computed,
       meta: { type: col.type, sticky: col.sticky },
     }))
-  }, [tableDef, selectedTable, handleDrillClick, pblExploreAnnotations])
+  }, [tableDef, selectedTable, handleDrillClick, handlePmCompanyClick, pblExploreAnnotations])
 
   // ── TanStack table instance ──────────────────────────────────────────
   const table = useReactTable({
@@ -1591,6 +1626,15 @@ export default function ExploreClient() {
           </div>
         )}
       </div>
+
+      {/* ── PM company buildings modal ──────────────────────────────── */}
+      {pmCompanyModal && (
+        <PmHotBuildingsModal
+          companyId={pmCompanyModal.id}
+          companyName={pmCompanyModal.name}
+          onClose={closePmCompanyModal}
+        />
+      )}
 
       {/* ── Drill-down modal ────────────────────────────────────────── */}
       {drillModal.open && (() => {
