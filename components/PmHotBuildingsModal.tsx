@@ -26,15 +26,24 @@ type Building = {
   zip: string | null
   community_area: string | null
   pins: string[]
-  hot_open: number
-  hot_total: number
+  /** Currently-open hot complaints, any age. */
+  open_hot: number
+  /** Hot complaints filed in the last 90 days — matches the table's Hot 90d. */
+  hot_90d: number
   last_hot: string | null
   open_complaints: OpenComplaint[]
 }
 
+type Totals = {
+  buildings: number
+  open_hot: number
+  open_hot_90d: number
+  hot_90d: number
+}
+
 type ApiResponse = {
   company?: { id: number; name: string; segment: string | null }
-  totals?: { buildings: number; hot_open: number; hot_total: number }
+  totals?: Totals
   buildings?: Building[]
   error?: string
 }
@@ -55,7 +64,7 @@ export default function PmHotBuildingsModal({ companyId, companyName, onClose }:
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [buildings, setBuildings] = useState<Building[]>([])
-  const [totals, setTotals] = useState<{ buildings: number; hot_open: number; hot_total: number } | null>(null)
+  const [totals, setTotals] = useState<Totals | null>(null)
   const [segment, setSegment] = useState<string | null>(null)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -179,7 +188,7 @@ export default function PmHotBuildingsModal({ companyId, companyName, onClose }:
             <div className="explore-modal-title">{companyName}</div>
             <div className="explore-modal-address">
               {totals
-                ? `${totals.buildings} ${totals.buildings === 1 ? 'building' : 'buildings'} · ${totals.hot_open} open hot · ${totals.hot_total} hot all-time${segment ? ` · ${segment}` : ''}`
+                ? `${totals.buildings} ${totals.buildings === 1 ? 'building' : 'buildings'} · ${totals.open_hot} open hot (any age) · ${totals.hot_90d} hot in 90d, ${totals.open_hot_90d} of them open${segment ? ` · ${segment}` : ''}`
                 : 'Buildings & open hot complaints'}
             </div>
           </div>
@@ -211,7 +220,7 @@ export default function PmHotBuildingsModal({ companyId, companyName, onClose }:
                   <th>Role</th>
                   <th>Units</th>
                   <th>Open Hot</th>
-                  <th>Hot Total</th>
+                  <th>Hot 90d</th>
                   <th>Last Hot</th>
                 </tr>
               </thead>
@@ -266,20 +275,20 @@ export default function PmHotBuildingsModal({ companyId, companyName, onClose }:
                       </td>
                       <td>{b.units != null ? b.units.toLocaleString('en-US') : '—'}</td>
                       <td>
-                        {b.hot_open > 0 ? (
+                        {b.open_hot > 0 ? (
                           <button
                             type="button"
                             className="explore-drill-link"
                             onClick={() => toggleExpanded(b.address)}
                             title={isExpanded ? 'Hide open complaints' : 'Show open complaints'}
                           >
-                            <span className="explore-modal-badge badge-open">{b.hot_open}</span>
+                            <span className="explore-modal-badge badge-open">{b.open_hot}</span>
                           </button>
                         ) : (
                           '—'
                         )}
                       </td>
-                      <td>{b.hot_total > 0 ? b.hot_total : '—'}</td>
+                      <td>{b.hot_90d > 0 ? b.hot_90d : '—'}</td>
                       <td>{b.last_hot ?? '—'}</td>
                     </tr>,
                     isExpanded && b.open_complaints.length > 0 ? (
@@ -315,9 +324,9 @@ export default function PmHotBuildingsModal({ companyId, companyName, onClose }:
                               </span>
                             </div>
                           ))}
-                          {b.hot_open > b.open_complaints.length ? (
+                          {b.open_hot > b.open_complaints.length ? (
                             <div style={{ fontSize: 10, color: '#9ca3af', paddingTop: 2 }}>
-                              Showing {b.open_complaints.length} of {b.hot_open} open
+                              Showing {b.open_complaints.length} of {b.open_hot} open
                             </div>
                           ) : null}
                         </td>

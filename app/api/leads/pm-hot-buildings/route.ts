@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { PM_HOT_SR_CODES, PM_HOT_OPEN_STATUS } from '@/lib/pm-hot-codes'
+import { PM_HOT_SR_CODES, PM_HOT_OPEN_STATUS, PM_HOT_WINDOW_DAYS } from '@/lib/pm-hot-codes'
 import { formatAddressForDisplay, addressToSlug } from '@/lib/formatAddress'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 // Company → hot buildings drill-down for the PM Lead Intel explore table.
-// Mirrors the pm_lead_intel view's own semantics (workers repo,
-// sql/pm_lead_intel.sql) so the modal's numbers reconcile with the table row:
-// buildings come from pm_buildings by company_id, each building's full
+// Buildings come from pm_buildings by company_id, each building's full
 // address vocabulary comes from its staging row's addresses_expanded, and
-// "hot" is the shared 12-code set with open = status 'Open'. Complaints are
-// deduped on sr_number, exactly like the view.
+// "hot" is the shared 12-code set (lib/pm-hot-codes.ts) with open =
+// status 'Open'. Complaints are deduped on sr_number, exactly like the view.
+//
+// Two windows are reported side by side:
+//  - *_90d fields mirror the DEPLOYED view's 90-day recency filter, so they
+//    reconcile with the table row's Open Hot / Hot 90d columns
+//    (verified against Oak River: 37/14).
+//  - open_hot counts EVERY currently-open hot complaint regardless of age —
+//    an open building violation from January is still a lead.
 
 type BuildingRow = {
   company_role: string
@@ -50,8 +55,10 @@ type BuildingOut = {
   zip: string | null
   community_area: string | null
   pins: string[]
-  hot_open: number
-  hot_total: number
+  /** Currently-open hot complaints, any age. */
+  open_hot: number
+  /** Hot complaints filed in the last 90 days — matches the table's Hot 90d. */
+  hot_90d: number
   last_hot: string | null
   open_complaints: Array<{
     sr_number: string
@@ -265,9 +272,16 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Aggregate per building ──────────────────────────────────────────────
+  // The deployed view's window compares against now(); the false +00:00
+  // suffix on created_date makes a sliced YYYY-MM-DD comparison equivalent
+  // at day precision.
+  const windowCutoff = new Date(Date.now() - PM_HOT_WINDOW_DAYS * 86400000)
+    .toISOString()
+    .slice(0, 10)
+
   type Agg = {
-    hot_open: number
-    hot_total: number
+    open_hot: number
+    hot_90d: number
     last_hot: string | null
     community_area: string | null
     pins: Set<string>
@@ -277,30 +291,35 @@ export async function GET(req: NextRequest) {
   const getAgg = (g: Group): Agg => {
     let a = aggByGroup.get(g)
     if (!a) {
-      a = { hot_open: 0, hot_total: 0, last_hot: null, community_area: null, pins: new Set(), open_complaints: [] }
+      a = { open_hot: 0, hot_90d: 0, last_hot: null, community_area: null, pins: new Set(), open_complaints: [] }
       aggByGroup.set(g, a)
     }
     return a
   }
 
   let totalOpen = 0
-  let totalHot = 0
+  let totalHot90d = 0
+  let totalOpen90d = 0
   for (const c of complaintsBySr.values()) {
-    totalHot++
     const isOpen = c.status === PM_HOT_OPEN_STATUS
-    if (isOpen) totalOpen++
-    const g = c.address_normalized ? groupByForm.get(c.address_normalized) : undefined
-    if (!g) continue
-    const a = getAgg(g)
-    a.hot_total++
     // FOOTGUN: created_date is Chicago wall-clock with a false +00:00 suffix —
     // slice, never timezone-convert.
     const day = c.created_date ? c.created_date.slice(0, 10) : null
+    const inWindow = day != null && day >= windowCutoff
+    if (isOpen) totalOpen++
+    if (inWindow) {
+      totalHot90d++
+      if (isOpen) totalOpen90d++
+    }
+    const g = c.address_normalized ? groupByForm.get(c.address_normalized) : undefined
+    if (!g) continue
+    const a = getAgg(g)
+    if (inWindow) a.hot_90d++
     if (day && (!a.last_hot || day > a.last_hot)) a.last_hot = day
     if (c.pin) a.pins.add(c.pin)
     if (c.community_area && !a.community_area) a.community_area = c.community_area
     if (isOpen) {
-      a.hot_open++
+      a.open_hot++
       if (a.open_complaints.length < OPEN_COMPLAINTS_CAP) {
         a.open_complaints.push({
           sr_number: c.sr_number,
@@ -330,15 +349,15 @@ export async function GET(req: NextRequest) {
       zip: g.zip,
       community_area: a?.community_area ?? null,
       pins: [...(a?.pins ?? [])],
-      hot_open: a?.hot_open ?? 0,
-      hot_total: a?.hot_total ?? 0,
+      open_hot: a?.open_hot ?? 0,
+      hot_90d: a?.hot_90d ?? 0,
       last_hot: a?.last_hot ?? null,
       open_complaints: openSorted,
     }
   })
   buildings.sort((x, y) => {
-    if (y.hot_open !== x.hot_open) return y.hot_open - x.hot_open
-    if (y.hot_total !== x.hot_total) return y.hot_total - x.hot_total
+    if (y.open_hot !== x.open_hot) return y.open_hot - x.open_hot
+    if (y.hot_90d !== x.hot_90d) return y.hot_90d - x.hot_90d
     return x.address.localeCompare(y.address)
   })
 
@@ -346,8 +365,10 @@ export async function GET(req: NextRequest) {
     company: { id: company.id, name: company.name, segment: company.segment },
     totals: {
       buildings: buildings.length,
-      hot_open: totalOpen,
-      hot_total: totalHot,
+      open_hot: totalOpen,
+      // These two reconcile with the table row's Open Hot / Hot 90d columns.
+      open_hot_90d: totalOpen90d,
+      hot_90d: totalHot90d,
     },
     buildings,
   })
