@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Data Sources — Property Sentinel',
@@ -11,6 +12,7 @@ type Source = {
   url: string
   note?: string
   refresh: string
+  refreshHref?: string
 }
 
 type Category = {
@@ -27,12 +29,13 @@ const CATEGORIES: Category[] = [
         url: 'https://data.cityofchicago.org/d/v6vf-nfxy',
         note: 'Chicago Data Portal',
         refresh: 'Every 30 minutes',
+        refreshHref: '/status',
       },
       {
         name: 'CHI 311 service portal',
         url: 'https://311.chicago.gov',
-        note: 'Complaint narratives, intake detail, and workflow timelines',
-        refresh: 'Continuous',
+        note: 'Intake detail and workflow timelines',
+        refresh: 'Daily',
       },
       {
         name: 'Building violations',
@@ -106,14 +109,14 @@ const CATEGORIES: Category[] = [
     sources: [
       {
         name: 'HUD active multifamily portfolio',
-        url: 'https://www.hud.gov/program_offices/housing/mfh/exp/mfhdiscl',
-        note: 'U.S. Department of Housing and Urban Development',
+        url: 'https://www.hud.gov/hud-partners/multifamily-preservation',
+        note: 'U.S. Department of Housing and Urban Development (HUD)',
         refresh: 'Periodic',
       },
       {
         name: 'HUD multifamily assistance and Section 8 contracts',
         url: 'https://www.hud.gov/program_offices/housing/mfh/exp/mfhdiscl',
-        note: 'U.S. Department of Housing and Urban Development',
+        note: 'U.S. HUD',
         refresh: 'Periodic',
       },
       {
@@ -123,7 +126,7 @@ const CATEGORIES: Category[] = [
         refresh: 'Periodic',
       },
       {
-        name: 'Foreclosed rental property registrations (Keep Chicago Renting Ordinance)',
+        name: 'Foreclosed rental property registrations',
         url: 'https://data.cityofchicago.org/d/yhcw-iu53',
         note: 'Chicago Data Portal',
         refresh: 'Periodic',
@@ -224,23 +227,59 @@ export default function DataSourcesPage() {
                   {s.name}
                 </a>
                 {s.note ? <span style={{ color: '#888' }}> — {s.note}</span> : null}
-                <span
-                  style={{
-                    float: 'right',
-                    fontFamily: '"DM Mono", monospace',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    color: '#888',
-                  }}
-                >
-                  {s.refresh}
-                </span>
+                {s.refreshHref ? (
+                  <Link
+                    href={s.refreshHref}
+                    style={{
+                      float: 'right',
+                      fontFamily: '"DM Mono", monospace',
+                      fontSize: 11,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      color: '#888',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    {s.refresh}
+                  </Link>
+                ) : (
+                  <span
+                    style={{
+                      float: 'right',
+                      fontFamily: '"DM Mono", monospace',
+                      fontSize: 11,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      color: '#888',
+                    }}
+                  >
+                    {s.refresh}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         </section>
       ))}
+      <div
+        style={{
+          marginTop: 40,
+          paddingTop: 16,
+          borderTop: '1px solid #ddd9d0',
+          fontSize: 12,
+          lineHeight: 1.6,
+          color: '#888',
+        }}
+      >
+        Property Sentinel aggregates publicly available government records and independent open
+        datasets. All source datasets remain the property of their respective publishers and are
+        subject to those publishers&apos; terms of use. Data is presented for informational purposes
+        only and is provided without warranty of accuracy, completeness, or timeliness; records may
+        contain errors or lag the underlying source. Verify critical details against the original
+        source before relying on them. Property Sentinel is not affiliated with, endorsed by, or
+        sponsored by the City of Chicago, Cook County, the U.S. Department of Housing and Urban
+        Development, or Inside Airbnb.
+      </div>
     </div>
   )
 }
